@@ -150,6 +150,111 @@ export const exportTradePlansToCsv = (stocks: MinerviniTradeSetup[]) => {
   downloadCsv(`SEPA_Trade_Plans_${dateStr}.csv`, csvContent);
 };
 
+export interface DetailedTradeCsvParams {
+  stock: MinerviniTradeSetup;
+  entryPrice: number;
+  stopLossPrice: number;
+  targetPrice: number;
+  shares: number;
+  totalPositionCost: number;
+  riskPerShare: number;
+  totalDollarRisk: number;
+  rMultiple: number;
+  target3RPrice: number;
+  potentialTotalGain3R: number;
+  notes?: string;
+}
+
+/**
+ * Exports current active trade parameters (entry, stop loss, position size, R-Multiple, 3:1 R target) to CSV
+ */
+export const exportDetailedTradeParametersToCsv = (params: DetailedTradeCsvParams) => {
+  const {
+    stock,
+    entryPrice,
+    stopLossPrice,
+    targetPrice,
+    shares,
+    totalPositionCost,
+    riskPerShare,
+    totalDollarRisk,
+    rMultiple,
+    target3RPrice,
+    potentialTotalGain3R,
+    notes,
+  } = params;
+
+  const riskPercent = entryPrice > 0 ? ((entryPrice - stopLossPrice) / entryPrice) * 100 : 0;
+  const rewardPerShare = Math.max(0, targetPrice - entryPrice);
+  const totalDollarReward = shares * rewardPerShare;
+  const target3RGainPercent = entryPrice > 0 ? ((target3RPrice - entryPrice) / entryPrice) * 100 : 0;
+
+  const headers = [
+    'Export Date',
+    'Ticker',
+    'Company Name',
+    'Exchange',
+    'Sector',
+    'Pattern Type',
+    'Current Price',
+    'Entry Price',
+    'Stop Loss Price',
+    'Risk Per Share ($)',
+    'Risk From Entry (%)',
+    'Position Size (Shares)',
+    'Total Position Cost ($)',
+    'Total Dollar Risk ($)',
+    'Calculated R-Multiple',
+    'Target Price ($)',
+    'Target Total Profit ($)',
+    '3:1 R Target Price ($)',
+    '3:1 R Target Return (%)',
+    '3:1 R Total Gain ($)',
+    'Target 1 Price ($)',
+    'Target 2 Price ($)',
+    'Trader Notes'
+  ];
+
+  let savedNote = notes;
+  if (!savedNote) {
+    try {
+      savedNote = localStorage.getItem(`sepa_trade_notes_${stock.ticker}`) || '';
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  const row = [
+    escapeCsvCell(new Date().toISOString().split('T')[0]),
+    escapeCsvCell(stock.ticker),
+    escapeCsvCell(stock.name),
+    escapeCsvCell(stock.exchange),
+    escapeCsvCell(stock.sector),
+    escapeCsvCell(stock.patternType),
+    escapeCsvCell((stock.currentPrice ?? 0).toFixed(2)),
+    escapeCsvCell(entryPrice.toFixed(2)),
+    escapeCsvCell(stopLossPrice.toFixed(2)),
+    escapeCsvCell(riskPerShare.toFixed(2)),
+    escapeCsvCell(`-${riskPercent.toFixed(2)}%`),
+    escapeCsvCell(shares),
+    escapeCsvCell(totalPositionCost.toFixed(2)),
+    escapeCsvCell(totalDollarRisk.toFixed(2)),
+    escapeCsvCell(`${rMultiple.toFixed(2)}:1`),
+    escapeCsvCell(targetPrice.toFixed(2)),
+    escapeCsvCell(totalDollarReward.toFixed(2)),
+    escapeCsvCell(target3RPrice.toFixed(2)),
+    escapeCsvCell(`+${target3RGainPercent.toFixed(2)}%`),
+    escapeCsvCell(potentialTotalGain3R.toFixed(2)),
+    escapeCsvCell((stock.target1Price ?? 0).toFixed(2)),
+    escapeCsvCell((stock.target2Price ?? 0).toFixed(2)),
+    escapeCsvCell(savedNote || '')
+  ].join(',');
+
+  const csvContent = [headers.join(','), row].join('\n');
+  const dateStr = new Date().toISOString().split('T')[0];
+  downloadCsv(`SEPA_Trade_Parameters_${stock.ticker}_${dateStr}.csv`, csvContent);
+};
+
 /**
   * Exports Watchlist & Portfolio formatted for Indian Brokerage Import tools (Zerodha Kite, Groww, AngelOne)
   */

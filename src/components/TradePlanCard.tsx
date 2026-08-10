@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { MinerviniTradeSetup } from '../types';
 import { calculatePositionSize, calculateBreakoutProbability, formatCurrency, formatVolume, getCurrencySymbol } from '../utils/sepaCalculator';
-import { exportTradePlansToCsv } from '../utils/csvExport';
+import { exportTradePlansToCsv, exportDetailedTradeParametersToCsv } from '../utils/csvExport';
 import { generateSepaPdfReport } from '../utils/pdfExporter';
 import { ExitSignals } from './ExitSignals';
 import { BreakoutProbabilityEngine } from './BreakoutProbabilityEngine';
@@ -1002,6 +1002,29 @@ export const InteractiveRMultipleCalculatorTool: React.FC<InteractiveRMultipleCa
           </div>
         </div>
         <div className="flex items-center space-x-2 font-mono">
+          <button
+            type="button"
+            onClick={() => {
+              exportDetailedTradeParametersToCsv({
+                stock,
+                entryPrice: validEntry,
+                stopLossPrice: validStop,
+                targetPrice: validTarget,
+                shares: activeShares,
+                totalPositionCost,
+                riskPerShare,
+                totalDollarRisk,
+                rMultiple,
+                target3RPrice,
+                potentialTotalGain3R,
+              });
+            }}
+            className="bg-[#1a1a1a] hover:bg-black text-amber-300 border border-black text-[10px] uppercase font-bold px-2.5 py-1.5 flex items-center space-x-1.5 transition-all cursor-pointer shadow-2xs group"
+            title="Export current trade parameters (entry, stop loss, position size, R-Multiple) to CSV"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400 group-hover:text-amber-400" />
+            <span>Export CSV</span>
+          </button>
           <span className="text-[10px] text-gray-500 uppercase font-bold">R-Multiple:</span>
           <span className={`px-3 py-1 font-mono text-sm font-black border ${
             rMultiple >= 5.0
@@ -1601,9 +1624,22 @@ export const TradePlanCard: React.FC<TradePlanCardProps> = ({ stock }) => {
           </button>
 
           <button
-            onClick={() => exportTradePlansToCsv([stock])}
+            onClick={() => exportDetailedTradeParametersToCsv({
+              stock,
+              entryPrice: pivotEntry,
+              stopLossPrice: currentStopLoss,
+              targetPrice: customTargetPrice,
+              shares: posSize.shareQuantity,
+              totalPositionCost: posSize.totalPositionCost,
+              riskPerShare,
+              totalDollarRisk: posSize.riskAmount,
+              rMultiple: dynamicCustomRRRatio,
+              target3RPrice: pivotEntry + (3 * riskPerShare),
+              potentialTotalGain3R: posSize.shareQuantity * (3 * riskPerShare),
+              notes,
+            })}
             className="bg-[#f9f8f5] hover:bg-black hover:text-white text-[#1a1a1a] border border-[#e5e4e1] text-[10px] uppercase tracking-[0.15em] px-3 py-1 font-bold flex items-center space-x-1.5 transition-all shadow-2xs cursor-pointer group"
-            title="Export this stock's trade plan parameters & saved insights to CSV"
+            title="Export this stock's trade plan parameters (entry, stop, position size, R-Multiple) & saved insights to CSV"
           >
             <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 group-hover:text-amber-400" />
             <span>Export Plan CSV</span>
