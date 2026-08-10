@@ -162,11 +162,14 @@ export interface DetailedTradeCsvParams {
   rMultiple: number;
   target3RPrice: number;
   potentialTotalGain3R: number;
+  isTrailingStopEnabled?: boolean;
+  trailingStopPrice?: number;
+  trailingStopParamStr?: string;
   notes?: string;
 }
 
 /**
- * Exports current active trade parameters (entry, stop loss, position size, R-Multiple, 3:1 R target) to CSV
+ * Exports current active trade parameters (entry, stop loss, position size, R-Multiple, 3:1 R target, trailing stop) to CSV
  */
 export const exportDetailedTradeParametersToCsv = (params: DetailedTradeCsvParams) => {
   const {
@@ -181,6 +184,9 @@ export const exportDetailedTradeParametersToCsv = (params: DetailedTradeCsvParam
     rMultiple,
     target3RPrice,
     potentialTotalGain3R,
+    isTrailingStopEnabled,
+    trailingStopPrice,
+    trailingStopParamStr,
     notes,
   } = params;
 
@@ -210,6 +216,9 @@ export const exportDetailedTradeParametersToCsv = (params: DetailedTradeCsvParam
     '3:1 R Target Price ($)',
     '3:1 R Target Return (%)',
     '3:1 R Total Gain ($)',
+    'Trailing Stop Active',
+    'Projected Trailing Stop Price ($)',
+    'Trailing Stop Config',
     'Target 1 Price ($)',
     'Target 2 Price ($)',
     'Trader Notes'
@@ -245,6 +254,9 @@ export const exportDetailedTradeParametersToCsv = (params: DetailedTradeCsvParam
     escapeCsvCell(target3RPrice.toFixed(2)),
     escapeCsvCell(`+${target3RGainPercent.toFixed(2)}%`),
     escapeCsvCell(potentialTotalGain3R.toFixed(2)),
+    escapeCsvCell(isTrailingStopEnabled ? 'YES' : 'NO'),
+    escapeCsvCell(trailingStopPrice ? trailingStopPrice.toFixed(2) : 'N/A'),
+    escapeCsvCell(trailingStopParamStr || 'N/A'),
     escapeCsvCell((stock.target1Price ?? 0).toFixed(2)),
     escapeCsvCell((stock.target2Price ?? 0).toFixed(2)),
     escapeCsvCell(savedNote || '')

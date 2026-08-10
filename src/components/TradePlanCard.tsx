@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { MinerviniTradeSetup } from '../types';
-import { calculatePositionSize, calculateBreakoutProbability, formatCurrency, formatVolume, getCurrencySymbol } from '../utils/sepaCalculator';
+import { calculatePositionSize, calculateBreakoutProbability, formatCurrency, formatVolume, getCurrencySymbol, calculateDailyVolatilityMetrics } from '../utils/sepaCalculator';
 import { exportTradePlansToCsv, exportDetailedTradeParametersToCsv } from '../utils/csvExport';
 import { generateSepaPdfReport } from '../utils/pdfExporter';
 import { ExitSignals } from './ExitSignals';
 import { BreakoutProbabilityEngine } from './BreakoutProbabilityEngine';
 import { RuleBasedEntryExitPanel } from './RuleBasedEntryExitPanel';
 import { DailyPivotAndVolatilityPanel } from './DailyPivotAndVolatilityPanel';
+import { StageIdentifierPanel } from './StageIdentifierPanel';
 import { Target, ShieldAlert, ArrowUpRight, Droplets, DollarSign, Calculator, Layers, Flame, Zap, Sparkles, TrendingUp, BarChart3, ShieldCheck, FileText, Save, Check, Trash2, Clock, StickyNote, FileSpreadsheet, LogOut, AlertTriangle, ArrowRightCircle, Sliders, CheckCircle2, RefreshCw, Bell, BellRing, BellOff } from 'lucide-react';
 
 function getArcPath(cx: number, cy: number, r: number, startAngleDeg: number, endAngleDeg: number) {
@@ -817,6 +818,11 @@ interface InteractiveRMultipleCalculatorToolProps {
   onUpdateTargetPrice: (newTarget: number) => void;
   onUpdateTradeSizeMode: (mode: 'SHARES' | 'DOLLAR') => void;
   onUpdateTradeSizeValue: (val: number) => void;
+  notes?: string;
+  savedStatus?: string | null;
+  onNotesChange?: (val: string) => void;
+  onClearNotes?: () => void;
+  onInsertTemplate?: () => void;
 }
 
 export const InteractiveRMultipleCalculatorTool: React.FC<InteractiveRMultipleCalculatorToolProps> = ({
@@ -833,6 +839,11 @@ export const InteractiveRMultipleCalculatorTool: React.FC<InteractiveRMultipleCa
   onUpdateTargetPrice,
   onUpdateTradeSizeMode,
   onUpdateTradeSizeValue,
+  notes,
+  savedStatus,
+  onNotesChange,
+  onClearNotes,
+  onInsertTemplate,
 }) => {
   const validEntry = entryPrice > 0 ? entryPrice : stock.pivotPrice;
   const validStop = stopLossPrice > 0 ? stopLossPrice : stock.stopLossPrice;
@@ -860,6 +871,76 @@ export const InteractiveRMultipleCalculatorTool: React.FC<InteractiveRMultipleCa
   const reward3RPerShare = 3 * riskPerShare;
   const potentialTotalGain3R = activeShares * reward3RPerShare;
   const potential3RGainPercent = validEntry > 0 ? ((target3RPrice - validEntry) / validEntry) * 100 : 0;
+
+  // ATR Volatility & Trailing Stop State & Calculations
+  const volMetrics = calculateDailyVolatilityMetrics(stock);
+  const currentAtr14 = volMetrics.atr14 || (validEntry * 0.03);
+
+  const [isTrailingStopEnabled, setIsTrailingStopEnabled] = useState<boolean>(false);
+  const [trailMode, setTrailMode] = useState<'ATR_MULTIPLIER' | 'PERCENT'>('ATR_MULTIPLIER');
+  const [atrMultiplier, setAtrMultiplier] = useState<number>(2.0); // Default 2.0x ATR
+  const [trailPercent, setTrailPercent] = useState<number>(5.0); // Default 5.0%
+
+  // Load trailing stop preference from localStorage
+  useEffect(() => {
+    try {
+      const savedToggle = localStorage.getItem(`sepa_trail_stop_enabled_${stock.ticker}`);
+      if (savedToggle !== null) setIsTrailingStopEnabled(savedToggle === 'true');
+      const savedMode = localStorage.getItem(`sepa_trail_stop_mode_${stock.ticker}`);
+      if (savedMode === 'PERCENT' || savedMode === 'ATR_MULTIPLIER') setTrailMode(savedMode);
+      const savedMult = localStorage.getItem(`sepa_trail_stop_mult_${stock.ticker}`);
+      if (savedMult) setAtrMultiplier(Number(savedMult) || 2.0);
+      const savedPct = localStorage.getItem(`sepa_trail_stop_pct_${stock.ticker}`);
+      if (savedPct) setTrailPercent(Number(savedPct) || 5.0);
+    } catch (err) {
+      console.error('Failed to load trailing stop setting:', err);
+    }
+  }, [stock.ticker]);
+
+  const handleToggleTrailingStop = (checked: boolean) => {
+    setIsTrailingStopEnabled(checked);
+    try {
+      localStorage.setItem(`sepa_trail_stop_enabled_${stock.ticker}`, checked ? 'true' : 'false');
+    } catch (e) {}
+  };
+
+  const handleUpdateTrailMode = (mode: 'ATR_MULTIPLIER' | 'PERCENT') => {
+    setTrailMode(mode);
+    try {
+      localStorage.setItem(`sepa_trail_stop_mode_${stock.ticker}`, mode);
+    } catch (e) {}
+  };
+
+  const handleUpdateAtrMultiplier = (mult: number) => {
+    const val = Math.max(0.5, Math.min(10, Number(mult) || 1));
+    setAtrMultiplier(val);
+    try {
+      localStorage.setItem(`sepa_trail_stop_mult_${stock.ticker}`, val.toString());
+    } catch (e) {}
+  };
+
+  const handleUpdateTrailPercent = (pct: number) => {
+    const val = Math.max(0.5, Math.min(30, Number(pct) || 1));
+    setTrailPercent(val);
+    try {
+      localStorage.setItem(`sepa_trail_stop_pct_${stock.ticker}`, val.toString());
+    } catch (e) {}
+  };
+
+  // Trailing Distance calculation
+  const trailingDistanceDollar = trailMode === 'ATR_MULTIPLIER'
+    ? atrMultiplier * currentAtr14
+    : (trailPercent / 100) * stock.currentPrice;
+
+  const trailingDistancePercent = stock.currentPrice > 0
+    ? (trailingDistanceDollar / stock.currentPrice) * 100
+    : trailPercent;
+
+  const projectedTrailPrice = Math.max(0.01, Number((stock.currentPrice - trailingDistanceDollar).toFixed(2)));
+
+  const trailingStopParamStr = trailMode === 'ATR_MULTIPLIER'
+    ? `${atrMultiplier}x ATR (${formatCurrency(currentAtr14, currencySymbol)})`
+    : `${trailPercent}% Fixed Trail`;
 
   // Automated Price Alert state for 3:1 R Target
   const [is3RAlertEnabled, setIs3RAlertEnabled] = useState<boolean>(false);
@@ -1017,6 +1098,9 @@ export const InteractiveRMultipleCalculatorTool: React.FC<InteractiveRMultipleCa
                 rMultiple,
                 target3RPrice,
                 potentialTotalGain3R,
+                isTrailingStopEnabled,
+                trailingStopPrice: projectedTrailPrice,
+                trailingStopParamStr,
               });
             }}
             className="bg-[#1a1a1a] hover:bg-black text-amber-300 border border-black text-[10px] uppercase font-bold px-2.5 py-1.5 flex items-center space-x-1.5 transition-all cursor-pointer shadow-2xs group"
@@ -1126,6 +1210,159 @@ export const InteractiveRMultipleCalculatorTool: React.FC<InteractiveRMultipleCa
                 );
               })}
             </div>
+          </div>
+
+          {/* ATR Trailing Stop Sub-Panel */}
+          <div className="mt-3 pt-2.5 border-t border-red-200 space-y-2 font-mono">
+            <div className="flex items-center justify-between">
+              <label className="flex items-center space-x-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-900 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isTrailingStopEnabled}
+                  onChange={(e) => handleToggleTrailingStop(e.target.checked)}
+                  className="w-3.5 h-3.5 accent-red-600 rounded cursor-pointer"
+                />
+                <ShieldCheck className={`w-3.5 h-3.5 ${isTrailingStopEnabled ? 'text-red-600 animate-pulse' : 'text-gray-400'}`} />
+                <span>ATR Trailing Stop</span>
+              </label>
+              <span className={`px-1.5 py-0.5 text-[9px] font-bold uppercase ${
+                isTrailingStopEnabled ? 'bg-red-600 text-white' : 'bg-gray-100 text-gray-500'
+              }`}>
+                {isTrailingStopEnabled ? '🟢 Trailing ON' : '⚪ OFF'}
+              </span>
+            </div>
+
+            {isTrailingStopEnabled && (
+              <div className="bg-red-50/70 p-2.5 border border-red-200 space-y-2 text-xs">
+                {/* Mode Selector Tabs */}
+                <div className="flex items-center justify-between text-[9px] font-bold">
+                  <span className="text-gray-600 uppercase">Calculation Mode:</span>
+                  <div className="flex rounded overflow-hidden border border-red-300 text-[9px]">
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateTrailMode('ATR_MULTIPLIER')}
+                      className={`px-2 py-0.5 font-extrabold uppercase cursor-pointer transition-colors ${
+                        trailMode === 'ATR_MULTIPLIER'
+                          ? 'bg-red-700 text-white'
+                          : 'bg-white text-gray-700 hover:bg-red-100'
+                      }`}
+                    >
+                      ATR Multiplier
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateTrailMode('PERCENT')}
+                      className={`px-2 py-0.5 font-extrabold uppercase cursor-pointer transition-colors ${
+                        trailMode === 'PERCENT'
+                          ? 'bg-red-700 text-white'
+                          : 'bg-white text-gray-700 hover:bg-red-100'
+                      }`}
+                    >
+                      Fixed %
+                    </button>
+                  </div>
+                </div>
+
+                {/* Multiplier or Percentage Controls & Quick Presets */}
+                {trailMode === 'ATR_MULTIPLIER' ? (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-red-950 font-bold">
+                        Multiplier (14D ATR: {formatCurrency(currentAtr14, currencySymbol)}):
+                      </span>
+                      <div className="flex items-center space-x-1">
+                        <input
+                          type="number"
+                          step="0.1"
+                          min="0.5"
+                          max="10"
+                          value={atrMultiplier}
+                          onChange={(e) => handleUpdateAtrMultiplier(Number(e.target.value))}
+                          className="w-16 bg-white border border-red-300 px-1.5 py-0.5 text-right font-black text-red-900 text-xs focus:outline-none focus:border-red-600"
+                        />
+                        <span className="text-[10px] font-bold text-red-900">x ATR</span>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {[1.5, 2.0, 2.5, 3.0].map((m) => (
+                        <button
+                          key={m}
+                          type="button"
+                          onClick={() => handleUpdateAtrMultiplier(m)}
+                          className={`px-1.5 py-0.5 text-[9px] font-extrabold border cursor-pointer ${
+                            atrMultiplier === m
+                              ? 'bg-red-700 text-white border-red-800'
+                              : 'bg-white text-red-900 border-red-200 hover:bg-red-100'
+                          }`}
+                        >
+                          {m}x ATR
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-red-950 font-bold">
+                        Trailing Distance %:
+                      </span>
+                      <div className="flex items-center space-x-1">
+                        <input
+                          type="number"
+                          step="0.5"
+                          min="1"
+                          max="30"
+                          value={trailPercent}
+                          onChange={(e) => handleUpdateTrailPercent(Number(e.target.value))}
+                          className="w-16 bg-white border border-red-300 px-1.5 py-0.5 text-right font-black text-red-900 text-xs focus:outline-none focus:border-red-600"
+                        />
+                        <span className="text-[10px] font-bold text-red-900">%</span>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {[3.0, 5.0, 7.5, 10.0].map((pct) => (
+                        <button
+                          key={pct}
+                          type="button"
+                          onClick={() => handleUpdateTrailPercent(pct)}
+                          className={`px-1.5 py-0.5 text-[9px] font-extrabold border cursor-pointer ${
+                            trailPercent === pct
+                              ? 'bg-red-700 text-white border-red-800'
+                              : 'bg-white text-red-900 border-red-200 hover:bg-red-100'
+                          }`}
+                        >
+                          -{pct}%
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Projected Trail Price Label & Apply Action */}
+                <div className="pt-2 border-t border-red-200 flex flex-wrap items-center justify-between gap-2">
+                  <div className="space-y-0.5">
+                    <span className="text-[9px] uppercase font-bold text-gray-500 block">
+                      Projected Trail Price ({trailingStopParamStr}):
+                    </span>
+                    <div className="text-base font-black text-red-700 font-mono">
+                      {formatCurrency(projectedTrailPrice, currencySymbol)}
+                    </div>
+                    <div className="text-[9px] text-red-800 font-sans">
+                      Distance: -{formatCurrency(trailingDistanceDollar, currencySymbol)} (-{trailingDistancePercent.toFixed(1)}% from {formatCurrency(stock.currentPrice, currencySymbol)})
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => onUpdateStopLossPrice(projectedTrailPrice)}
+                    className="bg-red-700 hover:bg-red-800 text-white text-[9px] uppercase font-black px-2 py-1 border border-red-900 cursor-pointer shadow-2xs transition-colors"
+                    title="Apply projected trailing stop price directly as current active stop loss"
+                  >
+                    Set Stop to {formatCurrency(projectedTrailPrice, currencySymbol)}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1251,6 +1488,63 @@ export const InteractiveRMultipleCalculatorTool: React.FC<InteractiveRMultipleCa
         </div>
 
       </div>
+
+      {/* Quick Notes (Pivot Thesis Points) Sub-Panel */}
+      {onNotesChange && (
+        <div className="bg-white border border-[#e5e4e1] p-3.5 space-y-2 font-mono">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-2">
+            <div className="flex items-center space-x-2">
+              <FileText className="w-3.5 h-3.5 text-amber-600" />
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-900">
+                Quick Notes & Pivot Thesis Points ({stock.ticker})
+              </span>
+            </div>
+            <div className="flex items-center space-x-2 text-[9px]">
+              {savedStatus && (
+                <span className="text-emerald-800 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 font-bold flex items-center space-x-1">
+                  <Check className="w-2.5 h-2.5 text-emerald-600" />
+                  <span>{savedStatus}</span>
+                </span>
+              )}
+              {onInsertTemplate && (
+                <button
+                  type="button"
+                  onClick={onInsertTemplate}
+                  className="bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 px-2 py-0.5 font-extrabold uppercase cursor-pointer"
+                  title="Insert structured pivot thesis template"
+                >
+                  + Pivot Thesis Template
+                </button>
+              )}
+            </div>
+          </div>
+
+          <textarea
+            value={notes || ''}
+            onChange={(e) => onNotesChange(e.target.value)}
+            placeholder={`Jot down pivot thesis points, catalyst triggers, volume dry-up notes, or key execution rules for ${stock.ticker}... (Auto-saved locally)`}
+            rows={3}
+            className="w-full bg-[#f9f8f5] border border-[#e5e4e1] p-2.5 text-xs text-[#1a1a1a] font-mono focus:border-black focus:outline-none placeholder:text-gray-400 placeholder:font-sans resize-y"
+          />
+
+          <div className="flex flex-wrap items-center justify-between text-[9px] text-gray-500 font-mono">
+            <span className="italic font-sans">Notes are saved locally in your browser specifically for <strong className="font-mono text-[#1a1a1a]">{stock.ticker}</strong>.</span>
+            <div className="flex items-center space-x-2">
+              <span className="text-gray-400 font-mono">{(notes || '').length} chars</span>
+              {notes && onClearNotes && (
+                <button
+                  type="button"
+                  onClick={onClearNotes}
+                  className="text-red-600 hover:text-red-800 uppercase font-bold flex items-center space-x-1 cursor-pointer"
+                >
+                  <Trash2 className="w-2.5 h-2.5" />
+                  <span>Clear Notes</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* R-Multiple Live Calculation & Position Sizing Dashboard */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs font-mono">
@@ -1636,6 +1930,9 @@ export const TradePlanCard: React.FC<TradePlanCardProps> = ({ stock }) => {
               rMultiple: dynamicCustomRRRatio,
               target3RPrice: pivotEntry + (3 * riskPerShare),
               potentialTotalGain3R: posSize.shareQuantity * (3 * riskPerShare),
+              isTrailingStopEnabled,
+              trailingStopPrice: projectedTrailPrice,
+              trailingStopParamStr,
               notes,
             })}
             className="bg-[#f9f8f5] hover:bg-black hover:text-white text-[#1a1a1a] border border-[#e5e4e1] text-[10px] uppercase tracking-[0.15em] px-3 py-1 font-bold flex items-center space-x-1.5 transition-all shadow-2xs cursor-pointer group"
@@ -1767,6 +2064,14 @@ export const TradePlanCard: React.FC<TradePlanCardProps> = ({ stock }) => {
         onUpdateTargetPrice={(newTarget) => setCustomTargetPrice(newTarget)}
         onUpdateTradeSizeMode={handleUpdateTradeSizeMode}
         onUpdateTradeSizeValue={handleUpdateTradeSizeValue}
+        notes={notes}
+        savedStatus={savedStatus}
+        onNotesChange={(newText) => {
+          setNotes(newText);
+          handleSaveNotes(newText);
+        }}
+        onClearNotes={handleClearNotes}
+        onInsertTemplate={handleInsertTemplate}
       />
 
       {/* Dynamic Risk-Reward Ratio Engine & Visual Upside vs. Stop Loss Calculator */}
@@ -2440,6 +2745,9 @@ export const TradePlanCard: React.FC<TradePlanCardProps> = ({ stock }) => {
           </div>
         </div>
       )}
+
+      {/* Stan Weinstein & Mark Minervini 4-Stage Identifier Panel */}
+      <StageIdentifierPanel stock={stock} currencySymbol={currencySymbol} />
 
       {/* Daily Floor Pivots & ATR Volatility Matrix */}
       <DailyPivotAndVolatilityPanel stock={stock} />

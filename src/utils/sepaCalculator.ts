@@ -612,3 +612,195 @@ export function calculateDailyVolatilityMetrics(stock: MinerviniTradeSetup): Dai
   };
 }
 
+export interface StageIndicatorItem {
+  name: string;
+  status: 'CONFIRMED' | 'CAUTION' | 'FAIL';
+  detail: string;
+}
+
+export interface StageIdentifierResult {
+  stageCode: 'STAGE_1' | 'STAGE_2' | 'STAGE_3' | 'STAGE_4';
+  stageNumber: 1 | 2 | 3 | 4;
+  stageName: string;
+  stageSubtitle: string;
+  badgeBg: string;
+  badgeTextColor: string;
+  badgeBorder: string;
+  headerBg: string;
+  confidenceScore: number;
+  sma200SlopePct: number;
+  maOrdering: string;
+  indicators: StageIndicatorItem[];
+  minerviniAction: string;
+  stageDescription: string;
+}
+
+export function determineStageAnalysis(setup: {
+  currentPrice: number;
+  sma50: number;
+  sma150: number;
+  sma200: number;
+  sma200_1mo_ago: number;
+  high52w: number;
+  low52w: number;
+  rsRating?: number;
+}): StageIdentifierResult {
+  const { currentPrice, sma50, sma150, sma200, sma200_1mo_ago, high52w, low52w } = setup;
+
+  const sma200SlopePct = sma200_1mo_ago > 0
+    ? ((sma200 - sma200_1mo_ago) / sma200_1mo_ago) * 100
+    : 0;
+
+  const pctAboveLow52 = low52w > 0 ? ((currentPrice - low52w) / low52w) * 100 : 0;
+  const pctFromHigh52 = high52w > 0 ? ((high52w - currentPrice) / high52w) * 100 : 0;
+
+  // Key moving average conditions
+  const isPriceAbove50 = currentPrice > sma50;
+  const isPriceAbove150 = currentPrice > sma150;
+  const isPriceAbove200 = currentPrice > sma200;
+  const is50Above150 = sma50 > sma150;
+  const is150Above200 = sma150 > sma200;
+  const is200TrendingUp = sma200SlopePct > 0.15;
+  const is200TrendingDown = sma200SlopePct < -0.15;
+  const is200Flat = Math.abs(sma200SlopePct) <= 0.15;
+
+  // Perfect Stage 2 hierarchy
+  const isFullStage2Hierarchy = isPriceAbove50 && is50Above150 && is150Above200 && isPriceAbove200 && is200TrendingUp;
+  
+  // Perfect Stage 4 hierarchy
+  const isFullStage4Hierarchy = currentPrice < sma50 && sma50 < sma150 && sma150 < sma200 && is200TrendingDown;
+
+  let stageCode: 'STAGE_1' | 'STAGE_2' | 'STAGE_3' | 'STAGE_4' = 'STAGE_1';
+  let stageNumber: 1 | 2 | 3 | 4 = 1;
+  let confidenceScore = 80;
+
+  if (isFullStage2Hierarchy || (isPriceAbove150 && is150Above200 && is200TrendingUp && pctFromHigh52 <= 25)) {
+    stageCode = 'STAGE_2';
+    stageNumber = 2;
+  } else if (isFullStage4Hierarchy || (currentPrice < sma200 && is200TrendingDown && sma50 < sma150)) {
+    stageCode = 'STAGE_4';
+    stageNumber = 4;
+  } else if (currentPrice < sma50 && (is200Flat || is200TrendingDown || pctFromHigh52 > 20) && sma200 > sma200_1mo_ago) {
+    stageCode = 'STAGE_3';
+    stageNumber = 3;
+  } else {
+    stageCode = 'STAGE_1';
+    stageNumber = 1;
+  }
+
+  if (stageCode === 'STAGE_2' && isFullStage2Hierarchy && pctAboveLow52 >= 30) {
+    confidenceScore = 98;
+  } else if (stageCode === 'STAGE_4' && isFullStage4Hierarchy) {
+    confidenceScore = 95;
+  } else {
+    confidenceScore = 85;
+  }
+
+  const indicators: StageIndicatorItem[] = [
+    {
+      name: 'Moving Average Hierarchy (Price > 50 > 150 > 200)',
+      status: isFullStage2Hierarchy ? 'CONFIRMED' : (stageCode === 'STAGE_4' ? 'FAIL' : 'CAUTION'),
+      detail: `Current: Price ($${currentPrice.toFixed(2)}) | 50MA ($${sma50.toFixed(2)}) | 150MA ($${sma150.toFixed(2)}) | 200MA ($${sma200.toFixed(2)})`
+    },
+    {
+      name: '200-Day Moving Average Slope',
+      status: is200TrendingUp ? 'CONFIRMED' : (is200TrendingDown ? 'FAIL' : 'CAUTION'),
+      detail: `${sma200SlopePct >= 0 ? '+' : ''}${sma200SlopePct.toFixed(2)}% over 30 days (Current: $${sma200.toFixed(2)} vs 1Mo Ago: $${sma200_1mo_ago.toFixed(2)})`
+    },
+    {
+      name: 'Proximity to 52-Week High / Low',
+      status: pctFromHigh52 <= 25 && pctAboveLow52 >= 30 ? 'CONFIRMED' : 'CAUTION',
+      detail: `-${pctFromHigh52.toFixed(1)}% off 52-Wk High ($${high52w.toFixed(2)}), +${pctAboveLow52.toFixed(1)}% above 52-Wk Low ($${low52w.toFixed(2)})`
+    },
+    {
+      name: 'Price Position vs 200-Day Baseline',
+      status: isPriceAbove200 ? 'CONFIRMED' : 'FAIL',
+      detail: isPriceAbove200
+        ? `+$${(currentPrice - sma200).toFixed(2)} (+${(((currentPrice - sma200) / sma200) * 100).toFixed(1)}%) above 200MA`
+        : `-$${(sma200 - currentPrice).toFixed(2)} (-${(((sma200 - currentPrice) / sma200) * 100).toFixed(1)}%) below 200MA`
+    }
+  ];
+
+  let stageName = '';
+  let stageSubtitle = '';
+  let badgeBg = '';
+  let badgeTextColor = '';
+  let badgeBorder = '';
+  let headerBg = '';
+  let minerviniAction = '';
+  let stageDescription = '';
+
+  switch (stageCode) {
+    case 'STAGE_2':
+      stageName = 'Stage 2: Markup (Advancing Uptrend)';
+      stageSubtitle = 'Confirmed Institutional Accumulation Phase';
+      badgeBg = 'bg-emerald-800 text-white border-emerald-900';
+      badgeTextColor = 'text-emerald-400';
+      badgeBorder = 'border-emerald-600';
+      headerBg = 'bg-emerald-950 text-white';
+      minerviniAction = '✅ IDEAL BUY ZONE: High-probability environment for Mark Minervini SEPA VCP breakout setups. Focus on tight consolidation pivots.';
+      stageDescription = 'Stock is in a healthy, confirmed uptrend supported by rising 50, 150, and 200-day moving averages. Institutional buying creates sustained upward momentum.';
+      break;
+
+    case 'STAGE_3':
+      stageName = 'Stage 3: Top / Distribution Phase';
+      stageSubtitle = 'Volatile Churning & Institutional Profit Taking';
+      badgeBg = 'bg-amber-600 text-white border-amber-800';
+      badgeTextColor = 'text-amber-300';
+      badgeBorder = 'border-amber-500';
+      headerBg = 'bg-amber-950 text-white';
+      minerviniAction = '⚠️ ELEVATED RISK: Moving averages flattening with expanding volatility. Tighten stop losses, lock in partial profits, avoid new aggressive longs.';
+      stageDescription = 'After a substantial Stage 2 advance, smart money begins offloading shares. Price swings widen, MA slopes lose upward momentum, and pullbacks break key support.';
+      break;
+
+    case 'STAGE_4':
+      stageName = 'Stage 4: Markdown (Capitulation Downtrend)';
+      stageSubtitle = 'Heavy Institutional Liquidation Phase';
+      badgeBg = 'bg-rose-800 text-white border-rose-950';
+      badgeTextColor = 'text-rose-300';
+      badgeBorder = 'border-rose-600';
+      headerBg = 'bg-rose-950 text-white';
+      minerviniAction = '🚫 DO NOT BUY: Heavy downward slope on 200-day MA with price below key trendlines. High risk of severe losses. Avoid all long positions.';
+      stageDescription = 'Institutional selling dominates. Price trades below declining moving averages, making sequential lower lows. High risk of prolonged capital destruction.';
+      break;
+
+    case 'STAGE_1':
+    default:
+      stageName = 'Stage 1: Base / Consolidation Phase';
+      stageSubtitle = 'Neglect & Sideways Accumulation Zone';
+      badgeBg = 'bg-blue-800 text-white border-blue-900';
+      badgeTextColor = 'text-blue-300';
+      badgeBorder = 'border-blue-500';
+      headerBg = 'bg-slate-900 text-white';
+      minerviniAction = '👀 WATCHLIST ONLY: Stock building a foundation around a flat 200-day MA. Wait for a clear breakout into Stage 2 with volume before buying.';
+      stageDescription = 'The stock is building a bottom after a decline or horizontal range bound base. Moving averages are intertwining and volume dries up while awaiting catalyst.';
+      break;
+  }
+
+  let maOrdering = '';
+  if (isPriceAbove50 && is50Above150 && is150Above200) {
+    maOrdering = 'Price > 50MA > 150MA > 200MA (Bullish Alignment)';
+  } else if (currentPrice < sma50 && sma50 < sma150 && sma150 < sma200) {
+    maOrdering = 'Price < 50MA < 150MA < 200MA (Bearish Alignment)';
+  } else {
+    maOrdering = 'Mixed / Intertwined Moving Averages (Transitioning)';
+  }
+
+  return {
+    stageCode,
+    stageNumber,
+    stageName,
+    stageSubtitle,
+    badgeBg,
+    badgeTextColor,
+    badgeBorder,
+    headerBg,
+    confidenceScore,
+    sma200SlopePct: Number(sma200SlopePct.toFixed(2)),
+    maOrdering,
+    indicators,
+    minerviniAction,
+    stageDescription
+  };
+}
+

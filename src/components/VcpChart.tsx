@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { MinerviniTradeSetup, PricePoint } from '../types';
 import { formatCurrency, formatVolume, getCurrencySymbol, evaluateTrendTemplate } from '../utils/sepaCalculator';
+import { getStoredJournalNotes } from '../utils/tradeJournalStorage';
 import { PineScriptExporter } from './PineScriptExporter';
 import { LorentzianClassification } from './LorentzianClassification';
 import { VcpTemplateOverlay } from './VcpTemplateOverlay';
@@ -190,6 +191,11 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
   // VCP Pattern Base Formation Timeframe Shading State
   const [showBaseFormationArea, setShowBaseFormationArea] = useState(true);
 
+  // Historical Pivot Buy Points & Stop Loss Levels plot state
+  const [showHistoricalPivots, setShowHistoricalPivots] = useState(true);
+  const [showHistoricalStops, setShowHistoricalStops] = useState(true);
+  const [selectedLevelId, setSelectedLevelId] = useState<string | null>(null);
+
   // Interactive Node Selection state
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
@@ -197,6 +203,123 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
   const currencySymbol = getCurrencySymbol(stock.exchange);
   const trendEval = useMemo(() => evaluateTrendTemplate(stock), [stock]);
   const minerviniPass = trendEval.passedCount >= 7; // Passes Minervini 7/8 rules
+
+  // Automatically calculate and aggregate historical Pivot Buy Points & Stop Loss levels based on stored trade plans, VCP contractions, and Trade Journal records
+  const historicalTradeLevels = useMemo(() => {
+    const levels: Array<{
+      id: string;
+      type: 'PIVOT_BUY' | 'STOP_LOSS';
+      source: 'ACTIVE_PLAN' | 'VCP_CONTRACTION' | 'TRADE_JOURNAL' | 'STORED_CARD';
+      label: string;
+      price: number;
+      date?: string;
+      description: string;
+      status: 'ACTIVE' | 'HISTORICAL_CONTRACTION' | 'JOURNAL_RECORD' | 'CUSTOM_PLAN';
+      riskOrGainPercentFromCurrent: number;
+    }> = [];
+
+    const currentP = stock.currentPrice || stock.pivotPrice || 1;
+
+    // 1. Current Active Setup Trade Plan Levels
+    if (stock.pivotPrice) {
+      const diffPct = ((stock.pivotPrice - currentP) / currentP) * 100;
+      levels.push({
+        id: 'active-pivot-buy',
+        type: 'PIVOT_BUY',
+        source: 'ACTIVE_PLAN',
+        label: 'Active Pivot Buy',
+        price: stock.pivotPrice,
+        date: stock.priceHistory?.[stock.priceHistory.length - 1]?.date,
+        description: `Current Minervini SEPA Breakout Pivot Buy Trigger (${currencySymbol}${stock.pivotPrice.toFixed(2)})`,
+        status: 'ACTIVE',
+        riskOrGainPercentFromCurrent: Number(diffPct.toFixed(1)),
+      });
+    }
+
+    if (stock.stopLossPrice) {
+      const diffPct = ((stock.stopLossPrice - currentP) / currentP) * 100;
+      levels.push({
+        id: 'active-stop-loss',
+        type: 'STOP_LOSS',
+        source: 'ACTIVE_PLAN',
+        label: 'Active Stop Loss',
+        price: stock.stopLossPrice,
+        description: `Current Hard Stop Loss Level (${currencySymbol}${stock.stopLossPrice.toFixed(2)}, -${stock.stopLossPercent}% risk)`,
+        status: 'ACTIVE',
+        riskOrGainPercentFromCurrent: Number(diffPct.toFixed(1)),
+      });
+    }
+
+    // 2. Historical VCP Contraction Pivot Buy Points & Stop Loss Levels
+    (stock.contractions || []).forEach((c) => {
+      // Contraction Peak = Historical Pivot Buy Point
+      const pivotDiffPct = ((c.highPrice - currentP) / currentP) * 100;
+      levels.push({
+        id: `hist-contraction-${c.contractionIndex}-pivot`,
+        type: 'PIVOT_BUY',
+        source: 'VCP_CONTRACTION',
+        label: `T${c.contractionIndex} Contraction Pivot`,
+        price: c.highPrice,
+        date: c.startDate,
+        description: `Historical T${c.contractionIndex} contraction resistance peak high (${currencySymbol}${c.highPrice.toFixed(2)}). Key pivot breakout level.`,
+        status: 'HISTORICAL_CONTRACTION',
+        riskOrGainPercentFromCurrent: Number(pivotDiffPct.toFixed(1)),
+      });
+
+      // Contraction Trough = Historical Shakeout Stop Level
+      const stopDiffPct = ((c.lowPrice - currentP) / currentP) * 100;
+      levels.push({
+        id: `hist-contraction-${c.contractionIndex}-stop`,
+        type: 'STOP_LOSS',
+        source: 'VCP_CONTRACTION',
+        label: `T${c.contractionIndex} Shakeout Stop`,
+        price: c.lowPrice,
+        date: c.endDate,
+        description: `Historical T${c.contractionIndex} contraction trough low (${currencySymbol}${c.lowPrice.toFixed(2)}). Natural support floor.`,
+        status: 'HISTORICAL_CONTRACTION',
+        riskOrGainPercentFromCurrent: Number(stopDiffPct.toFixed(1)),
+      });
+    });
+
+    // 3. Historical Trade Journal Entries & Exits
+    try {
+      const journalNotes = getStoredJournalNotes().filter((n) => n.ticker.toUpperCase() === stock.ticker.toUpperCase());
+      journalNotes.forEach((note) => {
+        if (note.entryPrice && note.entryPrice > 0) {
+          const diffPct = ((note.entryPrice - currentP) / currentP) * 100;
+          levels.push({
+            id: `hist-journal-entry-${note.id}`,
+            type: 'PIVOT_BUY',
+            source: 'TRADE_JOURNAL',
+            label: `Journal Buy (${note.date})`,
+            price: note.entryPrice,
+            date: note.date,
+            description: `Historical Trade Journal Entry Price from ${note.date} (${note.tradeStatus || 'Logged Trade'})`,
+            status: 'JOURNAL_RECORD',
+            riskOrGainPercentFromCurrent: Number(diffPct.toFixed(1)),
+          });
+        }
+        if (note.exitPrice && note.exitPrice > 0) {
+          const diffPct = ((note.exitPrice - currentP) / currentP) * 100;
+          levels.push({
+            id: `hist-journal-exit-${note.id}`,
+            type: 'STOP_LOSS',
+            source: 'TRADE_JOURNAL',
+            label: `Journal Stop (${note.date})`,
+            price: note.exitPrice,
+            date: note.date,
+            description: `Historical Trade Journal Exit/Stop Price from ${note.date} (${note.tradeStatus || 'Logged Exit'})`,
+            status: 'JOURNAL_RECORD',
+            riskOrGainPercentFromCurrent: Number(diffPct.toFixed(1)),
+          });
+        }
+      });
+    } catch (err) {
+      console.error('Failed to parse Trade Journal notes for historical levels:', err);
+    }
+
+    return levels;
+  }, [stock, currencySymbol]);
 
   // Zoom & Pan state for VCP chart inspection
   const [zoomMode, setZoomMode] = useState<'ALL' | '120D' | '60D' | '30D'>('ALL');
@@ -507,6 +630,32 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
             }`}
           >
             <span>{showLevels ? 'Trade Lines On' : 'Trade Lines Off'}</span>
+          </button>
+
+          <button
+            onClick={() => setShowHistoricalPivots(!showHistoricalPivots)}
+            className={`px-3 py-1 border text-xs font-semibold uppercase tracking-wider font-mono transition-all flex items-center space-x-1 cursor-pointer ${
+              showHistoricalPivots
+                ? 'bg-emerald-800 text-white border-emerald-900 shadow-xs'
+                : 'bg-[#f9f8f5] text-gray-400 border-[#e5e4e1]'
+            }`}
+            title="Toggle Historical Pivot Buy Points (Active Pivot, VCP Peaks & Journal Entries)"
+          >
+            <Target className="w-3.5 h-3.5 text-emerald-300" />
+            <span>Hist Pivots {showHistoricalPivots ? 'ON' : 'OFF'}</span>
+          </button>
+
+          <button
+            onClick={() => setShowHistoricalStops(!showHistoricalStops)}
+            className={`px-3 py-1 border text-xs font-semibold uppercase tracking-wider font-mono transition-all flex items-center space-x-1 cursor-pointer ${
+              showHistoricalStops
+                ? 'bg-rose-800 text-white border-rose-900 shadow-xs'
+                : 'bg-[#f9f8f5] text-gray-400 border-[#e5e4e1]'
+            }`}
+            title="Toggle Historical Stop Loss Levels (Active Stop, Contraction Lows & Journal Exits)"
+          >
+            <ShieldAlert className="w-3.5 h-3.5 text-rose-300" />
+            <span>Hist Stops {showHistoricalStops ? 'ON' : 'OFF'}</span>
           </button>
 
           <button
@@ -1068,6 +1217,78 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
                 />
               </>
             )}
+
+            {/* Historical Pivot Buy Points Overlay */}
+            {showHistoricalPivots && historicalTradeLevels.filter(l => l.type === 'PIVOT_BUY').map((lvl) => {
+              const isSelected = selectedLevelId === lvl.id;
+              return (
+                <React.Fragment key={`hist-pivot-${lvl.id}`}>
+                  <ReferenceLine
+                    y={lvl.price}
+                    stroke="#16a34a"
+                    strokeWidth={isSelected ? 3 : lvl.source === 'ACTIVE_PLAN' ? 2 : 1.5}
+                    strokeDasharray={lvl.source === 'ACTIVE_PLAN' ? '4 4' : '2 2'}
+                    strokeOpacity={isSelected ? 1.0 : lvl.source === 'ACTIVE_PLAN' ? 0.95 : 0.65}
+                    label={{
+                      value: `Pivot Buy: ${currencySymbol}${lvl.price.toFixed(2)} (${lvl.label})`,
+                      fill: '#15803d',
+                      fontSize: 10,
+                      fontWeight: 'bold',
+                      position: lvl.source === 'ACTIVE_PLAN' ? 'top' : 'insideTopRight'
+                    }}
+                  />
+                  {lvl.date && (
+                    <ReferenceDot
+                      x={lvl.date}
+                      y={lvl.price}
+                      r={isSelected ? 7 : 5}
+                      fill="#16a34a"
+                      stroke="#ffffff"
+                      strokeWidth={1.5}
+                      isFront={true}
+                      className="cursor-pointer"
+                      onClick={() => setSelectedLevelId(selectedLevelId === lvl.id ? null : lvl.id)}
+                    />
+                  )}
+                </React.Fragment>
+              );
+            })}
+
+            {/* Historical Stop Loss Levels Overlay */}
+            {showHistoricalStops && historicalTradeLevels.filter(l => l.type === 'STOP_LOSS').map((lvl) => {
+              const isSelected = selectedLevelId === lvl.id;
+              return (
+                <React.Fragment key={`hist-stop-${lvl.id}`}>
+                  <ReferenceLine
+                    y={lvl.price}
+                    stroke="#dc2626"
+                    strokeWidth={isSelected ? 3 : lvl.source === 'ACTIVE_PLAN' ? 2 : 1.5}
+                    strokeDasharray={lvl.source === 'ACTIVE_PLAN' ? '4 4' : '2 2'}
+                    strokeOpacity={isSelected ? 1.0 : lvl.source === 'ACTIVE_PLAN' ? 0.95 : 0.65}
+                    label={{
+                      value: `Stop: ${currencySymbol}${lvl.price.toFixed(2)} (${lvl.label})`,
+                      fill: '#b91c1c',
+                      fontSize: 10,
+                      fontWeight: 'bold',
+                      position: lvl.source === 'ACTIVE_PLAN' ? 'bottom' : 'insideBottomRight'
+                    }}
+                  />
+                  {lvl.date && (
+                    <ReferenceDot
+                      x={lvl.date}
+                      y={lvl.price}
+                      r={isSelected ? 7 : 5}
+                      fill="#dc2626"
+                      stroke="#ffffff"
+                      strokeWidth={1.5}
+                      isFront={true}
+                      className="cursor-pointer"
+                      onClick={() => setSelectedLevelId(selectedLevelId === lvl.id ? null : lvl.id)}
+                    />
+                  )}
+                </React.Fragment>
+              );
+            })}
           </ComposedChart>
         </ResponsiveContainer>
       </div>
@@ -1442,6 +1663,92 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
 
         </div>
       )}
+
+      {/* Historical Pivot Buy Points & Stop Loss Level Audit Matrix */}
+      <div className="bg-[#f9f8f5] border border-[#e5e4e1] p-4 sm:p-5 space-y-4 font-mono">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e5e4e1] pb-3">
+          <div className="flex items-center space-x-2">
+            <Target className="w-4 h-4 text-emerald-700" />
+            <div>
+              <h4 className="text-xs font-bold uppercase tracking-wider text-[#1a1a1a]">
+                Historical Pivot Buy Points & Stop Loss Level Plotter
+              </h4>
+              <p className="text-[10px] text-gray-500 font-sans">
+                Aggregated trade parameters from active Trade Plan Card, historical VCP contractions, and Trade Journal records.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center space-x-2 text-[10px]">
+            <span className="bg-emerald-100 text-emerald-900 border border-emerald-300 px-2 py-0.5 font-extrabold">
+              {historicalTradeLevels.filter(l => l.type === 'PIVOT_BUY').length} Pivot Buy Points
+            </span>
+            <span className="bg-rose-100 text-rose-900 border border-rose-300 px-2 py-0.5 font-extrabold">
+              {historicalTradeLevels.filter(l => l.type === 'STOP_LOSS').length} Stop Loss Floors
+            </span>
+          </div>
+        </div>
+
+        {/* Levels Grid / Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
+          {historicalTradeLevels.map((lvl) => {
+            const isSelected = selectedLevelId === lvl.id;
+            const isPivot = lvl.type === 'PIVOT_BUY';
+
+            return (
+              <div
+                key={lvl.id}
+                onClick={() => setSelectedLevelId(isSelected ? null : lvl.id)}
+                className={`p-3 border transition-all cursor-pointer space-y-2 ${
+                  isSelected
+                    ? isPivot
+                      ? 'bg-emerald-50 border-emerald-500 ring-1 ring-emerald-500 shadow-xs'
+                      : 'bg-rose-50 border-rose-500 ring-1 ring-rose-500 shadow-xs'
+                    : 'bg-white border-[#e5e4e1] hover:border-gray-400'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span
+                    className={`px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider ${
+                      isPivot
+                        ? 'bg-emerald-800 text-white'
+                        : 'bg-rose-800 text-white'
+                    }`}
+                  >
+                    {isPivot ? '🟢 Pivot Buy Point' : '🔴 Stop Loss Level'}
+                  </span>
+                  <span className="text-[10px] text-gray-400 font-mono">
+                    {lvl.date || 'Active Setup'}
+                  </span>
+                </div>
+
+                <div className="flex items-baseline justify-between pt-1">
+                  <span className="text-sm font-black text-[#1a1a1a]">
+                    {currencySymbol}{lvl.price.toFixed(2)}
+                  </span>
+                  <span
+                    className={`text-[10px] font-extrabold ${
+                      lvl.riskOrGainPercentFromCurrent >= 0 ? 'text-emerald-700' : 'text-rose-700'
+                    }`}
+                  >
+                    {lvl.riskOrGainPercentFromCurrent >= 0 ? '+' : ''}{lvl.riskOrGainPercentFromCurrent}% from current
+                  </span>
+                </div>
+
+                <div className="text-[11px] font-sans text-gray-600 border-t border-gray-100 pt-1.5 leading-snug">
+                  {lvl.description}
+                </div>
+
+                <div className="flex items-center justify-between text-[9px] font-mono pt-1 text-gray-400">
+                  <span className="uppercase tracking-wider">Source: {lvl.source.replace('_', ' ')}</span>
+                  <span className="text-blue-700 font-bold underline">
+                    {isSelected ? 'Selected on Chart' : 'Click to Plot'}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
 
       {/* VCP Explanation Banner */}
       <div className="bg-[#f9f8f5] border border-[#e5e4e1] p-4 flex items-start space-x-3 text-xs text-gray-600">
