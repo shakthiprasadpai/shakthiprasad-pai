@@ -806,6 +806,230 @@ export const InteractiveRRSlider: React.FC<InteractiveRRSliderProps> = ({
   );
 };
 
+interface RiskRewardRatioVisualizerProps {
+  entryPrice: number;
+  stopLossPrice: number;
+  targetPrice: number;
+  currencySymbol?: string;
+  onUpdateEntryPrice?: (entry: number) => void;
+  onUpdateStopLossPrice?: (stop: number) => void;
+  onUpdateTargetPrice?: (target: number) => void;
+}
+
+export const RiskRewardRatioVisualizer: React.FC<RiskRewardRatioVisualizerProps> = ({
+  entryPrice,
+  stopLossPrice,
+  targetPrice,
+  currencySymbol = '$',
+  onUpdateEntryPrice,
+  onUpdateStopLossPrice,
+  onUpdateTargetPrice,
+}) => {
+  const validEntry = entryPrice > 0 ? entryPrice : 100;
+  const validStop = stopLossPrice > 0 && stopLossPrice < validEntry ? stopLossPrice : validEntry * 0.93;
+  const validTarget = targetPrice > validEntry ? targetPrice : validEntry * 1.21;
+
+  const riskPerShare = Math.max(0.01, validEntry - validStop);
+  const rewardPerShare = Math.max(0, validTarget - validEntry);
+
+  const riskPercent = (riskPerShare / validEntry) * 100;
+  const rewardPercent = (rewardPerShare / validEntry) * 100;
+
+  const rrr = riskPerShare > 0 ? rewardPerShare / riskPerShare : 0;
+  const breakevenWinRate = (1 / (1 + rrr)) * 100;
+
+  // Proportional bar width calculations
+  const totalRangePct = riskPercent + rewardPercent;
+  const riskBarWidthPct = totalRangePct > 0 ? (riskPercent / totalRangePct) * 100 : 25;
+  const rewardBarWidthPct = totalRangePct > 0 ? (rewardPercent / totalRangePct) * 100 : 75;
+
+  let rrrGradeBadge = 'bg-emerald-600 text-white border-emerald-700';
+  let rrrGradeLabel = '⭐ Minervini Standard (≥ 3.0:1 R/R)';
+  if (rrr >= 5.0) {
+    rrrGradeBadge = 'bg-purple-900 text-purple-100 border-purple-700 animate-pulse';
+    rrrGradeLabel = '🚀 Champion Grade (≥ 5.0:1 R/R)';
+  } else if (rrr >= 3.0) {
+    rrrGradeBadge = 'bg-emerald-600 text-white border-emerald-700';
+    rrrGradeLabel = '⭐ Minervini Standard (≥ 3.0:1 R/R)';
+  } else if (rrr >= 2.0) {
+    rrrGradeBadge = 'bg-amber-100 text-amber-900 border-amber-300';
+    rrrGradeLabel = '🟡 Acceptable Minimum (≥ 2.0:1 R/R)';
+  } else {
+    rrrGradeBadge = 'bg-red-600 text-white border-red-800';
+    rrrGradeLabel = '🔴 Subpar Risk-Reward (< 2.0:1 R/R)';
+  }
+
+  const handleApplyPresetTargetRRR = (targetRrr: number) => {
+    if (onUpdateTargetPrice) {
+      const newTarget = validEntry + (riskPerShare * targetRrr);
+      onUpdateTargetPrice(parseFloat(newTarget.toFixed(2)));
+    }
+  };
+
+  const handleApplyPresetStopLoss = (stopPct: number) => {
+    if (onUpdateStopLossPrice) {
+      const newStop = validEntry * (1 - stopPct / 100);
+      onUpdateStopLossPrice(parseFloat(newStop.toFixed(2)));
+    }
+  };
+
+  return (
+    <div className="bg-white border border-[#e5e4e1] p-4 space-y-4 font-mono shadow-2xs">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3">
+        <div className="flex items-center space-x-2">
+          <div className="p-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200">
+            <Target className="w-4 h-4" />
+          </div>
+          <div>
+            <div className="flex items-center space-x-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-900">
+                Dynamic Risk-to-Reward Ratio (RRR) Visualizer
+              </span>
+              <span className="px-1.5 py-0.5 text-[9px] font-extrabold uppercase bg-emerald-100 text-emerald-900 border border-emerald-300">
+                Reward / Risk Engine
+              </span>
+            </div>
+            <p className="text-[10px] text-gray-500 font-sans">
+              Dynamic visual comparison of risk per share vs target gain per share based on entry, stop loss, and target exit.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center space-x-2">
+          <span className={`px-2.5 py-1 text-[10px] uppercase font-black border ${rrrGradeBadge}`}>
+            {rrrGradeLabel}
+          </span>
+          <span className="px-2.5 py-1 text-[11px] uppercase font-black bg-slate-900 text-emerald-400 border border-black">
+            1 : {rrr.toFixed(2)} R/R
+          </span>
+        </div>
+      </div>
+
+      {/* Proportional Risk vs Reward Bar Visualizer */}
+      <div className="space-y-2 bg-[#f9f8f5] p-3 border border-[#e5e4e1]">
+        <div className="flex justify-between items-center text-[10px] uppercase font-bold text-gray-600">
+          <span className="text-red-700 flex items-center space-x-1">
+            <ShieldAlert className="w-3 h-3 text-red-600" />
+            <span>Downside Risk (-{riskPercent.toFixed(1)}%)</span>
+          </span>
+          <span className="text-slate-900 font-bold">
+            Pivot Entry ({formatCurrency(validEntry, currencySymbol)})
+          </span>
+          <span className="text-emerald-700 flex items-center space-x-1">
+            <Target className="w-3 h-3 text-emerald-600" />
+            <span>Target Reward (+{rewardPercent.toFixed(1)}%)</span>
+          </span>
+        </div>
+
+        {/* Visual Dual Bar */}
+        <div className="w-full h-8 bg-gray-200 flex border border-gray-400 overflow-hidden p-0.5 space-x-0.5">
+          {/* Risk Zone Bar */}
+          <motion.div
+            layout
+            initial={{ width: '0%' }}
+            animate={{ width: `${Math.max(8, Math.min(92, riskBarWidthPct))}%` }}
+            transition={{ duration: 0.3 }}
+            className="h-full bg-red-600 text-white font-bold text-[9px] flex items-center justify-between px-2 overflow-hidden shadow-2xs"
+          >
+            <span className="truncate">Stop: {formatCurrency(validStop, currencySymbol)}</span>
+            <span className="bg-black/30 px-1 py-0.2 rounded text-[8px] font-black shrink-0">
+              -{formatCurrency(riskPerShare, currencySymbol)}
+            </span>
+          </motion.div>
+
+          {/* Center Divider Marker */}
+          <div className="w-1.5 h-full bg-slate-900 shrink-0 shadow-md" title="Pivot Entry Point" />
+
+          {/* Reward Zone Bar */}
+          <motion.div
+            layout
+            initial={{ width: '0%' }}
+            animate={{ width: `${Math.max(8, Math.min(92, rewardBarWidthPct))}%` }}
+            transition={{ duration: 0.3 }}
+            className="h-full bg-emerald-600 text-white font-bold text-[9px] flex items-center justify-between px-2 overflow-hidden shadow-2xs"
+          >
+            <span className="bg-black/30 px-1 py-0.2 rounded text-[8px] font-black shrink-0">
+              +{formatCurrency(rewardPerShare, currencySymbol)}
+            </span>
+            <span className="truncate">Target: {formatCurrency(validTarget, currencySymbol)}</span>
+          </motion.div>
+        </div>
+
+        <div className="flex justify-between text-[9px] font-mono text-gray-500 pt-0.5">
+          <span>Stop Loss: <strong>{formatCurrency(validStop, currencySymbol)}</strong> (-{riskPercent.toFixed(1)}%)</span>
+          <span className="text-center font-bold text-slate-800">Ratio: 1 : {rrr.toFixed(2)} R/R</span>
+          <span>Target Exit: <strong>{formatCurrency(validTarget, currencySymbol)}</strong> (+{rewardPercent.toFixed(1)}%)</span>
+        </div>
+      </div>
+
+      {/* Quick Adjustment Controls */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+        {/* Stop Loss Presets */}
+        <div className="bg-slate-50 p-2.5 border border-slate-200 space-y-1.5">
+          <div className="flex justify-between items-center text-[10px] text-slate-700 font-bold uppercase">
+            <span>Stop Loss Presets:</span>
+            <span className="text-red-700 font-extrabold">-{riskPercent.toFixed(1)}%</span>
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {[3, 5, 7, 8, 10].map((pct) => (
+              <button
+                key={pct}
+                type="button"
+                onClick={() => handleApplyPresetStopLoss(pct)}
+                className={`px-2 py-0.5 text-[9px] font-bold border transition-all cursor-pointer ${
+                  Math.abs(riskPercent - pct) < 0.5
+                    ? 'bg-red-600 text-white border-red-700'
+                    : 'bg-white text-gray-700 border-gray-300 hover:bg-red-50'
+                }`}
+              >
+                -{pct}%
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Target RRR Presets */}
+        <div className="bg-emerald-50/50 p-2.5 border border-emerald-200 space-y-1.5">
+          <div className="flex justify-between items-center text-[10px] text-emerald-900 font-bold uppercase">
+            <span>Target RRR Presets:</span>
+            <span className="text-emerald-700 font-extrabold">1 : {rrr.toFixed(1)}</span>
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {[2.0, 3.0, 4.0, 5.0, 6.0].map((presetRrr) => (
+              <button
+                key={presetRrr}
+                type="button"
+                onClick={() => handleApplyPresetTargetRRR(presetRrr)}
+                className={`px-2 py-0.5 text-[9px] font-bold border transition-all cursor-pointer ${
+                  Math.abs(rrr - presetRrr) < 0.2
+                    ? 'bg-emerald-700 text-white border-emerald-800'
+                    : 'bg-white text-gray-700 border-gray-300 hover:bg-emerald-50'
+                }`}
+              >
+                1:{presetRrr.toFixed(1)}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Required Win Rate Stats */}
+        <div className="bg-slate-900 text-white p-2.5 border border-slate-800 space-y-1">
+          <span className="text-[9px] uppercase font-bold text-gray-400 block">
+            Breakeven Win Rate Required
+          </span>
+          <div className="text-xl font-black text-amber-300">
+            {breakevenWinRate.toFixed(1)}%
+          </div>
+          <p className="text-[9px] text-gray-400">
+            At 1:{rrr.toFixed(1)} R/R, winning &gt;{breakevenWinRate.toFixed(1)}% of trades guarantees net profit.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 interface VcpContractionProgressBarProps {
   stock: MinerviniTradeSetup;
   currencySymbol?: string;
@@ -980,6 +1204,361 @@ export const VcpContractionProgressBar: React.FC<VcpContractionProgressBarProps>
     </div>
   );
 };
+
+interface TradeExpectancyModuleProps {
+  stock: MinerviniTradeSetup;
+  currencySymbol?: string;
+  entryPrice: number;
+  stopLossPrice: number;
+  targetPrice: number;
+}
+
+export const TradeExpectancyModule: React.FC<TradeExpectancyModuleProps> = ({
+  stock,
+  currencySymbol = '$',
+  entryPrice,
+  stopLossPrice,
+  targetPrice,
+}) => {
+  const setupGainPct = Math.max(0.1, ((targetPrice - entryPrice) / entryPrice) * 100);
+  const setupLossPct = Math.max(0.1, ((entryPrice - stopLossPrice) / entryPrice) * 100);
+
+  const [winRate, setWinRate] = useState<number>(50);
+  const [avgWinPercent, setAvgWinPercent] = useState<number>(parseFloat(setupGainPct.toFixed(1)));
+  const [avgLossPercent, setAvgLossPercent] = useState<number>(parseFloat(setupLossPct.toFixed(1)));
+  const [riskPerTradeDollars, setRiskPerTradeDollars] = useState<number>(1000);
+
+  useEffect(() => {
+    const freshGain = Math.max(0.1, ((targetPrice - entryPrice) / entryPrice) * 100);
+    const freshLoss = Math.max(0.1, ((entryPrice - stopLossPrice) / entryPrice) * 100);
+    setAvgWinPercent(parseFloat(freshGain.toFixed(1)));
+    setAvgLossPercent(parseFloat(freshLoss.toFixed(1)));
+  }, [entryPrice, stopLossPrice, targetPrice]);
+
+  const lossRate = Math.max(0, 100 - winRate);
+  const payoffRatio = avgWinPercent / Math.max(0.1, avgLossPercent);
+  
+  const expectancyPercent = ((winRate / 100) * avgWinPercent) - ((lossRate / 100) * avgLossPercent);
+  const expectancyInR = ((winRate / 100) * payoffRatio) - ((lossRate / 100) * 1.0);
+  const expectancy100R = expectancyInR * 100;
+  const expectedProfit100TradesDollars = expectancy100R * riskPerTradeDollars;
+
+  const handleApplyPreset = (w: number, winG: number, lossL: number) => {
+    setWinRate(w);
+    setAvgWinPercent(winG);
+    setAvgLossPercent(lossL);
+  };
+
+  const handleResetToSetup = () => {
+    const freshGain = Math.max(0.1, ((targetPrice - entryPrice) / entryPrice) * 100);
+    const freshLoss = Math.max(0.1, ((entryPrice - stopLossPrice) / entryPrice) * 100);
+    setWinRate(50);
+    setAvgWinPercent(parseFloat(freshGain.toFixed(1)));
+    setAvgLossPercent(parseFloat(freshLoss.toFixed(1)));
+  };
+
+  let edgeBadgeStyle = 'bg-emerald-600 text-white border-emerald-700';
+  let edgeBadgeLabel = '⭐ Elite SEPA Edge';
+  if (expectancyInR >= 0.6) {
+    edgeBadgeStyle = 'bg-purple-900 text-purple-200 border-purple-700 animate-pulse';
+    edgeBadgeLabel = '⭐ Superperformance Edge (>0.60 R)';
+  } else if (expectancyInR >= 0.25) {
+    edgeBadgeStyle = 'bg-emerald-600 text-white border-emerald-700';
+    edgeBadgeLabel = '✅ Solid Positive Edge (>0.25 R)';
+  } else if (expectancyInR > 0) {
+    edgeBadgeStyle = 'bg-amber-100 text-amber-900 border-amber-300';
+    edgeBadgeLabel = '🟡 Marginal Edge (>0.00 R)';
+  } else {
+    edgeBadgeStyle = 'bg-red-600 text-white border-red-800 animate-bounce';
+    edgeBadgeLabel = '🔴 Negative Expectancy (Losing System)';
+  }
+
+  return (
+    <div className="bg-white border border-[#e5e4e1] p-4 space-y-4 font-mono shadow-2xs">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3">
+        <div className="flex items-center space-x-2">
+          <div className="p-1.5 bg-amber-50 text-amber-700 border border-amber-200">
+            <Calculator className="w-4 h-4" />
+          </div>
+          <div>
+            <div className="flex items-center space-x-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-900">
+                Mathematical Expectancy & Strategy Edge Engine
+              </span>
+              <span className="px-1.5 py-0.5 text-[9px] font-extrabold uppercase bg-amber-100 text-amber-900 border border-amber-300">
+                SEPA Probability
+              </span>
+            </div>
+            <p className="text-[10px] text-gray-500 font-sans">
+              Calculates long-term edge based on Win Rate %, Average Gain %, Average Loss %, and R-Multiple.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center space-x-2">
+          <span className={`px-2.5 py-1 text-[10px] uppercase font-black border ${edgeBadgeStyle}`}>
+            {edgeBadgeLabel}
+          </span>
+          <button
+            type="button"
+            onClick={handleResetToSetup}
+            className="px-2 py-1 text-[9px] uppercase font-bold bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300 flex items-center space-x-1 cursor-pointer transition-all"
+            title="Reset inputs to current trade plan setup parameters"
+          >
+            <RefreshCw className="w-3 h-3" />
+            <span>Reset Setup</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Preset Strategy Scenarios */}
+      <div className="flex flex-wrap items-center gap-2 text-[10px] bg-[#f9f8f5] p-2 border border-[#e5e4e1]">
+        <span className="font-bold text-gray-600 uppercase text-[9px]">Quick Scenarios:</span>
+        <button
+          type="button"
+          onClick={() => handleResetToSetup()}
+          className="px-2 py-0.5 bg-white hover:bg-amber-50 text-slate-900 border border-gray-300 font-semibold text-[9px] cursor-pointer"
+        >
+          🎯 Active Setup ({setupGainPct.toFixed(1)}% / -{setupLossPct.toFixed(1)}%)
+        </button>
+        <button
+          type="button"
+          onClick={() => handleApplyPreset(50, 18, 6)}
+          className="px-2 py-0.5 bg-white hover:bg-emerald-50 text-slate-900 border border-gray-300 font-semibold text-[9px] cursor-pointer"
+        >
+          📈 SEPA Pro (50% Win, 18% Gain, 6% Loss)
+        </button>
+        <button
+          type="button"
+          onClick={() => handleApplyPreset(40, 20, 5)}
+          className="px-2 py-0.5 bg-white hover:bg-blue-50 text-slate-900 border border-gray-300 font-semibold text-[9px] cursor-pointer"
+        >
+          🛡️ Low-Win High-Payoff (40% Win, 20% Gain, 5% Loss)
+        </button>
+        <button
+          type="button"
+          onClick={() => handleApplyPreset(60, 12, 5)}
+          className="px-2 py-0.5 bg-white hover:bg-purple-50 text-slate-900 border border-gray-300 font-semibold text-[9px] cursor-pointer"
+        >
+          ⚡ High Win Rate (60% Win, 12% Gain, 5% Loss)
+        </button>
+      </div>
+
+      {/* Inputs Section */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+        {/* Win Rate Input */}
+        <div className="space-y-1 bg-slate-50 p-2.5 border border-slate-200">
+          <div className="flex justify-between items-center text-[10px] text-slate-700 font-bold uppercase">
+            <span>Win Rate %:</span>
+            <span className="text-emerald-700 font-black">{winRate}%</span>
+          </div>
+          <input
+            type="range"
+            min={10}
+            max={90}
+            step={1}
+            value={winRate}
+            onChange={(e) => setWinRate(Number(e.target.value))}
+            className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-emerald-600"
+          />
+          <div className="flex justify-between text-[9px] text-gray-500 pt-0.5">
+            <span>Win: <strong>{winRate}%</strong></span>
+            <span>Loss Rate: <strong>{lossRate}%</strong></span>
+          </div>
+        </div>
+
+        {/* Avg Win Gain % Input */}
+        <div className="space-y-1 bg-emerald-50/50 p-2.5 border border-emerald-200">
+          <div className="flex justify-between items-center text-[10px] text-emerald-900 font-bold uppercase">
+            <span>Avg Gain % (Wins):</span>
+            <span className="text-emerald-700 font-black">+{avgWinPercent.toFixed(1)}%</span>
+          </div>
+          <input
+            type="number"
+            step="0.5"
+            min="0.5"
+            max="200"
+            value={avgWinPercent}
+            onChange={(e) => setAvgWinPercent(Math.max(0.1, parseFloat(e.target.value) || 0))}
+            className="w-full bg-white border border-emerald-300 text-xs font-mono font-bold px-2 py-1 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+          />
+          <div className="text-[9px] text-emerald-700">
+            Target Payoff: <strong>+{avgWinPercent.toFixed(1)}% gain</strong>
+          </div>
+        </div>
+
+        {/* Avg Loss % Input */}
+        <div className="space-y-1 bg-red-50/50 p-2.5 border border-red-200">
+          <div className="flex justify-between items-center text-[10px] text-red-900 font-bold uppercase">
+            <span>Avg Loss % (Losses):</span>
+            <span className="text-red-700 font-black">-{avgLossPercent.toFixed(1)}%</span>
+          </div>
+          <input
+            type="number"
+            step="0.5"
+            min="0.1"
+            max="100"
+            value={avgLossPercent}
+            onChange={(e) => setAvgLossPercent(Math.max(0.1, parseFloat(e.target.value) || 0))}
+            className="w-full bg-white border border-red-300 text-xs font-mono font-bold px-2 py-1 focus:outline-none focus:ring-1 focus:ring-red-500"
+          />
+          <div className="text-[9px] text-red-700">
+            Stop Loss Discipline: <strong>-{avgLossPercent.toFixed(1)}% loss</strong>
+          </div>
+        </div>
+
+        {/* Risk Per Trade Dollar Input */}
+        <div className="space-y-1 bg-slate-900 text-white p-2.5 border border-slate-800">
+          <div className="flex justify-between items-center text-[10px] text-gray-300 font-bold uppercase">
+            <span>Risk Capital per Trade:</span>
+            <span className="text-amber-300 font-black">1R Risk</span>
+          </div>
+          <div className="relative">
+            <span className="absolute inset-y-0 left-0 pl-2 flex items-center text-gray-400 font-mono text-xs">
+              {currencySymbol}
+            </span>
+            <input
+              type="number"
+              step="100"
+              min="100"
+              value={riskPerTradeDollars}
+              onChange={(e) => setRiskPerTradeDollars(Math.max(10, parseFloat(e.target.value) || 0))}
+              className="w-full bg-slate-800 border border-slate-700 text-white font-mono font-bold pl-6 pr-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-amber-400"
+            />
+          </div>
+          <div className="text-[9px] text-gray-400">
+            1R Risk Unit = {formatCurrency(riskPerTradeDollars, currencySymbol, 0)}
+          </div>
+        </div>
+      </div>
+
+      {/* Expectancy Output Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+        {/* Expectancy in R */}
+        <motion.div
+          layout
+          key={`exp-r-${expectancyInR.toFixed(2)}`}
+          initial={{ opacity: 0.8, scale: 0.98 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.2 }}
+          className="bg-slate-900 p-3 border border-slate-800 space-y-1"
+        >
+          <span className="text-[9px] uppercase font-bold text-gray-400 block">
+            Expectancy per Trade (in R)
+          </span>
+          <div className={`text-2xl font-black ${expectancyInR >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+            {expectancyInR >= 0 ? `+${expectancyInR.toFixed(2)} R` : `${expectancyInR.toFixed(2)} R`}
+          </div>
+          <div className="text-[10px] text-gray-400 border-t border-slate-800 pt-1">
+            Generates <strong>{expectancyInR >= 0 ? `+${expectancyInR.toFixed(2)}` : expectancyInR.toFixed(2)}</strong> units of risk for every 1R risked.
+          </div>
+        </motion.div>
+
+        {/* Expectancy in % */}
+        <motion.div
+          layout
+          key={`exp-pct-${expectancyPercent.toFixed(2)}`}
+          initial={{ opacity: 0.8, scale: 0.98 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.2 }}
+          className="bg-slate-900 p-3 border border-slate-800 space-y-1"
+        >
+          <span className="text-[9px] uppercase font-bold text-gray-400 block">
+            Net Expectancy per Trade (%)
+          </span>
+          <div className={`text-2xl font-black ${expectancyPercent >= 0 ? 'text-amber-300' : 'text-red-400'}`}>
+            {expectancyPercent >= 0 ? `+${expectancyPercent.toFixed(2)}%` : `${expectancyPercent.toFixed(2)}%`}
+          </div>
+          <div className="text-[10px] text-gray-400 border-t border-slate-800 pt-1">
+            Average net yield per trade position taking win/loss distribution into account.
+          </div>
+        </motion.div>
+
+        {/* Win/Loss Ratio (Gain-to-Loss Payoff) */}
+        <motion.div
+          layout
+          key={`payoff-${payoffRatio.toFixed(2)}`}
+          initial={{ opacity: 0.8, scale: 0.98 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.2 }}
+          className="bg-slate-900 p-3 border border-slate-800 space-y-1"
+        >
+          <span className="text-[9px] uppercase font-bold text-gray-400 block">
+            Gain / Loss Payoff Ratio
+          </span>
+          <div className="text-2xl font-black text-sky-300">
+            {payoffRatio.toFixed(2)} : 1
+          </div>
+          <div className="text-[10px] text-gray-400 border-t border-slate-800 pt-1">
+            Avg Win ({avgWinPercent.toFixed(1)}%) vs Avg Loss ({avgLossPercent.toFixed(1)}%).
+          </div>
+        </motion.div>
+
+        {/* Projected 100 Trades Return */}
+        <motion.div
+          layout
+          key={`trades100-${expectedProfit100TradesDollars.toFixed(0)}`}
+          initial={{ opacity: 0.8, scale: 0.98 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.2 }}
+          className="bg-slate-900 p-3 border border-slate-800 space-y-1"
+        >
+          <span className="text-[9px] uppercase font-bold text-gray-400 block">
+            Projected Return (100 Trades)
+          </span>
+          <div className={`text-2xl font-black ${expectedProfit100TradesDollars >= 0 ? 'text-emerald-300' : 'text-red-400'}`}>
+            {expectedProfit100TradesDollars >= 0
+              ? `+${formatCurrency(expectedProfit100TradesDollars, currencySymbol, 0)}`
+              : formatCurrency(expectedProfit100TradesDollars, currencySymbol, 0)}
+          </div>
+          <div className="text-[10px] text-gray-400 border-t border-slate-800 pt-1">
+            Net <strong>{expectancy100R >= 0 ? `+${expectancy100R.toFixed(1)}` : expectancy100R.toFixed(1)} R</strong> accrued over 100 sequential trades.
+          </div>
+        </motion.div>
+      </div>
+
+      {/* Visual Proportion Bar */}
+      <div className="space-y-1.5 bg-[#f9f8f5] p-3 border border-[#e5e4e1]">
+        <div className="flex justify-between items-center text-[10px] font-bold text-gray-700">
+          <span>Expected Outcome Distribution (per 100 trades):</span>
+          <span>
+            {winRate} Winning Trades @ +{avgWinPercent}% | {lossRate} Losing Trades @ -{avgLossPercent}%
+          </span>
+        </div>
+        <div className="w-full bg-gray-200 h-4 flex overflow-hidden border border-gray-300">
+          <motion.div
+            initial={{ width: '0%' }}
+            animate={{ width: `${winRate}%` }}
+            transition={{ duration: 0.4 }}
+            className="h-full bg-emerald-600 text-[9px] text-white font-bold flex items-center justify-center overflow-hidden"
+          >
+            {winRate >= 15 ? `Wins (${winRate}%)` : ''}
+          </motion.div>
+          <motion.div
+            initial={{ width: '0%' }}
+            animate={{ width: `${lossRate}%` }}
+            transition={{ duration: 0.4 }}
+            className="h-full bg-red-500 text-[9px] text-white font-bold flex items-center justify-center overflow-hidden"
+          >
+            {lossRate >= 15 ? `Losses (${lossRate}%)` : ''}
+          </motion.div>
+        </div>
+      </div>
+
+      {/* Minervini SEPA Wisdom Footer */}
+      <div className="bg-slate-900 text-white p-3 border border-slate-800 text-[10px] font-sans flex items-start space-x-2">
+        <TrendingUp className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+        <div>
+          <span className="font-mono font-bold text-emerald-400 uppercase block">Mark Minervini SEPA Expectancy Principle:</span>
+          <span className="text-gray-300">
+            "You do not need an 80% win rate to get rich in stock trading. A trader with a 45% win rate making 3:1 gains relative to losses will far outperform an 80% trader taking 1:1 or negative risk reward!"
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 
 interface InteractiveRMultipleCalculatorToolProps {
   stock: MinerviniTradeSetup;
@@ -3224,6 +3803,26 @@ export const TradePlanCard: React.FC<TradePlanCardProps> = ({ stock }) => {
 
       {/* Visual Progress Bar for VCP Pattern Contraction Phases & Volume Dry-Up */}
       <VcpContractionProgressBar stock={stock} currencySymbol={currencySymbol} />
+
+      {/* Dynamic Risk-to-Reward Ratio (RRR) Visualizer Bar */}
+      <RiskRewardRatioVisualizer
+        entryPrice={pivotEntry}
+        stopLossPrice={currentStopLoss}
+        targetPrice={customTargetPrice}
+        currencySymbol={currencySymbol}
+        onUpdateEntryPrice={(newEntry) => setCustomEntryPrice(newEntry)}
+        onUpdateStopLossPrice={(newStop) => setCustomStopPrice(newStop)}
+        onUpdateTargetPrice={(newTarget) => setCustomTargetPrice(newTarget)}
+      />
+
+      {/* SEPA Mathematical Expectancy & Strategy Edge Module */}
+      <TradeExpectancyModule
+        stock={stock}
+        currencySymbol={currencySymbol}
+        entryPrice={pivotEntry}
+        stopLossPrice={currentStopLoss}
+        targetPrice={customTargetPrice}
+      />
 
       {/* R-Multiple Risk/Reward Ratio Interactive Calculator Tool */}
       <InteractiveRMultipleCalculatorTool
