@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { MinerviniTradeSetup } from '../types';
 import { calculatePositionSize, calculateBreakoutProbability, formatCurrency, formatVolume, getCurrencySymbol, calculateDailyVolatilityMetrics } from '../utils/sepaCalculator';
 import { exportTradePlansToCsv, exportDetailedTradeParametersToCsv } from '../utils/csvExport';
@@ -9,7 +10,7 @@ import { RuleBasedEntryExitPanel } from './RuleBasedEntryExitPanel';
 import { DailyPivotAndVolatilityPanel } from './DailyPivotAndVolatilityPanel';
 import { StageIdentifierPanel } from './StageIdentifierPanel';
 import { TrailingStopCalculatorPanel } from './TrailingStopCalculatorPanel';
-import { Target, ShieldAlert, ArrowUpRight, Droplets, DollarSign, Calculator, Layers, Flame, Zap, Sparkles, TrendingUp, BarChart3, ShieldCheck, FileText, Save, Check, Trash2, Clock, StickyNote, FileSpreadsheet, LogOut, AlertTriangle, ArrowRightCircle, Sliders, CheckCircle2, RefreshCw, Bell, BellRing, BellOff, ChevronDown, ChevronUp } from 'lucide-react';
+import { Target, ShieldAlert, ArrowUpRight, Droplets, DollarSign, Calculator, Layers, Flame, Zap, Sparkles, TrendingUp, BarChart3, ShieldCheck, FileText, Save, Check, Trash2, Clock, StickyNote, FileSpreadsheet, LogOut, AlertTriangle, ArrowRightCircle, Sliders, CheckCircle2, RefreshCw, Bell, BellRing, BellOff, ChevronDown, ChevronUp, Printer } from 'lucide-react';
 
 function getArcPath(cx: number, cy: number, r: number, startAngleDeg: number, endAngleDeg: number) {
   const rad1 = (startAngleDeg * Math.PI) / 180;
@@ -805,6 +806,181 @@ export const InteractiveRRSlider: React.FC<InteractiveRRSliderProps> = ({
   );
 };
 
+interface VcpContractionProgressBarProps {
+  stock: MinerviniTradeSetup;
+  currencySymbol?: string;
+}
+
+export const VcpContractionProgressBar: React.FC<VcpContractionProgressBarProps> = ({
+  stock,
+  currencySymbol = '$',
+}) => {
+  const contractionsList = stock.contractions && stock.contractions.length > 0
+    ? stock.contractions
+    : [
+        { contractionIndex: 1, depthPercent: 18.0, durationDays: 14, volumeDryUpPercent: -35, startDate: '', endDate: '', highPrice: stock.pivotPrice, lowPrice: stock.pivotPrice * 0.82 },
+        { contractionIndex: 2, depthPercent: 8.5, durationDays: 7, volumeDryUpPercent: -55, startDate: '', endDate: '', highPrice: stock.pivotPrice, lowPrice: stock.pivotPrice * 0.915 },
+        { contractionIndex: 3, depthPercent: 3.2, durationDays: 4, volumeDryUpPercent: -72, startDate: '', endDate: '', highPrice: stock.pivotPrice, lowPrice: stock.pivotPrice * 0.968 },
+      ];
+
+  const totalDryUp = stock.volumeDryUpPercent || (contractionsList[contractionsList.length - 1]?.volumeDryUpPercent || -65);
+  const isExtremeDryUp = Math.abs(totalDryUp) >= 60;
+
+  return (
+    <div className="bg-white border border-[#e5e4e1] p-4 space-y-4 font-mono shadow-2xs">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3">
+        <div className="flex items-center space-x-2">
+          <div className="p-1.5 bg-cyan-50 text-cyan-700 border border-cyan-200">
+            <Droplets className="w-4 h-4" />
+          </div>
+          <div>
+            <div className="flex items-center space-x-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-900">
+                VCP Contraction Phase & Volume Dry-Up Progress Bar
+              </span>
+              <span className="px-1.5 py-0.5 text-[9px] font-extrabold uppercase bg-cyan-100 text-cyan-900 border border-cyan-300">
+                {stock.patternType || 'VCP Pattern'}
+              </span>
+            </div>
+            <p className="text-[10px] text-gray-500 font-sans">
+              Visualizing price depth tightening and progressive volume dry-up across contraction phases.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center space-x-2">
+          <span className={`px-2.5 py-1 text-[10px] uppercase font-black border ${
+            isExtremeDryUp
+              ? 'bg-cyan-950 text-cyan-300 border-cyan-700 animate-pulse'
+              : 'bg-blue-50 text-blue-900 border-blue-200'
+          }`}>
+            💧 {Math.abs(totalDryUp).toFixed(1)}% Volume Dry-Up
+          </span>
+          <span className="px-2 py-1 text-[10px] uppercase font-bold bg-slate-900 text-white border border-black">
+            Stage: {stock.vcpStage || 'Breakout Pending'}
+          </span>
+        </div>
+      </div>
+
+      <div className="space-y-2 bg-[#f9f8f5] p-3 border border-[#e5e4e1]">
+        <div className="flex justify-between items-center text-[10px] uppercase font-bold text-gray-600">
+          <span>Contraction Phases Progression</span>
+          <span className="text-cyan-800 font-mono">
+            {contractionsList.length} Contractions ({contractionsList.map(c => `T${c.contractionIndex}`).join(' → ')} → Pivot)
+          </span>
+        </div>
+
+        <div className="w-full bg-gray-200 h-7 flex overflow-hidden border border-gray-400 p-0.5 space-x-0.5 rounded-2xs">
+          {contractionsList.map((c, idx) => {
+            const dryUpPct = Math.min(100, Math.max(10, Math.abs(c.volumeDryUpPercent)));
+            let barColor = 'bg-blue-500';
+            if (dryUpPct >= 70) barColor = 'bg-cyan-600';
+            else if (dryUpPct >= 50) barColor = 'bg-teal-500';
+            else if (dryUpPct >= 30) barColor = 'bg-sky-500';
+
+            return (
+              <motion.div
+                key={c.contractionIndex || idx}
+                layout
+                initial={{ width: '0%' }}
+                animate={{ width: `${100 / (contractionsList.length + 1)}%` }}
+                transition={{ duration: 0.4, delay: idx * 0.1 }}
+                className="h-full relative group cursor-pointer"
+              >
+                <div className={`w-full h-full ${barColor} flex items-center justify-between px-1.5 text-[9px] text-white font-black overflow-hidden shadow-2xs`}>
+                  <span className="truncate">Phase {c.contractionIndex}: {dryUpPct}% dry</span>
+                  <span className="text-[8px] bg-black/30 px-1 py-0.2 rounded shrink-0">-{c.depthPercent}% depth</span>
+                </div>
+              </motion.div>
+            );
+          })}
+
+          <motion.div
+            layout
+            initial={{ width: '0%' }}
+            animate={{ width: `${100 / (contractionsList.length + 1)}%` }}
+            transition={{ duration: 0.4, delay: contractionsList.length * 0.1 }}
+            className="h-full relative group cursor-pointer"
+          >
+            <div className={`w-full h-full ${stock.vcpStage === 'Active Breakout' ? 'bg-emerald-600' : 'bg-amber-500'} flex items-center justify-between px-1.5 text-[9px] text-white font-black overflow-hidden animate-pulse`}>
+              <span className="truncate">Pivot Buy ({formatCurrency(stock.pivotPrice, currencySymbol)})</span>
+              <span className="text-[8px] bg-black/40 px-1 py-0.2 rounded shrink-0">🎯 BREAKOUT</span>
+            </div>
+          </motion.div>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 text-[9px] font-mono text-gray-500 pt-0.5">
+          {contractionsList.map((c) => (
+            <div key={c.contractionIndex} className="text-left border-l-2 border-cyan-600 pl-1.5">
+              <span className="font-bold text-slate-800 block">Phase {c.contractionIndex} (T{c.contractionIndex}):</span>
+              <span className="text-cyan-800 font-extrabold">{Math.abs(c.volumeDryUpPercent)}% volume dry-up</span>
+              <span className="text-gray-400 block">{c.depthPercent}% depth ({c.durationDays}d)</span>
+            </div>
+          ))}
+          <div className="text-left border-l-2 border-amber-500 pl-1.5">
+            <span className="font-bold text-slate-800 block">Pivot Buy Zone:</span>
+            <span className="text-amber-700 font-extrabold">Volume Expansion</span>
+            <span className="text-gray-400 block">{formatCurrency(stock.pivotPrice, currencySymbol)} Pivot</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+        {contractionsList.map((c) => {
+          const dryUpVal = Math.abs(c.volumeDryUpPercent);
+          return (
+            <div
+              key={c.contractionIndex}
+              className="bg-white p-2.5 border border-[#e5e4e1] space-y-1.5 relative overflow-hidden group hover:border-cyan-400 transition-all"
+            >
+              <div className="flex items-center justify-between text-[10px] font-bold">
+                <span className="text-slate-900 uppercase">
+                  Contraction Phase T{c.contractionIndex}
+                </span>
+                <span className="bg-cyan-50 text-cyan-900 border border-cyan-200 px-1.5 py-0.2 text-[9px] font-mono font-black">
+                  -{c.depthPercent}% Depth
+                </span>
+              </div>
+
+              <div className="space-y-1">
+                <div className="flex justify-between text-[9px] text-gray-500">
+                  <span>Volume Dry-Up:</span>
+                  <strong className="text-cyan-800 font-extrabold">{dryUpVal}% below avg</strong>
+                </div>
+                <div className="w-full bg-gray-100 h-2 border border-gray-200 overflow-hidden">
+                  <motion.div
+                    initial={{ width: '0%' }}
+                    animate={{ width: `${Math.min(100, dryUpVal)}%` }}
+                    transition={{ duration: 0.5 }}
+                    className="h-full bg-cyan-600"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-between text-[9px] text-gray-500 border-t border-gray-100 pt-1">
+                <span>Duration: <strong>{c.durationDays} Days</strong></span>
+                <span>Vol: <strong className="text-slate-800">{c.volumeDryUpPercent < 0 ? `${c.volumeDryUpPercent}%` : `-${c.volumeDryUpPercent}%`}</strong></span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="bg-slate-900 text-white p-3 border border-slate-800 text-[10px] font-sans flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center space-x-2">
+          <Zap className="w-4 h-4 text-amber-300 shrink-0" />
+          <div>
+            <span className="font-mono font-bold text-amber-300 uppercase block">Minervini SEPA VCP Rule:</span>
+            <span className="text-gray-300">
+              Each progressive contraction should tighten in depth (e.g., 20% → 10% → 3%) while volume dries up dramatically to confirm supply absorption before pivot entry.
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 interface InteractiveRMultipleCalculatorToolProps {
   stock: MinerviniTradeSetup;
   currencySymbol: string;
@@ -849,6 +1025,7 @@ export const InteractiveRMultipleCalculatorTool: React.FC<InteractiveRMultipleCa
   const validEntry = entryPrice > 0 ? entryPrice : stock.pivotPrice;
   const validStop = stopLossPrice > 0 ? stopLossPrice : stock.stopLossPrice;
   const validTarget = targetPrice > 0 ? targetPrice : stock.target1Price;
+  const breakoutProb = calculateBreakoutProbability(stock);
 
   const riskPerShare = Math.max(0.01, validEntry - validStop);
   const riskPercent = validEntry > 0 ? ((validEntry - validStop) / validEntry) * 100 : 0;
@@ -966,6 +1143,105 @@ export const InteractiveRMultipleCalculatorTool: React.FC<InteractiveRMultipleCa
   const [is3RAlertEnabled, setIs3RAlertEnabled] = useState<boolean>(false);
   const [alertTriggered, setAlertTriggered] = useState<boolean>(false);
   const [alertBannerMessage, setAlertBannerMessage] = useState<string | null>(null);
+
+  // Trade Entry Date & Time in Trade (Duration) State
+  const [tradeEntryDate, setTradeEntryDate] = useState<string>('');
+
+  // Load saved trade entry date
+  useEffect(() => {
+    try {
+      const savedDate = localStorage.getItem(`sepa_trade_entry_date_${stock.ticker}`);
+      if (savedDate) setTradeEntryDate(savedDate);
+      else setTradeEntryDate('');
+    } catch (err) {
+      console.error('Failed to load saved trade entry date:', err);
+    }
+  }, [stock.ticker]);
+
+  const handleUpdateTradeEntryDate = (newDate: string) => {
+    setTradeEntryDate(newDate);
+    try {
+      if (newDate) {
+        localStorage.setItem(`sepa_trade_entry_date_${stock.ticker}`, newDate);
+      } else {
+        localStorage.removeItem(`sepa_trade_entry_date_${stock.ticker}`);
+      }
+    } catch (err) {
+      console.error('Failed to save trade entry date:', err);
+    }
+  };
+
+  const calculateDaysInTrade = (dateStr: string): number | null => {
+    if (!dateStr) return null;
+    const entryDateObj = new Date(dateStr + 'T00:00:00');
+    if (isNaN(entryDateObj.getTime())) return null;
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    const diffTime = now.getTime() - entryDateObj.getTime();
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    return Math.max(0, diffDays);
+  };
+
+  const daysInTrade = calculateDaysInTrade(tradeEntryDate);
+
+  const getStallingAnalysis = (days: number | null) => {
+    if (days === null) {
+      return {
+        statusKey: 'UNSET',
+        badgeLabel: '🗓️ Set Entry Date',
+        badgeClass: 'bg-gray-100 text-gray-700 border-gray-300 font-bold',
+        textColor: 'text-gray-600',
+        title: 'Time in Trade Not Specified',
+        advice: 'Select your trade entry date to track holding duration (days held) and monitor for stalling breakouts.',
+      };
+    }
+    if (days <= 5) {
+      return {
+        statusKey: 'FRESH',
+        badgeLabel: `🟢 Fresh Entry (${days}d)`,
+        badgeClass: 'bg-emerald-100 text-emerald-900 border-emerald-300 font-bold',
+        textColor: 'text-emerald-700',
+        title: 'Initial Breakout Window (0-5 Days)',
+        advice: 'Position is within the initial 3-5 day breakout window. SEPA rules expect prompt price expansion and above-average volume follow-through.',
+      };
+    }
+    if (days <= 15) {
+      return {
+        statusKey: 'DEVELOPING',
+        badgeLabel: `🔵 Progress Window (${days}d)`,
+        badgeClass: 'bg-blue-100 text-blue-900 border-blue-300 font-bold',
+        textColor: 'text-blue-700',
+        title: 'Developing Progress Window (6-15 Days / ~2 Weeks)',
+        advice: '1 to 2 weeks in trade. Stock should be trending higher toward Target 1 (2R-3R) or building a tight, higher support shelf.',
+      };
+    }
+    if (days <= 30) {
+      return {
+        statusKey: 'STALLING_WARNING',
+        badgeLabel: `🟡 Stalling Warning (${days}d)`,
+        badgeClass: 'bg-amber-100 text-amber-900 border-amber-300 font-bold animate-pulse',
+        textColor: 'text-amber-800',
+        title: 'Caution: Extended Consolidation / Stalling (16-30 Days)',
+        advice: 'Held for over 2 weeks without reaching profit targets. Monitor closely for sideways churn and consider raising stop loss to break-even.',
+      };
+    }
+    return {
+      statusKey: 'TIME_STOP_TRIGGERED',
+      badgeLabel: `🔴 Stalled Setup (Time Stop: ${days}d)`,
+      badgeClass: 'bg-red-600 text-white font-black',
+      textColor: 'text-red-700',
+      title: 'Alert: Stalled Breakout — Time Stop Protocol Triggered (>30 Days)',
+      advice: 'Position held for over 30 days without reaching profit targets. Mark Minervini recommends evaluating a "Time Stop" (trimming or exiting stalled setups to reallocate capital to fresher momentum leaders).',
+    };
+  };
+
+  const stallingInfo = getStallingAnalysis(daysInTrade);
+
+  const getPresetDateString = (daysAgo: number): string => {
+    const d = new Date();
+    d.setDate(d.getDate() - daysAgo);
+    return d.toISOString().split('T')[0];
+  };
 
   // Load alert preference from localStorage
   useEffect(() => {
@@ -1141,6 +1417,8 @@ export const InteractiveRMultipleCalculatorTool: React.FC<InteractiveRMultipleCa
                 isTrailingStopEnabled,
                 trailingStopPrice: projectedTrailPrice,
                 trailingStopParamStr,
+                entryDate: tradeEntryDate,
+                daysInTrade,
               });
             }}
             className="bg-[#1a1a1a] hover:bg-black text-amber-300 border border-black text-[10px] uppercase font-bold px-2.5 py-1.5 flex items-center space-x-1.5 transition-all cursor-pointer shadow-2xs group"
@@ -1149,22 +1427,44 @@ export const InteractiveRMultipleCalculatorTool: React.FC<InteractiveRMultipleCa
             <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400 group-hover:text-amber-400" />
             <span>Export CSV</span>
           </button>
+          <button
+            type="button"
+            onClick={() => {
+              generateSepaPdfReport(stock, {
+                accountCapital: portfolioValue,
+                riskPercent: parseFloat(riskPercentInput) || 1.0,
+                notes: `${stock.companyName} (${stock.ticker}) - ${stock.setupType} setup with ${stock.vcpStage} stage pattern.`,
+              });
+            }}
+            className="bg-[#1a1a1a] hover:bg-black text-amber-300 border border-black text-[10px] uppercase font-bold px-2.5 py-1.5 flex items-center space-x-1.5 transition-all cursor-pointer shadow-2xs group"
+            title="Generate clean, simplified print-ready PDF trade report for sharing or printing"
+          >
+            <Printer className="w-3.5 h-3.5 text-sky-400 group-hover:text-amber-400" />
+            <span>Print / PDF</span>
+          </button>
           <span className="text-[10px] text-gray-500 uppercase font-bold">R-Multiple:</span>
-          <span className={`px-3 py-1 font-mono text-sm font-black border ${
-            rMultiple >= 5.0
-              ? 'bg-purple-900 text-white border-purple-950'
-              : rMultiple >= 3.0
-              ? 'bg-emerald-600 text-white border-emerald-700'
-              : rMultiple >= 2.0
-              ? 'bg-amber-100 text-amber-900 border-amber-300'
-              : 'bg-red-100 text-red-900 border-red-300'
-          }`}>
+          <motion.span
+            layout
+            key={`rmult-${rMultiple.toFixed(2)}`}
+            initial={{ scale: 0.92, opacity: 0.8 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ duration: 0.2, type: 'spring', stiffness: 300, damping: 20 }}
+            className={`px-3 py-1 font-mono text-sm font-black border ${
+              rMultiple >= 5.0
+                ? 'bg-purple-900 text-white border-purple-950'
+                : rMultiple >= 3.0
+                ? 'bg-emerald-600 text-white border-emerald-700'
+                : rMultiple >= 2.0
+                ? 'bg-amber-100 text-amber-900 border-amber-300'
+                : 'bg-red-100 text-red-900 border-red-300'
+            }`}
+          >
             {rMultiple.toFixed(2)} R
-          </span>
+          </motion.span>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 font-mono text-xs">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 font-mono text-xs">
         
         {/* Entry Price Input */}
         <div className="bg-white p-3.5 border border-[#e5e4e1] space-y-2">
@@ -1217,9 +1517,16 @@ export const InteractiveRMultipleCalculatorTool: React.FC<InteractiveRMultipleCa
               <ShieldAlert className="w-3.5 h-3.5 text-red-600" />
               <span>2. Stop Loss Price ({currencySymbol}):</span>
             </label>
-            <span className="text-[10px] text-red-700 font-bold bg-red-50 px-1.5 py-0.5 border border-red-200">
+            <motion.span
+              layout
+              key={`stoprisk-${riskPercent.toFixed(2)}`}
+              initial={{ opacity: 0.7, y: -2 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.15 }}
+              className="text-[10px] text-red-700 font-bold bg-red-50 px-1.5 py-0.5 border border-red-200"
+            >
               Risk: -{riskPercent.toFixed(2)}%
-            </span>
+            </motion.span>
           </div>
           <div className="relative">
             <span className="absolute inset-y-0 left-0 pl-2.5 flex items-center text-gray-500 font-mono text-xs">
@@ -1494,9 +1801,16 @@ export const InteractiveRMultipleCalculatorTool: React.FC<InteractiveRMultipleCa
           <div className="space-y-1 pt-1 border-t border-gray-100 text-[10px]">
             <div className="flex justify-between text-gray-600">
               <span>Sized Position:</span>
-              <strong className="text-slate-900 font-bold">
+              <motion.strong
+                layout
+                key={`sizedpos-${activeShares}-${validStop}`}
+                initial={{ opacity: 0.7, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.15 }}
+                className="text-slate-900 font-bold"
+              >
                 {activeShares.toLocaleString()} sh ({formatCurrency(totalPositionCost, currencySymbol)})
-              </strong>
+              </motion.strong>
             </div>
             <div className="flex flex-wrap gap-1 pt-0.5">
               <button
@@ -1527,6 +1841,211 @@ export const InteractiveRMultipleCalculatorTool: React.FC<InteractiveRMultipleCa
           </div>
         </div>
 
+        {/* 5. Trade Entry Date & Time in Trade Duration */}
+        <div className="bg-white p-3.5 border border-[#e5e4e1] space-y-2">
+          <div className="flex justify-between items-center">
+            <label className="text-[10px] uppercase font-bold text-gray-700 flex items-center space-x-1">
+              <Clock className="w-3.5 h-3.5 text-blue-600" />
+              <span>5. Trade Entry Date:</span>
+            </label>
+            <span className={`text-[9px] px-1.5 py-0.5 border ${stallingInfo.badgeClass}`}>
+              {stallingInfo.badgeLabel}
+            </span>
+          </div>
+
+          <div className="relative">
+            <input
+              type="date"
+              value={tradeEntryDate}
+              max={new Date().toISOString().split('T')[0]}
+              onChange={(e) => handleUpdateTradeEntryDate(e.target.value)}
+              className="w-full bg-[#f9f8f5] border border-[#e5e4e1] px-2.5 py-2 text-[#1a1a1a] font-mono text-xs font-black focus:border-black focus:outline-none"
+            />
+          </div>
+
+          <div className="space-y-1 pt-1 border-t border-gray-100">
+            <span className="text-[9px] uppercase font-bold text-gray-400 block">Quick Date Presets:</span>
+            <div className="flex flex-wrap gap-1">
+              <button
+                type="button"
+                onClick={() => handleUpdateTradeEntryDate(getPresetDateString(0))}
+                className="px-1.5 py-0.5 text-[9px] bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 cursor-pointer font-semibold"
+                title="Set entry date to Today"
+              >
+                Today
+              </button>
+              <button
+                type="button"
+                onClick={() => handleUpdateTradeEntryDate(getPresetDateString(7))}
+                className="px-1.5 py-0.5 text-[9px] bg-gray-100 hover:bg-gray-200 text-gray-800 border border-gray-300 cursor-pointer font-semibold"
+                title="Set entry date to 7 days ago (-1 Wk)"
+              >
+                -1 Wk
+              </button>
+              <button
+                type="button"
+                onClick={() => handleUpdateTradeEntryDate(getPresetDateString(14))}
+                className="px-1.5 py-0.5 text-[9px] bg-gray-100 hover:bg-gray-200 text-gray-800 border border-gray-300 cursor-pointer font-semibold"
+                title="Set entry date to 14 days ago (-2 Wks)"
+              >
+                -2 Wks
+              </button>
+              <button
+                type="button"
+                onClick={() => handleUpdateTradeEntryDate(getPresetDateString(30))}
+                className="px-1.5 py-0.5 text-[9px] bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 cursor-pointer font-semibold"
+                title="Set entry date to 30 days ago (-1 Mo)"
+              >
+                -1 Mo
+              </button>
+              {tradeEntryDate && (
+                <button
+                  type="button"
+                  onClick={() => handleUpdateTradeEntryDate('')}
+                  className="px-1.5 py-0.5 text-[9px] bg-red-50 hover:bg-red-100 text-red-800 border border-red-200 cursor-pointer font-semibold"
+                  title="Clear entry date"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="pt-2 border-t border-gray-100 space-y-1 text-[10px]">
+            <div className="flex justify-between text-gray-600">
+              <span>Time in Trade:</span>
+              <strong className="text-slate-900 font-bold font-mono">
+                {daysInTrade !== null ? `${daysInTrade} Day${daysInTrade === 1 ? '' : 's'} (${(daysInTrade / 7).toFixed(1)} wks)` : 'Unset'}
+              </strong>
+            </div>
+            {daysInTrade !== null && (
+              <div className="flex justify-between text-gray-600">
+                <span>P&L Velocity:</span>
+                <strong className={stock.currentPrice >= validEntry ? 'text-emerald-700 font-bold' : 'text-red-600 font-bold'}>
+                  {daysInTrade > 0
+                    ? `${(((stock.currentPrice - validEntry) / validEntry) * 100 / daysInTrade).toFixed(2)}% / day`
+                    : `${(((stock.currentPrice - validEntry) / validEntry) * 100).toFixed(2)}% (Day 0)`}
+                </strong>
+              </div>
+            )}
+          </div>
+        </div>
+
+      </div>
+
+      {/* SEPA Time-in-Trade & Stalling Setup Monitor Sub-Panel */}
+      <div className="bg-white border border-[#e5e4e1] p-4 space-y-3 font-mono shadow-2xs">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-2">
+          <div className="flex items-center space-x-2">
+            <div className="p-1.5 bg-blue-50 text-blue-700 border border-blue-200">
+              <Clock className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-900">
+                  SEPA Time-in-Trade & Breakout Stalling Monitor ({stock.ticker})
+                </span>
+                <span className="px-1.5 py-0.5 text-[9px] font-extrabold uppercase bg-blue-100 text-blue-900 border border-blue-300">
+                  Minervini Time Stop Rules
+                </span>
+              </div>
+              <p className="text-[10px] text-gray-500 font-sans">
+                Track holding duration (days in trade) to prevent capital tie-up in stalling, sideways setups.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <span className={`px-2 py-1 text-[10px] uppercase font-bold border ${stallingInfo.badgeClass}`}>
+              {stallingInfo.badgeLabel}
+            </span>
+          </div>
+        </div>
+
+        {/* Visual Duration Phase Progress Bar */}
+        <div className="space-y-1.5 pt-1">
+          <div className="flex justify-between text-[9px] uppercase font-bold text-gray-500">
+            <span className={daysInTrade !== null && daysInTrade <= 5 ? 'text-emerald-700 font-black' : ''}>0-5d: Fresh Breakout</span>
+            <span className={daysInTrade !== null && daysInTrade > 5 && daysInTrade <= 15 ? 'text-blue-700 font-black' : ''}>6-15d: Progress Window</span>
+            <span className={daysInTrade !== null && daysInTrade > 15 && daysInTrade <= 30 ? 'text-amber-700 font-black' : ''}>16-30d: Stalling Warning</span>
+            <span className={daysInTrade !== null && daysInTrade > 30 ? 'text-red-700 font-black' : ''}>30d+: Time Stop Trigger</span>
+          </div>
+          <div className="w-full bg-gray-100 h-3 flex overflow-hidden border border-gray-300">
+            <div
+              className={`h-full text-[8px] text-white font-bold flex items-center justify-center transition-all ${
+                daysInTrade !== null && daysInTrade <= 5 ? 'bg-emerald-600 ring-2 ring-emerald-800 z-10' : 'bg-emerald-200 text-emerald-800'
+              }`}
+              style={{ width: '20%' }}
+              title="Fresh Breakout Window (0-5 Days)"
+            >
+              0-5d
+            </div>
+            <div
+              className={`h-full text-[8px] text-white font-bold flex items-center justify-center transition-all border-l border-white/40 ${
+                daysInTrade !== null && daysInTrade > 5 && daysInTrade <= 15 ? 'bg-blue-600 ring-2 ring-blue-800 z-10' : 'bg-blue-200 text-blue-800'
+              }`}
+              style={{ width: '30%' }}
+              title="Developing Progress Window (6-15 Days)"
+            >
+              6-15d
+            </div>
+            <div
+              className={`h-full text-[8px] text-white font-bold flex items-center justify-center transition-all border-l border-white/40 ${
+                daysInTrade !== null && daysInTrade > 15 && daysInTrade <= 30 ? 'bg-amber-500 ring-2 ring-amber-800 z-10' : 'bg-amber-200 text-amber-800'
+              }`}
+              style={{ width: '30%' }}
+              title="Stalling Warning Window (16-30 Days)"
+            >
+              16-30d
+            </div>
+            <div
+              className={`h-full text-[8px] text-white font-bold flex items-center justify-center transition-all border-l border-white/40 ${
+                daysInTrade !== null && daysInTrade > 30 ? 'bg-red-600 ring-2 ring-red-900 z-10' : 'bg-red-200 text-red-800'
+              }`}
+              style={{ width: '20%' }}
+              title="Time Stop Protocol (>30 Days)"
+            >
+              30d+
+            </div>
+          </div>
+        </div>
+
+        {/* Phase Guidance Card */}
+        <div className={`p-3 border space-y-1 font-sans text-xs ${stallingInfo.badgeClass}`}>
+          <div className="font-bold uppercase tracking-wider text-[11px] font-mono flex items-center space-x-1.5">
+            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+            <span>{stallingInfo.title}</span>
+          </div>
+          <p className="leading-relaxed text-[11px]">
+            {stallingInfo.advice}
+          </p>
+        </div>
+
+        {/* Metrics Grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono pt-1">
+          <div className="bg-[#f9f8f5] p-2 border border-[#e5e4e1]">
+            <span className="text-[9px] uppercase text-gray-500 block">Trade Entry Date</span>
+            <strong className="text-slate-900 text-xs block mt-0.5">{tradeEntryDate || 'Not set'}</strong>
+          </div>
+          <div className="bg-[#f9f8f5] p-2 border border-[#e5e4e1]">
+            <span className="text-[9px] uppercase text-gray-500 block">Time in Trade (Days)</span>
+            <strong className="text-slate-900 text-xs block mt-0.5">
+              {daysInTrade !== null ? `${daysInTrade} Days` : 'N/A'}
+            </strong>
+          </div>
+          <div className="bg-[#f9f8f5] p-2 border border-[#e5e4e1]">
+            <span className="text-[9px] uppercase text-gray-500 block">Duration in Weeks</span>
+            <strong className="text-slate-900 text-xs block mt-0.5">
+              {daysInTrade !== null ? `~${(daysInTrade / 7).toFixed(1)} Wks` : 'N/A'}
+            </strong>
+          </div>
+          <div className="bg-[#f9f8f5] p-2 border border-[#e5e4e1]">
+            <span className="text-[9px] uppercase text-gray-500 block">Stalling Risk Level</span>
+            <strong className={`text-xs block mt-0.5 ${stallingInfo.textColor}`}>
+              {daysInTrade === null ? 'Unspecified' : daysInTrade <= 15 ? 'Low (Optimal Momentum)' : daysInTrade <= 30 ? 'Medium (Watch Break-even)' : 'High (Time Stop)'}
+            </strong>
+          </div>
+        </div>
       </div>
 
       {/* SEPA Risk & Portfolio Value Position Sizing Calculator Sub-Panel */}
@@ -1670,53 +2189,93 @@ export const InteractiveRMultipleCalculatorTool: React.FC<InteractiveRMultipleCa
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
                 
                 {/* Result 1: Recommended Share Count */}
-                <div className="bg-slate-900 p-3 border border-slate-800 space-y-1">
+                <motion.div
+                  layout
+                  transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+                  className="bg-slate-900 p-3 border border-slate-800 space-y-1"
+                >
                   <span className="text-[9px] uppercase font-bold text-gray-400 block">
                     Recommended Share Sizing
                   </span>
-                  <div className="text-2xl font-black text-amber-300">
+                  <motion.div
+                    key={`rec-shares-${recommendedShares}`}
+                    initial={{ opacity: 0.8, scale: 0.98 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.15 }}
+                    className="text-2xl font-black text-amber-300"
+                  >
                     {recommendedShares.toLocaleString()} <span className="text-xs font-normal text-gray-400">shares</span>
-                  </div>
+                  </motion.div>
                   <div className="text-[10px] text-gray-400 border-t border-slate-800 pt-1">
                     Risk per share: <strong className="text-red-400">-{formatCurrency(riskPerShare, currencySymbol)}</strong> (-{riskPercent.toFixed(1)}%)
                   </div>
-                </div>
+                </motion.div>
 
                 {/* Result 2: Dollar Risk Budget */}
-                <div className="bg-slate-900 p-3 border border-slate-800 space-y-1">
+                <motion.div
+                  layout
+                  transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+                  className="bg-slate-900 p-3 border border-slate-800 space-y-1"
+                >
                   <span className="text-[9px] uppercase font-bold text-gray-400 block">
                     Max Dollar Risk (1R Loss)
                   </span>
-                  <div className="text-2xl font-black text-red-400">
+                  <motion.div
+                    key={`risk-dollar-${allowedDollarRisk}`}
+                    initial={{ opacity: 0.8, scale: 0.98 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.15 }}
+                    className="text-2xl font-black text-red-400"
+                  >
                     -{formatCurrency(allowedDollarRisk, currencySymbol)}
-                  </div>
+                  </motion.div>
                   <div className="text-[10px] text-gray-400 border-t border-slate-800 pt-1">
                     Exactly <strong>{riskPercentInput}%</strong> of {formatCurrency(portfolioValue, currencySymbol, 0)}
                   </div>
-                </div>
+                </motion.div>
 
                 {/* Result 3: Total Position Cost */}
-                <div className="bg-slate-900 p-3 border border-slate-800 space-y-1">
+                <motion.div
+                  layout
+                  transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+                  className="bg-slate-900 p-3 border border-slate-800 space-y-1"
+                >
                   <span className="text-[9px] uppercase font-bold text-gray-400 block">
                     Total Position Capital
                   </span>
-                  <div className="text-2xl font-black text-white">
+                  <motion.div
+                    key={`pos-cost-${recommendedPositionCost}`}
+                    initial={{ opacity: 0.8, scale: 0.98 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.15 }}
+                    className="text-2xl font-black text-white"
+                  >
                     {formatCurrency(recommendedPositionCost, currencySymbol)}
-                  </div>
+                  </motion.div>
                   <div className="text-[10px] text-gray-400 border-t border-slate-800 pt-1">
                     Entry Price: <strong>{formatCurrency(validEntry, currencySymbol)}</strong>
                   </div>
-                </div>
+                </motion.div>
 
                 {/* Result 4: Portfolio Allocation % & SEPA Guidance */}
-                <div className="bg-slate-900 p-3 border border-slate-800 space-y-1 flex flex-col justify-between">
+                <motion.div
+                  layout
+                  transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+                  className="bg-slate-900 p-3 border border-slate-800 space-y-1 flex flex-col justify-between"
+                >
                   <div>
                     <span className="text-[9px] uppercase font-bold text-gray-400 block">
                       Portfolio Allocation %
                     </span>
-                    <div className="text-2xl font-black text-emerald-400">
+                    <motion.div
+                      key={`alloc-pct-${portfolioAllocPct.toFixed(1)}`}
+                      initial={{ opacity: 0.8, scale: 0.98 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ duration: 0.15 }}
+                      className="text-2xl font-black text-emerald-400"
+                    >
                       {portfolioAllocPct.toFixed(1)}% <span className="text-xs font-normal text-gray-400">of capital</span>
-                    </div>
+                    </motion.div>
                   </div>
                   <div className="text-[9px] border-t border-slate-800 pt-1">
                     {portfolioAllocPct <= 20 ? (
@@ -1736,7 +2295,7 @@ export const InteractiveRMultipleCalculatorTool: React.FC<InteractiveRMultipleCa
                       </span>
                     )}
                   </div>
-                </div>
+                </motion.div>
 
               </div>
 
@@ -2491,23 +3050,64 @@ export const TradePlanCard: React.FC<TradePlanCardProps> = ({ stock }) => {
           </button>
 
           <button
-            onClick={() => exportDetailedTradeParametersToCsv({
-              stock,
-              entryPrice: pivotEntry,
-              stopLossPrice: currentStopLoss,
-              targetPrice: customTargetPrice,
-              shares: posSize.shareQuantity,
-              totalPositionCost: posSize.totalPositionCost,
-              riskPerShare,
-              totalDollarRisk: posSize.riskAmount,
-              rMultiple: dynamicCustomRRRatio,
-              target3RPrice: pivotEntry + (3 * riskPerShare),
-              potentialTotalGain3R: posSize.shareQuantity * (3 * riskPerShare),
-              isTrailingStopEnabled,
-              trailingStopPrice: projectedTrailPrice,
-              trailingStopParamStr,
-              notes,
-            })}
+            onClick={() => {
+              let savedEntryDate = '';
+              try {
+                savedEntryDate = localStorage.getItem(`sepa_trade_entry_date_${stock.ticker}`) || '';
+              } catch (e) {}
+              let daysHeld: number | null = null;
+              if (savedEntryDate) {
+                const ed = new Date(savedEntryDate + 'T00:00:00');
+                if (!isNaN(ed.getTime())) {
+                  const now = new Date();
+                  now.setHours(0, 0, 0, 0);
+                  daysHeld = Math.max(0, Math.floor((now.getTime() - ed.getTime()) / (1000 * 60 * 60 * 24)));
+                }
+              }
+
+              let isTrailOn = false;
+              let tStopPrice: number | undefined = undefined;
+              let tParamStr: string | undefined = undefined;
+              try {
+                isTrailOn = localStorage.getItem(`sepa_trail_stop_enabled_${stock.ticker}`) === 'true';
+                const savedMode = localStorage.getItem(`sepa_trail_stop_mode_${stock.ticker}`);
+                const savedMult = localStorage.getItem(`sepa_trail_stop_mult_${stock.ticker}`);
+                const savedPct = localStorage.getItem(`sepa_trail_stop_pct_${stock.ticker}`);
+                const volM = calculateDailyVolatilityMetrics(stock);
+                const atr = volM.atr14 || (pivotEntry * 0.03);
+                if (savedMode === 'PERCENT' && savedPct) {
+                  const pct = Number(savedPct) || 5;
+                  const dist = (pct / 100) * stock.currentPrice;
+                  tStopPrice = Math.max(0.01, Number((stock.currentPrice - dist).toFixed(2)));
+                  tParamStr = `${pct}% Fixed Trail`;
+                } else {
+                  const mult = Number(savedMult) || 2;
+                  const dist = mult * atr;
+                  tStopPrice = Math.max(0.01, Number((stock.currentPrice - dist).toFixed(2)));
+                  tParamStr = `${mult}x ATR (${formatCurrency(atr, currencySymbol)})`;
+                }
+              } catch (e) {}
+
+              exportDetailedTradeParametersToCsv({
+                stock,
+                entryPrice: pivotEntry,
+                stopLossPrice: currentStopLoss,
+                targetPrice: customTargetPrice,
+                shares: posSize.shareQuantity,
+                totalPositionCost: posSize.totalPositionCost,
+                riskPerShare,
+                totalDollarRisk: posSize.riskAmount,
+                rMultiple: dynamicCustomRRRatio,
+                target3RPrice: pivotEntry + (3 * riskPerShare),
+                potentialTotalGain3R: posSize.shareQuantity * (3 * riskPerShare),
+                isTrailingStopEnabled: isTrailOn,
+                trailingStopPrice: tStopPrice,
+                trailingStopParamStr: tParamStr,
+                notes,
+                entryDate: savedEntryDate,
+                daysInTrade: daysHeld,
+              });
+            }}
             className="bg-[#f9f8f5] hover:bg-black hover:text-white text-[#1a1a1a] border border-[#e5e4e1] text-[10px] uppercase tracking-[0.15em] px-3 py-1 font-bold flex items-center space-x-1.5 transition-all shadow-2xs cursor-pointer group"
             title="Export this stock's trade plan parameters (entry, stop, position size, R-Multiple) & saved insights to CSV"
           >
@@ -2621,6 +3221,9 @@ export const TradePlanCard: React.FC<TradePlanCardProps> = ({ stock }) => {
         </div>
 
       </div>
+
+      {/* Visual Progress Bar for VCP Pattern Contraction Phases & Volume Dry-Up */}
+      <VcpContractionProgressBar stock={stock} currencySymbol={currencySymbol} />
 
       {/* R-Multiple Risk/Reward Ratio Interactive Calculator Tool */}
       <InteractiveRMultipleCalculatorTool
@@ -3328,9 +3931,9 @@ export const TradePlanCard: React.FC<TradePlanCardProps> = ({ stock }) => {
         currencySymbol={currencySymbol}
         entryPrice={pivotEntry}
         initialStopLoss={currentStopLoss}
-        activeShares={activeShares}
+        activeShares={posSize.shareQuantity}
         onApplyStopLoss={(newStop) => {
-          setCustomStopLossPrice(newStop);
+          setCustomStopPrice(newStop);
         }}
       />
 

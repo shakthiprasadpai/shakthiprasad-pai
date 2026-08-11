@@ -119,4 +119,44 @@ body.obsidian-theme .bg-slate-900 {
   box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
 }
 
+/* Print-Friendly Media Queries for PDF Printing & Clean Sharing */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm;
+  }
+
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-size: 10pt !important;
+  }
+
+  header,
+  nav,
+  button:not(.print-include),
+  .no-print,
+  [role="tooltip"] {
+    display: none !important;
+  }
+
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  .editorial-card,
+  .editorial-border {
+    border-color: #d1d5db !important;
+  }
+
+  .break-inside-avoid,
+  .trade-plan-card {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+}
+
 

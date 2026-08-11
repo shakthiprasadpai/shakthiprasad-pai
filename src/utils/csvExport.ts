@@ -166,6 +166,8 @@ export interface DetailedTradeCsvParams {
   trailingStopPrice?: number;
   trailingStopParamStr?: string;
   notes?: string;
+  entryDate?: string;
+  daysInTrade?: number | null;
 }
 
 /**
@@ -188,6 +190,8 @@ export const exportDetailedTradeParametersToCsv = (params: DetailedTradeCsvParam
     trailingStopPrice,
     trailingStopParamStr,
     notes,
+    entryDate,
+    daysInTrade,
   } = params;
 
   const riskPercent = entryPrice > 0 ? ((entryPrice - stopLossPrice) / entryPrice) * 100 : 0;
@@ -204,6 +208,8 @@ export const exportDetailedTradeParametersToCsv = (params: DetailedTradeCsvParam
     'Pattern Type',
     'Current Price',
     'Entry Price',
+    'Trade Entry Date',
+    'Time in Trade (Days Held)',
     'Stop Loss Price',
     'Risk Per Share ($)',
     'Risk From Entry (%)',
@@ -242,6 +248,8 @@ export const exportDetailedTradeParametersToCsv = (params: DetailedTradeCsvParam
     escapeCsvCell(stock.patternType),
     escapeCsvCell((stock.currentPrice ?? 0).toFixed(2)),
     escapeCsvCell(entryPrice.toFixed(2)),
+    escapeCsvCell(entryDate || 'N/A'),
+    escapeCsvCell(daysInTrade !== undefined && daysInTrade !== null ? `${daysInTrade} Days` : 'N/A'),
     escapeCsvCell(stopLossPrice.toFixed(2)),
     escapeCsvCell(riskPerShare.toFixed(2)),
     escapeCsvCell(`-${riskPercent.toFixed(2)}%`),

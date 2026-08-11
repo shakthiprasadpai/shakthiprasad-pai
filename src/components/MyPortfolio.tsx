@@ -131,14 +131,34 @@ export const MyPortfolio: React.FC<MyPortfolioProps> = ({
   );
   const [notesInput, setNotesInput] = useState<string>('');
 
-  // Sync current prices from live stock feed
+  const calculateDaysHeld = (dateStr: string): number | null => {
+    if (!dateStr) return null;
+    const entryDateObj = new Date(dateStr + 'T00:00:00');
+    if (isNaN(entryDateObj.getTime())) return null;
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    const diffTime = now.getTime() - entryDateObj.getTime();
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    return Math.max(0, diffDays);
+  };
+
+  // Sync current prices and saved trade entry dates from live stock feed & localStorage
   useEffect(() => {
     setHoldings((prevHoldings) =>
       prevHoldings.map((h) => {
+        let syncedDate = h.buyDate;
+        try {
+          const savedDate = localStorage.getItem(`sepa_trade_entry_date_${h.ticker}`);
+          if (savedDate) {
+            syncedDate = savedDate;
+          }
+        } catch (e) {}
+
         const liveStock = stocks.find((s) => s.ticker === h.ticker);
         if (liveStock) {
           return {
             ...h,
+            buyDate: syncedDate,
             currentPrice: liveStock.currentPrice,
             trendScore: liveStock.trendScore,
             sma50: liveStock.sma50,
@@ -146,7 +166,10 @@ export const MyPortfolio: React.FC<MyPortfolioProps> = ({
             vcpStage: liveStock.vcpStage,
           };
         }
-        return h;
+        return {
+          ...h,
+          buyDate: syncedDate,
+        };
       })
     );
   }, [stocks]);
@@ -181,6 +204,15 @@ export const MyPortfolio: React.FC<MyPortfolioProps> = ({
     const entryNum = parseFloat(entryPriceInput) || (matchedStock ? matchedStock.pivotPrice : 100);
     const stopNum = parseFloat(stopLossInput) || entryNum * 0.93;
     const targetNum = parseFloat(targetPriceInput) || entryNum * 1.2;
+
+    const effectiveTicker = matchedStock ? matchedStock.ticker : selectedStockTicker.toUpperCase();
+    try {
+      if (buyDateInput) {
+        localStorage.setItem(`sepa_trade_entry_date_${effectiveTicker}`, buyDateInput);
+      }
+    } catch (err) {
+      console.error(err);
+    }
 
     if (editingHoldingId) {
       setHoldings((prev) =>
@@ -680,8 +712,32 @@ export const MyPortfolio: React.FC<MyPortfolioProps> = ({
                       <div className="text-[11px] text-gray-500 truncate max-w-[160px] mt-0.5 font-sans">
                         {h.stockName}
                       </div>
-                      <div className="text-[10px] font-mono text-gray-400 mt-0.5">
-                        Bought {h.buyDate}
+                      <div className="text-[10px] font-mono text-gray-500 mt-0.5 flex flex-wrap items-center gap-1">
+                        <span>Bought {h.buyDate}</span>
+                        {(() => {
+                          const daysInTrade = calculateDaysHeld(h.buyDate);
+                          if (daysInTrade === null) return null;
+                          let badgeStyle = 'bg-emerald-50 text-emerald-800 border-emerald-200';
+                          let badgeLabel = `${daysInTrade}d in trade`;
+                          if (daysInTrade > 30) {
+                            badgeStyle = 'bg-rose-100 text-rose-900 border-rose-300 font-extrabold animate-pulse';
+                            badgeLabel = `🔴 Stalled (${daysInTrade}d)`;
+                          } else if (daysInTrade > 15) {
+                            badgeStyle = 'bg-amber-100 text-amber-900 border-amber-300 font-bold';
+                            badgeLabel = `🟡 Stalling (${daysInTrade}d)`;
+                          } else if (daysInTrade > 5) {
+                            badgeStyle = 'bg-blue-50 text-blue-800 border-blue-200 font-semibold';
+                            badgeLabel = `🔵 ${daysInTrade}d in trade`;
+                          } else {
+                            badgeStyle = 'bg-emerald-100 text-emerald-900 border-emerald-300 font-bold';
+                            badgeLabel = `🟢 Fresh (${daysInTrade}d)`;
+                          }
+                          return (
+                            <span className={`text-[9px] px-1 py-0.2 border ${badgeStyle}`} title="Time in trade holding duration">
+                              {badgeLabel}
+                            </span>
+                          );
+                        })()}
                       </div>
                     </td>
 
