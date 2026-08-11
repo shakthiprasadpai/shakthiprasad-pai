@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { TrendingUp, BarChart3, Calculator, BookOpen, SlidersHorizontal, Briefcase, Calendar, Video, Gem, Moon, Sun, Zap, Target, BookMarked, Layers, BellRing, Download, Sparkles, Bot, Cpu, Bookmark } from 'lucide-react';
+import { TrendingUp, BarChart3, Calculator, BookOpen, SlidersHorizontal, Briefcase, Calendar, Video, Gem, Moon, Sun, Zap, Target, BookMarked, Layers, BellRing, Download, Sparkles, Bot, Cpu, Bookmark, ShieldCheck } from 'lucide-react';
 
 export type AppNavTab = 
   | 'hermes_agent'
@@ -20,7 +20,8 @@ export type AppNavTab =
   | 'sector_heatmap'
   | 'alert_history'
   | 'pattern_library'
-  | 'export_data';
+  | 'export_data'
+  | 'security_shield';
 
 interface NavbarProps {
   activeTab: AppNavTab;
@@ -389,6 +390,19 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <Download className="w-3.5 h-3.5 text-emerald-400" />
               <span className="font-bold">Export Trade Data</span>
+            </button>
+
+            <button
+              id="nav-tab-security-shield"
+              onClick={() => setActiveTab('security_shield')}
+              className={`flex items-center space-x-1.5 py-2 transition-all border-b-2 ${
+                activeTab === 'security_shield'
+                  ? 'border-emerald-500 text-emerald-400 font-bold'
+                  : 'border-transparent text-emerald-600/80 hover:text-emerald-400 hover:border-emerald-500/50'
+              }`}
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+              <span className="font-bold">Security & Antiphishing</span>
             </button>
           </nav>
 

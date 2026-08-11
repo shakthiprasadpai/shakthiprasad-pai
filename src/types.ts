@@ -233,6 +233,7 @@ export interface TradeJournalNote {
   setupType: string;
   entryPrice?: number;
   exitPrice?: number;
+  stopLossPrice?: number;
   emotionalState: EmotionalState;
   notes: string;
   keyLesson: string;

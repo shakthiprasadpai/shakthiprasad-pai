@@ -10,6 +10,7 @@ import { RuleBasedEntryExitPanel } from './RuleBasedEntryExitPanel';
 import { DailyPivotAndVolatilityPanel } from './DailyPivotAndVolatilityPanel';
 import { StageIdentifierPanel } from './StageIdentifierPanel';
 import { TrailingStopCalculatorPanel } from './TrailingStopCalculatorPanel';
+import { VolatilitySlippageAlert } from './VolatilitySlippageAlert';
 import { Target, ShieldAlert, ArrowUpRight, Droplets, DollarSign, Calculator, Layers, Flame, Zap, Sparkles, TrendingUp, BarChart3, ShieldCheck, FileText, Save, Check, Trash2, Clock, StickyNote, FileSpreadsheet, LogOut, AlertTriangle, ArrowRightCircle, Sliders, CheckCircle2, RefreshCw, Bell, BellRing, BellOff, ChevronDown, ChevronUp, Printer } from 'lucide-react';
 
 function getArcPath(cx: number, cy: number, r: number, startAngleDeg: number, endAngleDeg: number) {
@@ -3803,6 +3804,14 @@ export const TradePlanCard: React.FC<TradePlanCardProps> = ({ stock }) => {
 
       {/* Visual Progress Bar for VCP Pattern Contraction Phases & Volume Dry-Up */}
       <VcpContractionProgressBar stock={stock} currencySymbol={currencySymbol} />
+
+      {/* User-Toggleable Volatility Alert & Stop-Loss Slippage Guard */}
+      <VolatilitySlippageAlert
+        stock={stock}
+        currencySymbol={currencySymbol}
+        stopLossPrice={currentStopLoss}
+        entryPrice={pivotEntry}
+      />
 
       {/* Dynamic Risk-to-Reward Ratio (RRR) Visualizer Bar */}
       <RiskRewardRatioVisualizer

@@ -378,29 +378,65 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({
   const winRate = closedCount > 0 ? Math.round((winCount / closedCount) * 100) : 0;
   const avgRating = totalNotes > 0 ? (filteredNotes.reduce((acc, n) => acc + n.rating, 0) / totalNotes).toFixed(1) : '0.0';
 
-  // Detailed P&L and Outcome Metrics
+  // Calculate R-Multiple & Return metrics for a single trade note
+  const getTradeMetrics = (n: TradeJournalNote) => {
+    let returnPct = 0;
+    if (n.entryPrice !== undefined && n.exitPrice !== undefined && n.entryPrice > 0) {
+      returnPct = ((n.exitPrice - n.entryPrice) / n.entryPrice) * 100;
+    } else if (n.tradeStatus === 'CLOSED_WIN') {
+      returnPct = 8.5;
+    } else if (n.tradeStatus === 'CLOSED_LOSS') {
+      returnPct = -4.0;
+    } else if (n.tradeStatus === 'STOPPED_OUT') {
+      returnPct = -5.0;
+    }
+
+    let riskPct = 5.0; // Default SEPA stop risk is 5%
+    if (n.entryPrice && n.entryPrice > 0 && n.stopLossPrice && n.stopLossPrice > 0 && n.stopLossPrice < n.entryPrice) {
+      riskPct = ((n.entryPrice - n.stopLossPrice) / n.entryPrice) * 100;
+    }
+    if (riskPct <= 0) riskPct = 5.0;
+
+    let rMultiple = 0;
+    if (n.tradeStatus === 'CLOSED_WIN' || n.tradeStatus === 'CLOSED_LOSS' || n.tradeStatus === 'STOPPED_OUT' || (n.entryPrice && n.exitPrice)) {
+      rMultiple = returnPct / riskPct;
+    }
+
+    let outcomeLabel = 'ACTIVE';
+    if (n.tradeStatus === 'CLOSED_WIN') outcomeLabel = 'WIN';
+    else if (n.tradeStatus === 'CLOSED_LOSS') outcomeLabel = 'LOSS';
+    else if (n.tradeStatus === 'STOPPED_OUT') outcomeLabel = 'STOPPED OUT (LOSS)';
+    else if (n.tradeStatus === 'SCRATCHED') outcomeLabel = 'SCRATCH (BREAKEVEN)';
+    else if (n.tradeStatus === 'PLANNING') outcomeLabel = 'PLANNING';
+
+    return {
+      returnPct: Number(returnPct.toFixed(2)),
+      riskPct: Number(riskPct.toFixed(2)),
+      rMultiple: Number(rMultiple.toFixed(2)),
+      outcomeLabel,
+    };
+  };
+
+  // Detailed P&L, Outcome Metrics, and Total R-Multiple
   const summaryOutcomeStats = React.useMemo(() => {
     let grossGains = 0;
     let grossLosses = 0;
+    let totalRMultiple = 0;
+    let winRSum = 0;
+    let lossRSum = 0;
 
     winNotes.forEach((n) => {
-      let pnl = 0;
-      if (n.entryPrice !== undefined && n.exitPrice !== undefined && n.entryPrice > 0) {
-        pnl = ((n.exitPrice - n.entryPrice) / n.entryPrice) * 100;
-      } else {
-        pnl = 8.5; // fallback standard win %
-      }
-      grossGains += pnl;
+      const m = getTradeMetrics(n);
+      grossGains += m.returnPct;
+      totalRMultiple += m.rMultiple;
+      winRSum += m.rMultiple;
     });
 
     lossNotes.forEach((n) => {
-      let pnl = 0;
-      if (n.entryPrice !== undefined && n.exitPrice !== undefined && n.entryPrice > 0) {
-        pnl = ((n.exitPrice - n.entryPrice) / n.entryPrice) * 100;
-      } else {
-        pnl = -4.0; // fallback standard loss %
-      }
-      grossLosses += Math.abs(pnl);
+      const m = getTradeMetrics(n);
+      grossLosses += Math.abs(m.returnPct);
+      totalRMultiple += m.rMultiple;
+      lossRSum += m.rMultiple;
     });
 
     const avgWinPct = winCount > 0 ? grossGains / winCount : 0;
@@ -412,6 +448,10 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({
     const lossDec = closedCount > 0 ? lossCount / closedCount : 0;
     const expectancyPct = (winDec * avgWinPct) - (lossDec * avgLossPct);
 
+    const avgWinR = winCount > 0 ? winRSum / winCount : 0;
+    const avgLossR = lossCount > 0 ? lossRSum / lossCount : 0;
+    const expectancyR = (winDec * avgWinR) + (lossDec * avgLossR);
+
     return {
       grossGains: Number(grossGains.toFixed(2)),
       grossLosses: Number(grossLosses.toFixed(2)),
@@ -421,6 +461,10 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({
       winLossRatio: Number(winLossRatio.toFixed(2)),
       totalRealizedPnlPct: Number(totalRealizedPnlPct.toFixed(2)),
       expectancyPct: Number(expectancyPct.toFixed(2)),
+      totalRMultiple: Number(totalRMultiple.toFixed(2)),
+      avgWinR: Number(avgWinR.toFixed(2)),
+      avgLossR: Number(avgLossR.toFixed(2)),
+      expectancyR: Number(expectancyR.toFixed(2)),
     };
   }, [winNotes, lossNotes, winCount, lossCount, closedCount]);
 
@@ -453,30 +497,121 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({
       .slice(0, 14);
   }, [filteredNotes]);
 
-  // Export to CSV
+  // Export to CSV with Executive Summary, Win/Loss Outcomes, and Total R-Multiple
   const handleExportCSV = () => {
-    const headers = ['ID', 'Ticker', 'Stock Name', 'Exchange', 'Date', 'Setup Type', 'Entry Price', 'Exit Price', 'Emotional State', 'Trade Status', 'Rating', 'Key Lesson', 'Notes'];
-    const rows = journalNotes.map((n) => [
-      n.id,
-      n.ticker,
-      `"${n.stockName.replace(/"/g, '""')}"`,
-      n.exchange,
-      n.date,
-      `"${n.setupType}"`,
-      n.entryPrice ?? '',
-      n.exitPrice ?? '',
-      n.emotionalState,
-      n.tradeStatus,
-      n.rating,
-      `"${n.keyLesson.replace(/"/g, '""')}"`,
-      `"${n.notes.replace(/"/g, '""')}"`,
-    ]);
+    const notesToExport = filteredNotes.length > 0 ? filteredNotes : journalNotes;
 
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
+    let totalGrossGains = 0;
+    let totalGrossLosses = 0;
+    let totalRMultiple = 0;
+    let winsCount = 0;
+    let lossesCount = 0;
+    let scratchCount = 0;
+    let activeCount = 0;
+    let winRSum = 0;
+    let lossRSum = 0;
+
+    const tradesWithMetrics = notesToExport.map((n) => {
+      const m = getTradeMetrics(n);
+      totalRMultiple += m.rMultiple;
+
+      if (m.outcomeLabel === 'WIN') {
+        winsCount++;
+        totalGrossGains += m.returnPct;
+        winRSum += m.rMultiple;
+      } else if (m.outcomeLabel.includes('LOSS')) {
+        lossesCount++;
+        totalGrossLosses += Math.abs(m.returnPct);
+        lossRSum += m.rMultiple;
+      } else if (m.outcomeLabel.includes('SCRATCH')) {
+        scratchCount++;
+      } else {
+        activeCount++;
+      }
+
+      return { note: n, metrics: m };
+    });
+
+    const totalTrades = notesToExport.length;
+    const closedCount = winsCount + lossesCount;
+    const winRate = closedCount > 0 ? Number(((winsCount / closedCount) * 100).toFixed(1)) : 0;
+    const netPnl = Number((totalGrossGains - totalGrossLosses).toFixed(2));
+    const avgWinR = winsCount > 0 ? Number((winRSum / winsCount).toFixed(2)) : 0;
+    const avgLossR = lossesCount > 0 ? Number((lossRSum / lossesCount).toFixed(2)) : 0;
+    const profitFactor = totalGrossLosses > 0 ? Number((totalGrossGains / totalGrossLosses).toFixed(2)) : totalGrossGains > 0 ? 99.9 : 0;
+    const winDec = closedCount > 0 ? winsCount / closedCount : 0;
+    const lossDec = closedCount > 0 ? lossesCount / closedCount : 0;
+    const expectancyR = Number(((winDec * avgWinR) + (lossDec * avgLossR)).toFixed(2));
+
+    const dateStr = new Date().toISOString().split('T')[0];
+    const lines: string[] = [];
+
+    // Executive Summary Section
+    lines.push(`"=== SEPA TRADE JOURNAL EXECUTIVE SUMMARY & R-MULTIPLE AUDIT ==="`);
+    lines.push(`"Generated Date","${dateStr}"`);
+    lines.push(`"Total Logged Trades","${totalTrades}"`);
+    lines.push(`"Closed Trades Breakdown","${winsCount} Wins / ${lossesCount} Losses / ${scratchCount} Scratched / ${activeCount} Active"`);
+    lines.push(`"Win Rate (%)","${winRate}%"`);
+    lines.push(`"Gross Gains (%)","+${totalGrossGains.toFixed(2)}%"`);
+    lines.push(`"Gross Losses (%)","-${totalGrossLosses.toFixed(2)}%"`);
+    lines.push(`"Net Realized PnL (%)","${netPnl >= 0 ? '+' : ''}${netPnl}%"`);
+    lines.push(`"TOTAL R-MULTIPLE GENERATED","${totalRMultiple >= 0 ? '+' : ''}${totalRMultiple.toFixed(2)}R"`);
+    lines.push(`"Average Win R-Multiple","+${avgWinR}R"`);
+    lines.push(`"Average Loss R-Multiple","${avgLossR}R"`);
+    lines.push(`"Trade Expectancy (R / Trade)","${expectancyR >= 0 ? '+' : ''}${expectancyR}R"`);
+    lines.push(`"Profit Factor","${profitFactor}"`);
+    lines.push(``);
+
+    // Detailed Trades Breakdown Section
+    lines.push(`"=== LOGGED TRADES DETAILED BREAKDOWN ==="`);
+    const headers = [
+      'Trade ID',
+      'Ticker',
+      'Stock Name',
+      'Exchange',
+      'Date',
+      'Setup Type',
+      'Trade Status',
+      'Outcome',
+      'Entry Price',
+      'Exit Price',
+      'Return (%)',
+      'Initial Risk (%)',
+      'R-Multiple (R)',
+      'Emotional State',
+      'Execution Rating',
+      'Key Lesson',
+      'Notes'
+    ];
+    lines.push(headers.map(h => `"${h}"`).join(','));
+
+    tradesWithMetrics.forEach(({ note: n, metrics: m }) => {
+      const row = [
+        `"${n.id}"`,
+        `"${n.ticker}"`,
+        `"${n.stockName.replace(/"/g, '""')}"`,
+        `"${n.exchange}"`,
+        `"${n.date}"`,
+        `"${n.setupType.replace(/"/g, '""')}"`,
+        `"${n.tradeStatus}"`,
+        `"${m.outcomeLabel}"`,
+        n.entryPrice !== undefined ? `"${n.entryPrice}"` : '""',
+        n.exitPrice !== undefined ? `"${n.exitPrice}"` : '""',
+        `"${m.returnPct >= 0 ? '+' : ''}${m.returnPct}%"`,
+        `"${m.riskPct}%"`,
+        `"${m.rMultiple >= 0 ? '+' : ''}${m.rMultiple.toFixed(2)}R"`,
+        `"${n.emotionalState}"`,
+        `"${n.rating}"`,
+        `"${n.keyLesson.replace(/"/g, '""')}"`,
+        `"${n.notes.replace(/"/g, '""')}"`
+      ];
+      lines.push(row.join(','));
+    });
+
+    const csvContent = 'data:text/csv;charset=utf-8,' + encodeURIComponent(lines.join('\n'));
     const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `minervini_trade_journal_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('href', csvContent);
+    link.setAttribute('download', `minervini_trade_summary_R_multiple_${dateStr}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -948,8 +1083,41 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({
               <span>{avgRating}</span>
               <Star className="w-3.5 h-3.5 text-amber-500 fill-current inline" />
             </strong>
-            <span className="text-[9px] font-mono text-gray-500 block">{totalNotes} Journaled</span>
+            <span className="text-[9px] font-mono text-gray-600 block">{totalNotes} Journaled</span>
           </div>
+        </div>
+
+        {/* Total R-Multiple & CSV Summary Callout Banner */}
+        <div className="bg-[#1a1a1a] text-white p-4 flex flex-wrap items-center justify-between gap-4 border border-black shadow-xs">
+          <div className="flex items-center space-x-4">
+            <div className="p-3 bg-[#2a2a2a] border border-[#3a3a3a] text-amber-400">
+              <Award className="w-6 h-6" />
+            </div>
+            <div>
+              <span className="text-[10px] uppercase tracking-[0.2em] font-mono text-amber-400 font-bold block">
+                Total R-Multiple Generated Across Logged Trades
+              </span>
+              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 mt-0.5">
+                <span className={`text-2xl sm:text-3xl font-mono font-black ${
+                  summaryOutcomeStats.totalRMultiple >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                }`}>
+                  {summaryOutcomeStats.totalRMultiple >= 0 ? `+${summaryOutcomeStats.totalRMultiple.toFixed(2)}R` : `${summaryOutcomeStats.totalRMultiple.toFixed(2)}R`}
+                </span>
+                <span className="text-xs font-mono text-gray-300">
+                  (Avg Win: <strong className="text-emerald-400">+{summaryOutcomeStats.avgWinR}R</strong> • Avg Loss: <strong className="text-rose-400">{summaryOutcomeStats.avgLossR}R</strong> • Expectancy: <strong className={summaryOutcomeStats.expectancyR >= 0 ? 'text-emerald-400' : 'text-rose-400'}>{summaryOutcomeStats.expectancyR >= 0 ? `+${summaryOutcomeStats.expectancyR}R` : `${summaryOutcomeStats.expectancyR}R`}</strong>/trade)
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <button
+            onClick={handleExportCSV}
+            className="bg-emerald-500 hover:bg-emerald-400 text-black font-bold px-4 py-2.5 text-xs uppercase tracking-widest flex items-center space-x-2 transition-all cursor-pointer shadow-xs border border-emerald-400"
+            title="Download CSV Summary with win/loss outcomes & total R-multiple generated"
+          >
+            <Download className="w-4 h-4 text-black" />
+            <span>Download CSV Summary</span>
+          </button>
         </div>
 
         {/* System Viability & Mathematical Expectancy Deep-Dive Banner */}

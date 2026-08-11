@@ -26,6 +26,7 @@ import { BreakoutProbabilityEngine } from './components/BreakoutProbabilityEngin
 import { SectorStrengthView } from './components/SectorStrengthView';
 import { PatternVisualsLibrary } from './components/PatternVisualsLibrary';
 import { ExportTradeData } from './components/ExportTradeData';
+import { SecurityShieldPanel } from './components/SecurityShieldPanel';
 import { HermesAgent } from './components/HermesAgent';
 import { WatchlistManager } from './components/WatchlistManager';
 import { MOCK_STOCKS } from './data/mockStocks';
@@ -605,6 +606,20 @@ export default function App() {
               className="space-y-8"
             >
               <ExportTradeData stocks={stocksList} />
+            </motion.div>
+          )}
+
+          {/* TAB: SECURITY & ANTIPHISHING SHIELD */}
+          {activeTab === 'security_shield' && (
+            <motion.div
+              key="security_shield"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.25, ease: 'easeInOut' }}
+              className="space-y-8"
+            >
+              <SecurityShieldPanel />
             </motion.div>
           )}
         </AnimatePresence>
