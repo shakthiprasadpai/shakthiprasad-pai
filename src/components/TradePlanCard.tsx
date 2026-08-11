@@ -8,7 +8,8 @@ import { BreakoutProbabilityEngine } from './BreakoutProbabilityEngine';
 import { RuleBasedEntryExitPanel } from './RuleBasedEntryExitPanel';
 import { DailyPivotAndVolatilityPanel } from './DailyPivotAndVolatilityPanel';
 import { StageIdentifierPanel } from './StageIdentifierPanel';
-import { Target, ShieldAlert, ArrowUpRight, Droplets, DollarSign, Calculator, Layers, Flame, Zap, Sparkles, TrendingUp, BarChart3, ShieldCheck, FileText, Save, Check, Trash2, Clock, StickyNote, FileSpreadsheet, LogOut, AlertTriangle, ArrowRightCircle, Sliders, CheckCircle2, RefreshCw, Bell, BellRing, BellOff } from 'lucide-react';
+import { TrailingStopCalculatorPanel } from './TrailingStopCalculatorPanel';
+import { Target, ShieldAlert, ArrowUpRight, Droplets, DollarSign, Calculator, Layers, Flame, Zap, Sparkles, TrendingUp, BarChart3, ShieldCheck, FileText, Save, Check, Trash2, Clock, StickyNote, FileSpreadsheet, LogOut, AlertTriangle, ArrowRightCircle, Sliders, CheckCircle2, RefreshCw, Bell, BellRing, BellOff, ChevronDown, ChevronUp } from 'lucide-react';
 
 function getArcPath(cx: number, cy: number, r: number, startAngleDeg: number, endAngleDeg: number) {
   const rad1 = (startAngleDeg * Math.PI) / 180;
@@ -872,6 +873,25 @@ export const InteractiveRMultipleCalculatorTool: React.FC<InteractiveRMultipleCa
   const potentialTotalGain3R = activeShares * reward3RPerShare;
   const potential3RGainPercent = validEntry > 0 ? ((target3RPrice - validEntry) / validEntry) * 100 : 0;
 
+  // Dedicated Position Sizing Calculator State
+  const [portfolioValue, setPortfolioValue] = useState<number>(accountCapital || 100000);
+  const [riskPercentInput, setRiskPercentInput] = useState<number>(1.0); // Default 1% portfolio risk
+  const [isPosCalculatorExpanded, setIsPosCalculatorExpanded] = useState<boolean>(true);
+
+  // Sync portfolioValue when accountCapital changes
+  useEffect(() => {
+    if (accountCapital && accountCapital > 0) {
+      setPortfolioValue(accountCapital);
+    }
+  }, [accountCapital]);
+
+  // Position Sizing Calculations based on Portfolio Value & Risk %
+  const allowedDollarRisk = (portfolioValue * riskPercentInput) / 100;
+  const rawRecommendedShares = riskPerShare > 0 ? Math.floor(allowedDollarRisk / riskPerShare) : 0;
+  const recommendedShares = Math.max(0, rawRecommendedShares);
+  const recommendedPositionCost = recommendedShares * validEntry;
+  const portfolioAllocPct = portfolioValue > 0 ? (recommendedPositionCost / portfolioValue) * 100 : 0;
+
   // ATR Volatility & Trailing Stop State & Calculations
   const volMetrics = calculateDailyVolatilityMetrics(stock);
   const currentAtr14 = volMetrics.atr14 || (validEntry * 0.03);
@@ -1083,6 +1103,26 @@ export const InteractiveRMultipleCalculatorTool: React.FC<InteractiveRMultipleCa
           </div>
         </div>
         <div className="flex items-center space-x-2 font-mono">
+          <button
+            type="button"
+            onClick={() => {
+              onUpdateEntryPrice(stock.pivotPrice);
+              onUpdateStopLossPrice(stock.stopLossPrice);
+              const autoRisk = Math.max(0.01, stock.pivotPrice - stock.stopLossPrice);
+              const target3R = Number((stock.pivotPrice + 3 * autoRisk).toFixed(2));
+              onUpdateTargetPrice(target3R);
+              if (accountCapital > 0 && autoRisk > 0) {
+                const recShares = Math.floor((accountCapital * 0.01) / autoRisk);
+                onUpdateTradeSizeMode('SHARES');
+                onUpdateTradeSizeValue(Math.max(10, recShares));
+              }
+            }}
+            className="bg-emerald-700 hover:bg-emerald-800 text-white text-[10px] uppercase font-black px-3 py-1.5 border border-emerald-900 cursor-pointer shadow-2xs flex items-center space-x-1 transition-all"
+            title="Auto-populate pivot entry, 1R stop loss, 3R target price & recommended 1% account risk position size"
+          >
+            <Zap className="w-3.5 h-3.5 text-amber-300" />
+            <span>⚡ Auto-Populate Exit Levels</span>
+          </button>
           <button
             type="button"
             onClick={() => {
@@ -1489,6 +1529,479 @@ export const InteractiveRMultipleCalculatorTool: React.FC<InteractiveRMultipleCa
 
       </div>
 
+      {/* SEPA Risk & Portfolio Value Position Sizing Calculator Sub-Panel */}
+      <div className="bg-slate-900 text-white border border-slate-800 p-4 font-mono space-y-3.5 shadow-xs">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2.5">
+          <div className="flex items-center space-x-2">
+            <div className="p-1.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+              <Calculator className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300">
+                  SEPA Position Sizing Calculator Engine
+                </span>
+                <span className="px-1.5 py-0.5 text-[9px] font-extrabold uppercase bg-emerald-950 text-emerald-300 border border-emerald-800">
+                  Risk-Based Share Sizing
+                </span>
+              </div>
+              <p className="text-[10px] text-gray-400 font-sans">
+                Calculate recommended share quantity based on total account portfolio value and maximum risk tolerance (1R).
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setIsPosCalculatorExpanded(!isPosCalculatorExpanded)}
+            className="text-[10px] uppercase font-bold text-gray-400 hover:text-white flex items-center space-x-1 cursor-pointer"
+          >
+            <span>{isPosCalculatorExpanded ? 'Collapse' : 'Expand Calculator'}</span>
+            {isPosCalculatorExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+          </button>
+        </div>
+
+        {isPosCalculatorExpanded && (
+          <div className="space-y-3.5">
+            {/* Input Controls Grid: Portfolio Value & Risk % */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              
+              {/* Portfolio Value Input */}
+              <div className="bg-slate-950/80 p-3 border border-slate-800 space-y-2">
+                <div className="flex justify-between items-center text-[10px]">
+                  <label className="uppercase font-bold text-gray-300 flex items-center space-x-1">
+                    <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Total Portfolio Capital ({currencySymbol}):</span>
+                  </label>
+                  <span className="text-gray-400 text-[9px]">Account Equity</span>
+                </div>
+                <div className="relative">
+                  <span className="absolute inset-y-0 left-0 pl-2.5 flex items-center text-gray-400 font-mono text-xs">
+                    {currencySymbol}
+                  </span>
+                  <input
+                    type="number"
+                    step="1000"
+                    min="100"
+                    value={portfolioValue}
+                    onChange={(e) => setPortfolioValue(Math.max(100, Number(e.target.value) || 0))}
+                    className="w-full bg-slate-900 border border-slate-700 pl-7 pr-3 py-1.5 text-white font-mono text-sm font-black focus:border-amber-400 focus:outline-none"
+                  />
+                </div>
+                <div className="flex flex-wrap gap-1 pt-1 border-t border-slate-800 text-[9px]">
+                  <span className="text-gray-400 uppercase font-bold self-center mr-1">Presets:</span>
+                  {[25000, 50000, 100000, 250000, 500000].map((cap) => (
+                    <button
+                      key={cap}
+                      type="button"
+                      onClick={() => setPortfolioValue(cap)}
+                      className={`px-1.5 py-0.5 border cursor-pointer font-extrabold ${
+                        portfolioValue === cap
+                          ? 'bg-amber-400 text-slate-950 border-amber-500'
+                          : 'bg-slate-900 text-gray-300 border-slate-700 hover:bg-slate-800'
+                      }`}
+                    >
+                      {formatCurrency(cap, currencySymbol, 0)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Max Risk Percentage Input */}
+              <div className="bg-slate-950/80 p-3 border border-slate-800 space-y-2">
+                <div className="flex justify-between items-center text-[10px]">
+                  <label className="uppercase font-bold text-red-400 flex items-center space-x-1">
+                    <ShieldAlert className="w-3.5 h-3.5 text-red-400" />
+                    <span>Account Risk Tolerance (% per Trade):</span>
+                  </label>
+                  <span className="text-red-300 font-bold bg-red-950/80 px-1.5 py-0.5 border border-red-800 text-[9px]">
+                    1R Max Risk: -{formatCurrency(allowedDollarRisk, currencySymbol)}
+                  </span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0.1"
+                    max="10"
+                    value={riskPercentInput}
+                    onChange={(e) => setRiskPercentInput(Math.max(0.1, Math.min(10, Number(e.target.value) || 0.1)))}
+                    className="w-24 bg-slate-900 border border-slate-700 px-2.5 py-1.5 text-white font-mono text-sm font-black focus:border-red-400 focus:outline-none text-right"
+                  />
+                  <span className="text-xs font-bold text-red-400">% Account</span>
+                  <input
+                    type="range"
+                    min="0.25"
+                    max="3.0"
+                    step="0.25"
+                    value={riskPercentInput}
+                    onChange={(e) => setRiskPercentInput(Number(e.target.value))}
+                    className="w-full accent-red-500 cursor-pointer"
+                  />
+                </div>
+                <div className="flex flex-wrap gap-1 pt-1 border-t border-slate-800 text-[9px]">
+                  <span className="text-gray-400 uppercase font-bold self-center mr-1">Strategy Presets:</span>
+                  {[
+                    { pct: 0.5, label: '0.5% Conserv' },
+                    { pct: 1.0, label: '1.0% SEPA Std' },
+                    { pct: 1.5, label: '1.5% Moderate' },
+                    { pct: 2.0, label: '2.0% Aggressive' },
+                  ].map((preset) => (
+                    <button
+                      key={preset.pct}
+                      type="button"
+                      onClick={() => setRiskPercentInput(preset.pct)}
+                      className={`px-1.5 py-0.5 border cursor-pointer font-extrabold ${
+                        riskPercentInput === preset.pct
+                          ? 'bg-red-600 text-white border-red-500'
+                          : 'bg-slate-900 text-gray-300 border-slate-700 hover:bg-slate-800'
+                      }`}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+            </div>
+
+            {/* Sizing Engine Output Results Panel */}
+            <div className="bg-slate-950 p-3.5 border border-slate-800 space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                
+                {/* Result 1: Recommended Share Count */}
+                <div className="bg-slate-900 p-3 border border-slate-800 space-y-1">
+                  <span className="text-[9px] uppercase font-bold text-gray-400 block">
+                    Recommended Share Sizing
+                  </span>
+                  <div className="text-2xl font-black text-amber-300">
+                    {recommendedShares.toLocaleString()} <span className="text-xs font-normal text-gray-400">shares</span>
+                  </div>
+                  <div className="text-[10px] text-gray-400 border-t border-slate-800 pt-1">
+                    Risk per share: <strong className="text-red-400">-{formatCurrency(riskPerShare, currencySymbol)}</strong> (-{riskPercent.toFixed(1)}%)
+                  </div>
+                </div>
+
+                {/* Result 2: Dollar Risk Budget */}
+                <div className="bg-slate-900 p-3 border border-slate-800 space-y-1">
+                  <span className="text-[9px] uppercase font-bold text-gray-400 block">
+                    Max Dollar Risk (1R Loss)
+                  </span>
+                  <div className="text-2xl font-black text-red-400">
+                    -{formatCurrency(allowedDollarRisk, currencySymbol)}
+                  </div>
+                  <div className="text-[10px] text-gray-400 border-t border-slate-800 pt-1">
+                    Exactly <strong>{riskPercentInput}%</strong> of {formatCurrency(portfolioValue, currencySymbol, 0)}
+                  </div>
+                </div>
+
+                {/* Result 3: Total Position Cost */}
+                <div className="bg-slate-900 p-3 border border-slate-800 space-y-1">
+                  <span className="text-[9px] uppercase font-bold text-gray-400 block">
+                    Total Position Capital
+                  </span>
+                  <div className="text-2xl font-black text-white">
+                    {formatCurrency(recommendedPositionCost, currencySymbol)}
+                  </div>
+                  <div className="text-[10px] text-gray-400 border-t border-slate-800 pt-1">
+                    Entry Price: <strong>{formatCurrency(validEntry, currencySymbol)}</strong>
+                  </div>
+                </div>
+
+                {/* Result 4: Portfolio Allocation % & SEPA Guidance */}
+                <div className="bg-slate-900 p-3 border border-slate-800 space-y-1 flex flex-col justify-between">
+                  <div>
+                    <span className="text-[9px] uppercase font-bold text-gray-400 block">
+                      Portfolio Allocation %
+                    </span>
+                    <div className="text-2xl font-black text-emerald-400">
+                      {portfolioAllocPct.toFixed(1)}% <span className="text-xs font-normal text-gray-400">of capital</span>
+                    </div>
+                  </div>
+                  <div className="text-[9px] border-t border-slate-800 pt-1">
+                    {portfolioAllocPct <= 20 ? (
+                      <span className="text-emerald-400 font-bold flex items-center space-x-1">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                        <span>SEPA Optimal (&lt;=20%)</span>
+                      </span>
+                    ) : portfolioAllocPct <= 25 ? (
+                      <span className="text-amber-300 font-bold flex items-center space-x-1">
+                        <Zap className="w-3 h-3 text-amber-300" />
+                        <span>Upper SEPA Cap (20-25%)</span>
+                      </span>
+                    ) : (
+                      <span className="text-red-400 font-bold flex items-center space-x-1">
+                        <AlertTriangle className="w-3 h-3 text-red-400" />
+                        <span>Over-Concentrated (&gt;25%)</span>
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Action Bar: Apply Sized Shares to Trade Plan */}
+              <div className="pt-2 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3">
+                <div className="text-[10px] text-gray-400 font-sans">
+                  {portfolioAllocPct > 25 ? (
+                    <span className="text-amber-300 font-semibold flex items-center space-x-1">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                      <span>
+                        Note: Tight {riskPercent.toFixed(1)}% stop loss requires {portfolioAllocPct.toFixed(1)}% position size to risk {riskPercentInput}%. Consider capping allocation to 20% max ({Math.floor((portfolioValue * 0.20) / validEntry).toLocaleString()} shares).
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="text-emerald-300 flex items-center space-x-1">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                      <span>
+                        Optimal risk-adjusted position size calculated using Entry {formatCurrency(validEntry, currencySymbol)} and Stop Loss {formatCurrency(validStop, currencySymbol)}.
+                      </span>
+                    </span>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    onUpdateTradeSizeMode('SHARES');
+                    onUpdateTradeSizeValue(recommendedShares);
+                  }}
+                  className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black uppercase px-4 py-2 border border-emerald-400 cursor-pointer shadow-xs transition-all flex items-center space-x-2 shrink-0"
+                  title="Apply calculated recommended shares to the active trade execution plan"
+                >
+                  <Calculator className="w-4 h-4" />
+                  <span>Apply {recommendedShares.toLocaleString()} Shares to Trade Plan</span>
+                </button>
+              </div>
+
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Auto-Populated SEPA Exit Levels Matrix Sub-Panel */}
+      <div className="bg-white border border-[#e5e4e1] p-4 space-y-3 font-mono">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-2">
+          <div className="flex items-center space-x-2">
+            <Target className="w-4 h-4 text-emerald-600" />
+            <h5 className="text-xs font-bold uppercase tracking-wider text-slate-900">
+              Auto-Populated SEPA Exit Levels Matrix ({stock.ticker})
+            </h5>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              onUpdateEntryPrice(stock.pivotPrice);
+              onUpdateStopLossPrice(stock.stopLossPrice);
+              const autoRisk = Math.max(0.01, stock.pivotPrice - stock.stopLossPrice);
+              const target3R = Number((stock.pivotPrice + 3 * autoRisk).toFixed(2));
+              onUpdateTargetPrice(target3R);
+              if (accountCapital > 0 && autoRisk > 0) {
+                const recShares = Math.floor((accountCapital * 0.01) / autoRisk);
+                onUpdateTradeSizeMode('SHARES');
+                onUpdateTradeSizeValue(Math.max(10, recShares));
+              }
+            }}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] uppercase font-black px-2.5 py-1 border border-emerald-800 cursor-pointer shadow-2xs flex items-center space-x-1 transition-all"
+            title="Auto-fill pivot entry, 1R stop loss, 3R target price & recommended 1% position size"
+          >
+            <Zap className="w-3.5 h-3.5 text-amber-300" />
+            <span>Auto-Populate Into Trade Plan</span>
+          </button>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs font-mono">
+            <thead>
+              <tr className="bg-[#f9f8f5] border-b border-[#e5e4e1] text-[10px] text-gray-500 uppercase">
+                <th className="py-2 px-2.5 font-bold">Exit Level</th>
+                <th className="py-2 px-2.5 font-bold">Price Level</th>
+                <th className="py-2 px-2.5 font-bold">Gain / Risk %</th>
+                <th className="py-2 px-2.5 font-bold">R-Multiple</th>
+                <th className="py-2 px-2.5 font-bold">Est. Position P&L</th>
+                <th className="py-2 px-2.5 text-right font-bold">Quick Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 text-[11px]">
+              {/* Row 1: Initial Stop Loss (1R) */}
+              <tr className="hover:bg-red-50/40">
+                <td className="py-2 px-2.5 font-bold text-red-700 flex items-center space-x-1.5">
+                  <ShieldAlert className="w-3.5 h-3.5 text-red-600 shrink-0" />
+                  <span>1. Initial Stop Loss (1R Risk)</span>
+                </td>
+                <td className="py-2 px-2.5 font-black text-red-600">
+                  {formatCurrency(validStop, currencySymbol)}
+                </td>
+                <td className="py-2 px-2.5 text-red-700 font-bold">
+                  -{riskPercent.toFixed(2)}%
+                </td>
+                <td className="py-2 px-2.5">
+                  <span className="bg-red-100 text-red-900 px-1.5 py-0.5 border border-red-300 font-bold text-[10px]">-1.0 R</span>
+                </td>
+                <td className="py-2 px-2.5 text-red-600 font-bold">
+                  -{formatCurrency(totalDollarRisk, currencySymbol)}
+                </td>
+                <td className="py-2 px-2.5 text-right">
+                  <button
+                    type="button"
+                    onClick={() => onUpdateStopLossPrice(validStop)}
+                    className="bg-red-50 hover:bg-red-100 text-red-900 border border-red-200 px-2 py-0.5 text-[9px] font-extrabold uppercase cursor-pointer"
+                  >
+                    Apply as Active Stop
+                  </button>
+                </td>
+              </tr>
+
+              {/* Row 2: 1R Break-Even Level */}
+              <tr className="hover:bg-blue-50/40">
+                <td className="py-2 px-2.5 font-bold text-blue-900 flex items-center space-x-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                  <span>2. Break-Even Stop (+1R)</span>
+                </td>
+                <td className="py-2 px-2.5 font-black text-blue-900">
+                  {formatCurrency(validEntry + riskPerShare, currencySymbol)}
+                </td>
+                <td className="py-2 px-2.5 text-blue-800 font-bold">
+                  +{riskPercent.toFixed(2)}%
+                </td>
+                <td className="py-2 px-2.5">
+                  <span className="bg-blue-100 text-blue-900 px-1.5 py-0.5 border border-blue-300 font-bold text-[10px]">+1.0 R</span>
+                </td>
+                <td className="py-2 px-2.5 text-blue-800 font-bold">
+                  +{formatCurrency(totalDollarRisk, currencySymbol)} (Stop at {formatCurrency(validEntry, currencySymbol)})
+                </td>
+                <td className="py-2 px-2.5 text-right">
+                  <button
+                    type="button"
+                    onClick={() => onUpdateStopLossPrice(validEntry)}
+                    className="bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 px-2 py-0.5 text-[9px] font-extrabold uppercase cursor-pointer"
+                    title="Move stop loss to entry price to eliminate risk"
+                  >
+                    Set Stop to Break-Even
+                  </button>
+                </td>
+              </tr>
+
+              {/* Row 3: Target 1 (2R Partial Take) */}
+              <tr className="hover:bg-emerald-50/40">
+                <td className="py-2 px-2.5 font-bold text-emerald-800 flex items-center space-x-1.5">
+                  <Target className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span>3. Target 1 (2R Partial Scale-Out)</span>
+                </td>
+                <td className="py-2 px-2.5 font-black text-emerald-800">
+                  {formatCurrency(validEntry + (2 * riskPerShare), currencySymbol)}
+                </td>
+                <td className="py-2 px-2.5 text-emerald-800 font-bold">
+                  +{(riskPercent * 2).toFixed(2)}%
+                </td>
+                <td className="py-2 px-2.5">
+                  <span className="bg-emerald-100 text-emerald-900 px-1.5 py-0.5 border border-emerald-300 font-bold text-[10px]">+2.0 R</span>
+                </td>
+                <td className="py-2 px-2.5 text-emerald-700 font-bold">
+                  +{formatCurrency(totalDollarRisk * 2, currencySymbol)}
+                </td>
+                <td className="py-2 px-2.5 text-right">
+                  <button
+                    type="button"
+                    onClick={() => onUpdateTargetPrice(Number((validEntry + 2 * riskPerShare).toFixed(2)))}
+                    className="bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 px-2 py-0.5 text-[9px] font-extrabold uppercase cursor-pointer"
+                  >
+                    Set Target to 2R
+                  </button>
+                </td>
+              </tr>
+
+              {/* Row 4: Target 2 (3R SEPA Benchmark) */}
+              <tr className="hover:bg-emerald-50/60 font-bold">
+                <td className="py-2 px-2.5 text-emerald-900 flex items-center space-x-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                  <span>4. Target 2 (3R SEPA Benchmark)</span>
+                </td>
+                <td className="py-2 px-2.5 font-black text-emerald-900 text-sm">
+                  {formatCurrency(target3RPrice, currencySymbol)}
+                </td>
+                <td className="py-2 px-2.5 text-emerald-900 font-black">
+                  +{potential3RGainPercent.toFixed(2)}%
+                </td>
+                <td className="py-2 px-2.5">
+                  <span className="bg-emerald-600 text-white px-2 py-0.5 font-black text-[10px]">+3.0 R</span>
+                </td>
+                <td className="py-2 px-2.5 text-emerald-900 font-black">
+                  +{formatCurrency(potentialTotalGain3R, currencySymbol)}
+                </td>
+                <td className="py-2 px-2.5 text-right">
+                  <button
+                    type="button"
+                    onClick={() => onUpdateTargetPrice(target3RPrice)}
+                    className="bg-emerald-700 hover:bg-emerald-800 text-white border border-emerald-900 px-2 py-0.5 text-[9px] font-black uppercase cursor-pointer shadow-2xs"
+                  >
+                    Set Target to 3R
+                  </button>
+                </td>
+              </tr>
+
+              {/* Row 5: Target 3 (5R Champion Target) */}
+              <tr className="hover:bg-purple-50/40">
+                <td className="py-2 px-2.5 font-bold text-purple-900 flex items-center space-x-1.5">
+                  <Flame className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                  <span>5. Target 3 (5R Champion Runner)</span>
+                </td>
+                <td className="py-2 px-2.5 font-black text-purple-900">
+                  {formatCurrency(validEntry + (5 * riskPerShare), currencySymbol)}
+                </td>
+                <td className="py-2 px-2.5 text-purple-900 font-bold">
+                  +{(riskPercent * 5).toFixed(2)}%
+                </td>
+                <td className="py-2 px-2.5">
+                  <span className="bg-purple-900 text-white px-1.5 py-0.5 font-bold text-[10px]">+5.0 R</span>
+                </td>
+                <td className="py-2 px-2.5 text-purple-900 font-bold">
+                  +{formatCurrency(totalDollarRisk * 5, currencySymbol)}
+                </td>
+                <td className="py-2 px-2.5 text-right">
+                  <button
+                    type="button"
+                    onClick={() => onUpdateTargetPrice(Number((validEntry + 5 * riskPerShare).toFixed(2)))}
+                    className="bg-purple-100 hover:bg-purple-200 text-purple-900 border border-purple-300 px-2 py-0.5 text-[9px] font-extrabold uppercase cursor-pointer"
+                  >
+                    Set Target to 5R
+                  </button>
+                </td>
+              </tr>
+
+              {/* Row 6: Trailing Stop Level */}
+              <tr className="hover:bg-red-50/30">
+                <td className="py-2 px-2.5 font-bold text-gray-800 flex items-center space-x-1.5">
+                  <Sliders className="w-3.5 h-3.5 text-red-600 shrink-0" />
+                  <span>6. Trailing Stop ({trailingStopParamStr})</span>
+                </td>
+                <td className="py-2 px-2.5 font-black text-red-700">
+                  {formatCurrency(projectedTrailPrice, currencySymbol)}
+                </td>
+                <td className="py-2 px-2.5 text-red-700 font-bold">
+                  -{trailingDistancePercent.toFixed(2)}%
+                </td>
+                <td className="py-2 px-2.5">
+                  <span className="bg-gray-100 text-gray-800 px-1.5 py-0.5 border border-gray-300 font-bold text-[10px]">Trail</span>
+                </td>
+                <td className="py-2 px-2.5 text-gray-700 font-bold">
+                  {projectedTrailPrice >= validEntry ? '+' : ''}{formatCurrency(activeShares * (projectedTrailPrice - validEntry), currencySymbol)}
+                </td>
+                <td className="py-2 px-2.5 text-right">
+                  <button
+                    type="button"
+                    onClick={() => onUpdateStopLossPrice(projectedTrailPrice)}
+                    className="bg-gray-100 hover:bg-gray-200 text-gray-900 border border-gray-300 px-2 py-0.5 text-[9px] font-extrabold uppercase cursor-pointer"
+                  >
+                    Apply Trail Stop
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       {/* Quick Notes (Pivot Thesis Points) Sub-Panel */}
       {onNotesChange && (
         <div className="bg-white border border-[#e5e4e1] p-3.5 space-y-2 font-mono">
@@ -1496,16 +2009,56 @@ export const InteractiveRMultipleCalculatorTool: React.FC<InteractiveRMultipleCa
             <div className="flex items-center space-x-2">
               <FileText className="w-3.5 h-3.5 text-amber-600" />
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-900">
-                Quick Notes & Pivot Thesis Points ({stock.ticker})
+                Trade Notes & Auto-Populated SEPA Thesis ({stock.ticker})
               </span>
             </div>
-            <div className="flex items-center space-x-2 text-[9px]">
+            <div className="flex flex-wrap items-center gap-1.5 text-[9px]">
               {savedStatus && (
                 <span className="text-emerald-800 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 font-bold flex items-center space-x-1">
                   <Check className="w-2.5 h-2.5 text-emerald-600" />
                   <span>{savedStatus}</span>
                 </span>
               )}
+              <button
+                type="button"
+                onClick={() => {
+                  const dateStr = new Date().toISOString().split('T')[0];
+                  const autoNotes = `=== SEPA TRADE PLAN THESIS: ${stock.ticker} (${stock.name}) ===
+📅 Date: ${dateStr}
+
+[1] SETUP & TECHNICAL CATALYST
+• Sector / Industry: ${stock.sector} / ${stock.industry}
+• RS Rating: ${stock.rsRating} (Relative Strength Leader)
+• VCP Contraction: Tight Squeeze | Vol Dry-Up: ${stock.volumeDryUpPercent}% vs 20D Avg Vol
+• Stage 2 Trend Template: ${breakoutProb?.factors?.trendScore || 8}/8 Rules Passed
+
+[2] AUTO-POPULATED EXECUTION & EXIT LEVELS
+• Pivot Entry: ${formatCurrency(validEntry, currencySymbol)} (Buy Zone: ${formatCurrency(validEntry, currencySymbol)} - ${formatCurrency(validEntry * 1.05, currencySymbol)})
+• Initial Stop Loss (1R): ${formatCurrency(validStop, currencySymbol)} (-${riskPercent.toFixed(2)}% Risk)
+• 1R Break-Even Level: ${formatCurrency(validEntry + riskPerShare, currencySymbol)} (+${riskPercent.toFixed(2)}%)
+• Target 1 (2R Partial Take): ${formatCurrency(validEntry + (2 * riskPerShare), currencySymbol)} (+${(riskPercent * 2).toFixed(2)}%)
+• Target 2 (3R SEPA Standard): ${formatCurrency(target3RPrice, currencySymbol)} (+${potential3RGainPercent.toFixed(2)}%)
+• Target 3 (5R Champion Target): ${formatCurrency(validEntry + (5 * riskPerShare), currencySymbol)} (+${(riskPercent * 5).toFixed(2)}%)
+• Trailing Stop Exit (-2x ATR): ${formatCurrency(projectedTrailPrice, currencySymbol)}
+
+[3] POSITION SIZING & CAPITAL RISK
+• Portfolio Equity: ${formatCurrency(accountCapital, currencySymbol)} | Max Risk Cap (1%): ${formatCurrency(accountCapital * 0.01, currencySymbol)}
+• Sized Position: ${activeShares.toLocaleString()} shares (${formatCurrency(totalPositionCost, currencySymbol)} total cost)
+• Maximum Dollar Loss at 1R Stop: -${formatCurrency(totalDollarRisk, currencySymbol)}
+
+[4] SEPA EXECUTION & DISCIPLINE RULES
+1. Do NOT chase past +5% of pivot entry (${formatCurrency(validEntry * 1.05, currencySymbol)}).
+2. Move stop loss to entry price (${formatCurrency(validEntry, currencySymbol)}) once price reaches +1R (+${riskPercent.toFixed(2)}%).
+3. Sell 50% position at Target 1 (${formatCurrency(validEntry + 2 * riskPerShare, currencySymbol)}) and trail runner with 50-day SMA or 8% trailing stop.
+4. Hard exit if price breaks below initial stop loss (${formatCurrency(validStop, currencySymbol)}).`;
+                  onNotesChange(autoNotes);
+                }}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white border border-emerald-800 px-2 py-0.5 font-black uppercase cursor-pointer shadow-2xs flex items-center space-x-1"
+                title="Auto-fill complete SEPA trade thesis, exit levels, position sizing & execution rules"
+              >
+                <Zap className="w-2.5 h-2.5 text-amber-300" />
+                <span>Auto-Generate SEPA Notes</span>
+              </button>
               {onInsertTemplate && (
                 <button
                   type="button"
@@ -1513,7 +2066,7 @@ export const InteractiveRMultipleCalculatorTool: React.FC<InteractiveRMultipleCa
                   className="bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 px-2 py-0.5 font-extrabold uppercase cursor-pointer"
                   title="Insert structured pivot thesis template"
                 >
-                  + Pivot Thesis Template
+                  + Post-Mortem Template
                 </button>
               )}
             </div>
@@ -1522,14 +2075,26 @@ export const InteractiveRMultipleCalculatorTool: React.FC<InteractiveRMultipleCa
           <textarea
             value={notes || ''}
             onChange={(e) => onNotesChange(e.target.value)}
-            placeholder={`Jot down pivot thesis points, catalyst triggers, volume dry-up notes, or key execution rules for ${stock.ticker}... (Auto-saved locally)`}
-            rows={3}
+            placeholder={`Jot down pivot thesis points, catalyst triggers, volume dry-up notes, or key execution rules for ${stock.ticker}... Click 'Auto-Generate SEPA Notes' to populate automatically.`}
+            rows={4}
             className="w-full bg-[#f9f8f5] border border-[#e5e4e1] p-2.5 text-xs text-[#1a1a1a] font-mono focus:border-black focus:outline-none placeholder:text-gray-400 placeholder:font-sans resize-y"
           />
 
           <div className="flex flex-wrap items-center justify-between text-[9px] text-gray-500 font-mono">
             <span className="italic font-sans">Notes are saved locally in your browser specifically for <strong className="font-mono text-[#1a1a1a]">{stock.ticker}</strong>.</span>
             <div className="flex items-center space-x-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (notes) {
+                    navigator.clipboard.writeText(notes);
+                  }
+                }}
+                className="text-gray-700 hover:text-black uppercase font-bold flex items-center space-x-1 cursor-pointer"
+                title="Copy notes to clipboard"
+              >
+                <span>Copy Notes</span>
+              </button>
               <span className="text-gray-400 font-mono">{(notes || '').length} chars</span>
               {notes && onClearNotes && (
                 <button
@@ -1829,12 +2394,20 @@ export const TradePlanCard: React.FC<TradePlanCardProps> = ({ stock }) => {
   };
 
   const handleInsertTemplate = () => {
-    const template = `• Entry Setup Hypothesis: Tight VCP contraction near ${currencySymbol}${stock.pivotPrice.toFixed(2)} with volume dry-up.
-• Risk Management: Stop loss set at ${currencySymbol}${stock.stopLossPrice.toFixed(2)} (-${stock.stopLossPercent}%).
-• Post-Mortem Analysis:
-  - What went well:
-  - Execution Grade: A / B / C
-  - Key Lessons:`;
+    const pEntry = customEntryPrice > 0 ? customEntryPrice : stock.pivotPrice;
+    const pStop = customStopPrice > 0 ? customStopPrice : stock.stopLossPrice;
+    const pRisk = Math.max(0.01, pEntry - pStop);
+    const pRiskPct = ((pEntry - pStop) / pEntry) * 100;
+
+    const template = `=== SEPA POST-MORTEM & EXECUTION JOURNAL: ${stock.ticker} (${stock.name}) ===
+• Pivot Entry: ${formatCurrency(pEntry, currencySymbol)} | Initial Stop (1R): ${formatCurrency(pStop, currencySymbol)} (-${pRiskPct.toFixed(2)}%)
+• Auto Exit Levels: 1R Break-Even: ${formatCurrency(pEntry + pRisk, currencySymbol)} | 2R Target: ${formatCurrency(pEntry + 2 * pRisk, currencySymbol)} | 3R Target: ${formatCurrency(pEntry + 3 * pRisk, currencySymbol)}
+• Trade Thesis Rationale: Tight VCP contraction with volume dry-up near pivot level.
+• Post-Mortem Analysis & Self-Audit:
+  - What went well (Execution & Discipline):
+  - Slip-ups / Emotional mistakes:
+  - Execution Grade: [ A+ / A / B / C / F ]
+  - Key Takeaway for Future Trades:`;
 
     const newNotes = notes ? `${notes}\n\n${template}` : template;
     setNotes(newNotes);
@@ -2748,6 +3321,18 @@ export const TradePlanCard: React.FC<TradePlanCardProps> = ({ stock }) => {
 
       {/* Stan Weinstein & Mark Minervini 4-Stage Identifier Panel */}
       <StageIdentifierPanel stock={stock} currencySymbol={currencySymbol} />
+
+      {/* Interactive Trailing Stop Exit Calculator Panel */}
+      <TrailingStopCalculatorPanel
+        stock={stock}
+        currencySymbol={currencySymbol}
+        entryPrice={pivotEntry}
+        initialStopLoss={currentStopLoss}
+        activeShares={activeShares}
+        onApplyStopLoss={(newStop) => {
+          setCustomStopLossPrice(newStop);
+        }}
+      />
 
       {/* Daily Floor Pivots & ATR Volatility Matrix */}
       <DailyPivotAndVolatilityPanel stock={stock} />
