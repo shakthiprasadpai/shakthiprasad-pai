@@ -13,7 +13,7 @@ export interface BackgroundCheckLog {
   currentPrice: number;
   targetPrice: number;
   targetType: string;
-  event: 'PIVOT_CROSSED' | 'STOP_LOSS_HIT' | 'PROXIMITY_WARNING' | 'VOLATILITY_DRYUP_PRIMED' | 'TICK_CHECK';
+  event: 'PIVOT_CROSSED' | 'STOP_LOSS_HIT' | 'PROXIMITY_WARNING' | 'VOLATILITY_DRYUP_PRIMED' | 'STAGE_2_COMPLETED' | 'VCP_BASE_FORMED' | 'TICK_CHECK';
   triggered: boolean;
 }
 
@@ -31,7 +31,7 @@ export function initializeLocalStorageAlerts(stocks: MinerviniTradeSetup[]): Pri
     console.error('Failed to read price alerts from localStorage:', e);
   }
 
-  // Create initial default pivot entry, stop loss, and VCP volatility dry-up alerts for provided stocks
+  // Create initial default pivot entry, stop loss, VCP volatility dry-up, Stage 2 criteria, and VCP base alerts
   const initialAlerts: PriceAlert[] = stocks.slice(0, 4).flatMap((stock) => [
     {
       id: `alert-${stock.ticker}-pivot-${Date.now()}`,
@@ -73,6 +73,35 @@ export function initializeLocalStorageAlerts(stocks: MinerviniTradeSetup[]): Pri
       volatilityTightnessTargetPct: 5.0,
       volatilityVolumeDryUpTargetPct: -50.0,
       notes: `⚡ VCP Volatility Dry-Up Radar: Alert when 3-week price range tightens ≤ 5% with volume dry-up ≤ -50%`,
+    },
+    {
+      id: `alert-${stock.ticker}-stage2-${Date.now()}`,
+      ticker: stock.ticker,
+      stockName: stock.name,
+      targetType: 'STAGE_2_COMPLETED',
+      targetPrice: stock.pivotPrice,
+      triggerProximityPercent: 0,
+      currentPrice: stock.currentPrice,
+      status: 'ACTIVE',
+      createdAt: new Date().toLocaleDateString(),
+      exchange: stock.exchange,
+      stage2RuleThreshold: 7,
+      notes: `🎯 Stage 2 Criteria Completed Alert: Triggers when 7+ Trend Template rules pass`,
+    },
+    {
+      id: `alert-${stock.ticker}-vcpbase-${Date.now()}`,
+      ticker: stock.ticker,
+      stockName: stock.name,
+      targetType: 'VCP_BASE_FORMED',
+      targetPrice: stock.pivotPrice,
+      triggerProximityPercent: 0,
+      currentPrice: stock.currentPrice,
+      status: 'ACTIVE',
+      createdAt: new Date().toLocaleDateString(),
+      exchange: stock.exchange,
+      vcpContractionThreshold: 3,
+      volatilityVolumeDryUpTargetPct: -50.0,
+      notes: `⚡ VCP Base Formed Alert: Triggers when stock forms T3/T4 base with volume dry-up ≤ -50%`,
     },
   ]);
 

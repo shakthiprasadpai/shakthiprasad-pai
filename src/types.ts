@@ -165,7 +165,7 @@ export interface PriceAlert {
   id: string;
   ticker: string;
   stockName: string;
-  targetType: 'PIVOT_ENTRY' | 'STOP_LOSS' | 'CUSTOM_ABOVE' | 'CUSTOM_BELOW' | 'VOLATILITY_DRYUP' | 'RISK_REWARD_RATIO';
+  targetType: 'PIVOT_ENTRY' | 'STOP_LOSS' | 'CUSTOM_ABOVE' | 'CUSTOM_BELOW' | 'VOLATILITY_DRYUP' | 'RISK_REWARD_RATIO' | 'STAGE_2_COMPLETED' | 'VCP_BASE_FORMED';
   targetPrice: number;
   triggerProximityPercent: number; // e.g. within 1.5% of target
   currentPrice: number;
@@ -179,6 +179,10 @@ export interface PriceAlert {
   volatilityVolumeDryUpTargetPct?: number; // e.g. <= -50% volume dry-up
   // Risk-Reward Ratio Specific Settings
   targetRRRatio?: number; // e.g. 3.0 or 5.0 ratio target
+  // Pattern Alert Specific Settings
+  stage2RuleThreshold?: number; // e.g. 7 or 8 rules passed for Stage 2
+  vcpContractionThreshold?: number; // e.g. 3 or 4 contractions
+  watchlistId?: string;
 }
 
 export interface PortfolioHolding {

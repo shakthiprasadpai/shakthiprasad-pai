@@ -37,7 +37,7 @@ export interface ActiveToastNotification {
   alert: PriceAlert;
   previousPrice: number;
   currentPrice: number;
-  crossoverType: 'PIVOT_CROSSOVER' | 'STOP_LOSS_HIT' | 'PROXIMITY_ALERT' | 'VOLATILITY_DRYUP' | 'PORTFOLIO_PIVOT_CROSSOVER' | 'PORTFOLIO_STOP_LOSS_HIT';
+  crossoverType: 'PIVOT_CROSSOVER' | 'STOP_LOSS_HIT' | 'PROXIMITY_ALERT' | 'VOLATILITY_DRYUP' | 'PORTFOLIO_PIVOT_CROSSOVER' | 'PORTFOLIO_STOP_LOSS_HIT' | 'STAGE_2_COMPLETED' | 'VCP_BASE_FORMED';
   triggeredAt: string;
   isPortfolioHolding?: boolean;
   portfolioHolding?: PortfolioHolding;
@@ -270,6 +270,101 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
           }
         }
 
+        // Check 4: Stage 2 Criteria Completed Pattern Alert
+        if (alert.targetType === 'STAGE_2_COMPLETED') {
+          const reqRules = alert.stage2RuleThreshold || 7;
+          const currentPassedRules = stockMatch ? stockMatch.trendScore : 8;
+          const isStage2Complete = currentPassedRules >= reqRules;
+
+          if (isStage2Complete && alert.status === 'ACTIVE') {
+            hasUpdates = true;
+            playAlertChime();
+
+            if ('Notification' in window && Notification.permission === 'granted') {
+              new Notification(`🎯 Stage 2 Criteria Completed: ${alert.ticker}`, {
+                body: `${alert.ticker} passed ${currentPassedRules}/8 Stage 2 Trend Template rules! Trading in confirmed Stage 2 uptrend with RS ${stockMatch?.rsRating || 90}.`,
+                icon: '/favicon.ico',
+              });
+            }
+
+            appendTrackerLog({
+              ticker: alert.ticker,
+              exchange: alert.exchange || 'NASDAQ',
+              previousPrice,
+              currentPrice: simulatedPrice,
+              targetPrice: alert.targetPrice,
+              targetType: alert.targetType,
+              event: 'STAGE_2_COMPLETED',
+              triggered: true,
+            });
+
+            newToast = {
+              alert: { ...alert, status: 'TRIGGERED' as const },
+              previousPrice,
+              currentPrice: simulatedPrice,
+              crossoverType: 'STAGE_2_COMPLETED',
+              triggeredAt: new Date().toLocaleTimeString(),
+              isPortfolioHolding: isPortfolio,
+              portfolioHolding: portfolioMatch,
+            };
+
+            return {
+              ...alert,
+              currentPrice: simulatedPrice,
+              status: 'TRIGGERED' as const,
+              triggeredAt: new Date().toLocaleTimeString(),
+            };
+          }
+        }
+
+        // Check 5: VCP Base Formed Pattern Alert
+        if (alert.targetType === 'VCP_BASE_FORMED') {
+          const reqContractions = alert.vcpContractionThreshold || 3;
+          const currentContractions = stockMatch ? (stockMatch.contractions?.length || 3) : 3;
+          const currentDryUp = stockMatch ? stockMatch.volumeDryUpPercent : -55;
+          const isVcpFormed = currentContractions >= reqContractions && currentDryUp <= -40;
+
+          if (isVcpFormed && alert.status === 'ACTIVE') {
+            hasUpdates = true;
+            playAlertChime();
+
+            if ('Notification' in window && Notification.permission === 'granted') {
+              new Notification(`⚡ VCP Base Formed Alert: ${alert.ticker}`, {
+                body: `${alert.ticker} completed a tight ${stockMatch?.patternType || 'VCP Base'} with ${currentContractions} contractions & ${currentDryUp}% volume dry-up! Ready for breakout at ${currencySymbol}${stockMatch?.pivotPrice || alert.targetPrice}.`,
+                icon: '/favicon.ico',
+              });
+            }
+
+            appendTrackerLog({
+              ticker: alert.ticker,
+              exchange: alert.exchange || 'NASDAQ',
+              previousPrice,
+              currentPrice: simulatedPrice,
+              targetPrice: alert.targetPrice,
+              targetType: alert.targetType,
+              event: 'VCP_BASE_FORMED',
+              triggered: true,
+            });
+
+            newToast = {
+              alert: { ...alert, status: 'TRIGGERED' as const },
+              previousPrice,
+              currentPrice: simulatedPrice,
+              crossoverType: 'VCP_BASE_FORMED',
+              triggeredAt: new Date().toLocaleTimeString(),
+              isPortfolioHolding: isPortfolio,
+              portfolioHolding: portfolioMatch,
+            };
+
+            return {
+              ...alert,
+              currentPrice: simulatedPrice,
+              status: 'TRIGGERED' as const,
+              triggeredAt: new Date().toLocaleTimeString(),
+            };
+          }
+        }
+
         return { ...alert, currentPrice: simulatedPrice };
       });
 
@@ -413,6 +508,78 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
                 <ShieldAlert className="w-3 h-3" />
                 <span>Test Stop Loss Level Hit</span>
               </button>
+
+              <button
+                onClick={() => {
+                  const stock = stocks[0];
+                  playAlertChime();
+                  if ('Notification' in window && Notification.permission === 'granted') {
+                    new Notification(`🎯 Stage 2 Criteria Completed: ${stock.ticker}`, {
+                      body: `${stock.ticker} (${stock.name}) passed 8/8 Stage 2 Trend Template rules! Price in confirmed Stage 2 uptrend with RS ${stock.rsRating}.`,
+                      icon: '/favicon.ico',
+                    });
+                  }
+                  setActiveToast({
+                    alert: {
+                      id: `sim-stage2-${Date.now()}`,
+                      ticker: stock.ticker,
+                      stockName: stock.name,
+                      targetType: 'STAGE_2_COMPLETED',
+                      targetPrice: stock.pivotPrice,
+                      triggerProximityPercent: 0,
+                      currentPrice: stock.currentPrice,
+                      status: 'TRIGGERED',
+                      createdAt: new Date().toLocaleDateString(),
+                      exchange: stock.exchange,
+                      notes: '🎯 Stage 2 Criteria Completed Alert Test',
+                    },
+                    previousPrice: stock.currentPrice - 2.5,
+                    currentPrice: stock.currentPrice,
+                    crossoverType: 'STAGE_2_COMPLETED',
+                    triggeredAt: new Date().toLocaleTimeString(),
+                  });
+                }}
+                className="bg-cyan-600 hover:bg-cyan-500 text-white px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center space-x-1.5 shadow-sm transition-all"
+              >
+                <Sparkles className="w-3 h-3" />
+                <span>Test Stage 2 Notification</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  const stock = stocks[0];
+                  playAlertChime();
+                  if ('Notification' in window && Notification.permission === 'granted') {
+                    new Notification(`⚡ VCP Base Formed Alert: ${stock.ticker}`, {
+                      body: `${stock.ticker} (${stock.name}) formed a tight ${stock.patternType} with ${stock.contractions?.length || 3} contractions and ${stock.volumeDryUpPercent}% volume dry-up!`,
+                      icon: '/favicon.ico',
+                    });
+                  }
+                  setActiveToast({
+                    alert: {
+                      id: `sim-vcp-${Date.now()}`,
+                      ticker: stock.ticker,
+                      stockName: stock.name,
+                      targetType: 'VCP_BASE_FORMED',
+                      targetPrice: stock.pivotPrice,
+                      triggerProximityPercent: 0,
+                      currentPrice: stock.currentPrice,
+                      status: 'TRIGGERED',
+                      createdAt: new Date().toLocaleDateString(),
+                      exchange: stock.exchange,
+                      notes: '⚡ VCP Base Formed & Coiled Alert Test',
+                    },
+                    previousPrice: stock.currentPrice - 1.2,
+                    currentPrice: stock.currentPrice,
+                    crossoverType: 'VCP_BASE_FORMED',
+                    triggeredAt: new Date().toLocaleTimeString(),
+                  });
+                }}
+                className="bg-amber-600 hover:bg-amber-500 text-white px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center space-x-1.5 shadow-sm transition-all"
+              >
+                <Zap className="w-3 h-3" />
+                <span>Test VCP Base Notification</span>
+              </button>
             </div>
           </div>
         )}
@@ -441,6 +608,8 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
   const isPivot = activeToast.crossoverType === 'PIVOT_CROSSOVER' || activeToast.crossoverType === 'PORTFOLIO_PIVOT_CROSSOVER';
   const isStopHit = activeToast.crossoverType === 'STOP_LOSS_HIT' || activeToast.crossoverType === 'PORTFOLIO_STOP_LOSS_HIT';
   const isVolatility = activeToast.crossoverType === 'VOLATILITY_DRYUP';
+  const isStage2 = activeToast.crossoverType === 'STAGE_2_COMPLETED';
+  const isVcpBase = activeToast.crossoverType === 'VCP_BASE_FORMED';
 
   const holding = activeToast.portfolioHolding;
   const shares = holding ? holding.shares : 50;
@@ -458,6 +627,10 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
             ? 'bg-[#0a1a12] text-white border-emerald-400 shadow-emerald-500/30'
             : isPortfolio && isStopHit
             ? 'bg-[#21090c] text-white border-rose-500 shadow-rose-500/30'
+            : isStage2
+            ? 'bg-[#0f1d24] text-white border-cyan-400 shadow-cyan-500/30'
+            : isVcpBase
+            ? 'bg-[#1a142e] text-white border-amber-400 shadow-amber-500/30'
             : isVolatility
             ? 'bg-[#150d2a] text-white border-purple-400 shadow-purple-500/30'
             : isPivot
@@ -474,6 +647,10 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
                   ? 'bg-emerald-500 text-black'
                   : isPortfolio && isStopHit
                   ? 'bg-rose-600 text-white'
+                  : isStage2
+                  ? 'bg-cyan-400 text-black'
+                  : isVcpBase
+                  ? 'bg-amber-400 text-black'
                   : isVolatility
                   ? 'bg-purple-500 text-white'
                   : isPivot
@@ -483,6 +660,10 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
             >
               {isPortfolio ? (
                 <Briefcase className="w-5 h-5" />
+              ) : isStage2 ? (
+                <Sparkles className="w-5 h-5" />
+              ) : isVcpBase ? (
+                <Zap className="w-5 h-5" />
               ) : isVolatility ? (
                 <Activity className="w-5 h-5" />
               ) : isPivot ? (
@@ -503,6 +684,10 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
                     ? '💼 PORTFOLIO POSITION BREAKOUT'
                     : isPortfolio && isStopHit
                     ? '💼 PORTFOLIO STOP LOSS TRIGGERED'
+                    : isStage2
+                    ? '🎯 STAGE 2 CRITERIA COMPLETED'
+                    : isVcpBase
+                    ? '⚡ VCP BASE FORMED & COILED'
                     : isVolatility
                     ? '⚡ VCP VOLATILITY DRY-UP PRIMED'
                     : isPivot

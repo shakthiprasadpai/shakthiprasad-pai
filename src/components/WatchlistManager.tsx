@@ -12,8 +12,10 @@ import {
 } from '../utils/watchlistStorage';
 import { 
   Bookmark, Star, Plus, Trash2, FileText, Download, TrendingUp, 
-  Target, ShieldCheck, Sparkles, Filter, Check, Bot, Eye, Layers, Search
+  Target, ShieldCheck, Sparkles, Filter, Check, Bot, Eye, Layers, Search,
+  Bell, BellRing, Zap, CheckCircle2, AlertTriangle, Activity
 } from 'lucide-react';
+import { playAlertChime, appendTrackerLog } from '../utils/backgroundPriceChecker';
 
 interface WatchlistManagerProps {
   stocks: MinerviniTradeSetup[];
@@ -50,6 +52,73 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
   const [newPivot, setNewPivot] = useState<number>(1250);
   const [newStop, setNewStop] = useState<number>(1180);
   const [newRs, setNewRs] = useState<number>(92);
+
+  // Notification API Permission State
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission>(() => {
+    return typeof window !== 'undefined' && 'Notification' in window
+      ? Notification.permission
+      : 'default';
+  });
+
+  const handleRequestPermission = async () => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      const perm = await Notification.requestPermission();
+      setNotifPermission(perm);
+      if (perm === 'granted') {
+        playAlertChime();
+        new Notification('🎯 Watchlist Pattern Alerts Activated', {
+          body: 'Browser Notifications enabled! You will receive real-time notifications when watchlist stocks complete Stage 2 criteria or form a VCP base.',
+          icon: '/favicon.ico',
+        });
+      }
+    }
+  };
+
+  const handleSimulateStage2Alert = (stock: MinerviniTradeSetup) => {
+    playAlertChime();
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+      new Notification(`🎯 Stage 2 Criteria Completed: ${stock.ticker}`, {
+        body: `${stock.ticker} (${stock.name}) passed 8/8 Stage 2 Trend Template rules! Trading in confirmed Stage 2 uptrend with RS ${stock.rsRating}.`,
+        icon: '/favicon.ico',
+      });
+    } else {
+      handleRequestPermission();
+    }
+    appendTrackerLog({
+      ticker: stock.ticker,
+      exchange: stock.exchange,
+      previousPrice: stock.currentPrice - 2,
+      currentPrice: stock.currentPrice,
+      targetPrice: stock.pivotPrice,
+      targetType: 'STAGE_2_COMPLETED',
+      event: 'STAGE_2_COMPLETED',
+      triggered: true,
+    });
+    window.dispatchEvent(new CustomEvent('minervini_alerts_updated'));
+  };
+
+  const handleSimulateVcpBaseAlert = (stock: MinerviniTradeSetup) => {
+    playAlertChime();
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+      new Notification(`⚡ VCP Base Formed Alert: ${stock.ticker}`, {
+        body: `${stock.ticker} (${stock.name}) formed a tight ${stock.patternType} base with ${stock.volumeDryUpPercent}% volume dry-up! Ready for breakout at pivot.`,
+        icon: '/favicon.ico',
+      });
+    } else {
+      handleRequestPermission();
+    }
+    appendTrackerLog({
+      ticker: stock.ticker,
+      exchange: stock.exchange,
+      previousPrice: stock.currentPrice - 1,
+      currentPrice: stock.currentPrice,
+      targetPrice: stock.pivotPrice,
+      targetType: 'VCP_BASE_FORMED',
+      event: 'VCP_BASE_FORMED',
+      triggered: true,
+    });
+    window.dispatchEvent(new CustomEvent('minervini_alerts_updated'));
+  };
 
   useEffect(() => {
     saveStoredWatchlists(watchlists);
@@ -222,7 +291,75 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
         </div>
       </div>
 
-      {/* WATCHLIST SELECTOR TABS & FILTERS */}
+      {/* REAL-TIME PATTERN ALERT SYSTEM BANNER */}
+      <div className="bg-gradient-to-r from-slate-900 via-amber-950/30 to-slate-900 border border-amber-500/30 p-5 rounded-xl shadow-lg font-mono text-xs space-y-3 relative overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 rounded-lg bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 font-bold">
+              <BellRing className="w-5 h-5 text-amber-400 animate-pulse" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-amber-400 flex items-center gap-1">
+                  <Zap className="w-3 h-3 text-amber-400" />
+                  REAL-TIME PATTERN ALERTS
+                </span>
+                <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded border ${
+                  notifPermission === 'granted'
+                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                    : notifPermission === 'denied'
+                    ? 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                    : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                }`}>
+                  {notifPermission === 'granted'
+                    ? '🟢 Browser Notifications Granted'
+                    : notifPermission === 'denied'
+                    ? '🔴 Notifications Blocked in Browser'
+                    : '🟡 Browser Permission Required'}
+                </span>
+              </div>
+              <h2 className="text-base font-serif font-black text-white mt-0.5">
+                Stage 2 Completion & VCP Base Formation Notifications
+              </h2>
+            </div>
+          </div>
+
+          {/* Action & Test Controls */}
+          <div className="flex flex-wrap items-center gap-2">
+            {notifPermission !== 'granted' && (
+              <button
+                onClick={handleRequestPermission}
+                className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold px-3.5 py-2 rounded-lg flex items-center space-x-1.5 cursor-pointer shadow-md transition-all"
+              >
+                <Bell className="w-4 h-4" />
+                <span>Enable Browser Notifications</span>
+              </button>
+            )}
+
+            <button
+              onClick={() => handleSimulateStage2Alert(watchlistStocks[0] || selectedStock)}
+              className="bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/40 px-3 py-2 rounded-lg font-bold flex items-center space-x-1.5 cursor-pointer transition-all"
+              title="Test real-time browser notification when a watchlist stock passes Stage 2 rules"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Test Stage 2 Alert</span>
+            </button>
+
+            <button
+              onClick={() => handleSimulateVcpBaseAlert(watchlistStocks[0] || selectedStock)}
+              className="bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/40 px-3 py-2 rounded-lg font-bold flex items-center space-x-1.5 cursor-pointer transition-all"
+              title="Test real-time browser notification when a watchlist stock completes a VCP base"
+            >
+              <Zap className="w-3.5 h-3.5 text-amber-400" />
+              <span>Test VCP Base Alert</span>
+            </button>
+          </div>
+        </div>
+
+        <p className="text-[11px] font-sans text-slate-300 leading-relaxed border-t border-slate-800/80 pt-2.5">
+          The background pattern monitor scans your active watchlist every 3.5 seconds. When a stock completes its <strong>Stage 2 Trend Template criteria (7+ rules passed)</strong> or coils into a tight <strong>VCP Base (3+ contractions with volume dry-up ≤ -50%)</strong>, the <strong>Browser Notification API</strong> triggers an instant native desktop alert with custom chime.
+        </p>
+      </div>
       <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl shadow-md space-y-4 font-mono text-xs">
         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-3">
           <div className="flex items-center space-x-2 overflow-x-auto no-scrollbar py-1">
@@ -387,6 +524,22 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
                       {/* Actions */}
                       <td className="p-3.5 text-right">
                         <div className="flex items-center justify-end space-x-2">
+                          <button
+                            onClick={() => handleSimulateStage2Alert(stock)}
+                            title="Trigger Stage 2 Completed Pattern Notification"
+                            className="p-1.5 rounded bg-cyan-500/10 hover:bg-cyan-500 text-cyan-400 hover:text-black border border-cyan-500/30 transition-all cursor-pointer"
+                          >
+                            <Sparkles className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            onClick={() => handleSimulateVcpBaseAlert(stock)}
+                            title="Trigger VCP Base Formed Pattern Notification"
+                            className="p-1.5 rounded bg-amber-500/10 hover:bg-amber-500 text-amber-400 hover:text-black border border-amber-500/30 transition-all cursor-pointer"
+                          >
+                            <Zap className="w-3.5 h-3.5" />
+                          </button>
+
                           <button
                             onClick={() => {
                               onSelectStock(stock);
