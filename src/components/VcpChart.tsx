@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { MinerviniTradeSetup, PricePoint } from '../types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { MinerviniTradeSetup, PricePoint, CustomTrendline } from '../types';
 import { formatCurrency, formatVolume, getCurrencySymbol, evaluateTrendTemplate } from '../utils/sepaCalculator';
 import { getStoredJournalNotes } from '../utils/tradeJournalStorage';
 import { PineScriptExporter } from './PineScriptExporter';
@@ -45,7 +45,16 @@ import {
   Sliders,
   Layers,
   ArrowUpRight,
-  ArrowDownRight
+  ArrowDownRight,
+  Pencil,
+  Plus,
+  Trash2,
+  Edit3,
+  Check,
+  X,
+  MousePointer,
+  Save,
+  RefreshCw
 } from 'lucide-react';
 
 interface VcpChartProps {
@@ -196,6 +205,240 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
   const [showHistoricalStops, setShowHistoricalStops] = useState(true);
   const [selectedLevelId, setSelectedLevelId] = useState<string | null>(null);
 
+  // Custom Trendline State & LocalStorage Persistence
+  const [showCustomTrendlines, setShowCustomTrendlines] = useState(true);
+  const [customTrendlines, setCustomTrendlines] = useState<CustomTrendline[]>(() => {
+    try {
+      const saved = localStorage.getItem(`vcp_trendlines_${stock.ticker}`);
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (e) {
+      console.error('Failed to load trendlines from localStorage:', e);
+    }
+    return stock.customTrendlines || [];
+  });
+
+  // Re-sync when selected stock ticker changes
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(`vcp_trendlines_${stock.ticker}`);
+      if (saved) {
+        setCustomTrendlines(JSON.parse(saved));
+      } else {
+        setCustomTrendlines(stock.customTrendlines || []);
+      }
+    } catch (e) {
+      setCustomTrendlines(stock.customTrendlines || []);
+    }
+  }, [stock.ticker]);
+
+  // Helper to persist trendline changes
+  const saveTrendlines = (updated: CustomTrendline[]) => {
+    setCustomTrendlines(updated);
+    stock.customTrendlines = updated;
+    try {
+      localStorage.setItem(`vcp_trendlines_${stock.ticker}`, JSON.stringify(updated));
+    } catch (e) {
+      console.error('Failed to persist custom trendlines:', e);
+    }
+  };
+
+  // Interactive Drawing & Creator Drawer State
+  const [isDrawingMode, setIsDrawingMode] = useState(false);
+  const [drawingType, setDrawingType] = useState<'SUPPORT' | 'RESISTANCE' | 'TRENDLINE'>('RESISTANCE');
+  const [clickStep, setClickStep] = useState<0 | 1>(0);
+  const [point1, setPoint1] = useState<{ date: string; price: number } | null>(null);
+  const [isCreatorOpen, setIsCreatorOpen] = useState(false);
+
+  // Manual Form State
+  const [manualLabel, setManualLabel] = useState('Custom Resistance');
+  const [manualType, setManualType] = useState<'SUPPORT' | 'RESISTANCE' | 'TRENDLINE' | 'CUSTOM'>('RESISTANCE');
+  const [manualStartDate, setManualStartDate] = useState('');
+  const [manualStartPrice, setManualStartPrice] = useState<number>(0);
+  const [manualEndDate, setManualEndDate] = useState('');
+  const [manualEndPrice, setManualEndPrice] = useState<number>(0);
+  const [manualColor, setManualColor] = useState('#ef4444');
+  const [manualIsDashed, setManualIsDashed] = useState(false);
+  const [manualNotes, setManualNotes] = useState('');
+
+  // Auto-fill defaults when stock changes or manual form opens
+  useEffect(() => {
+    if (stock.priceHistory && stock.priceHistory.length > 0) {
+      const h = stock.priceHistory;
+      const startP = h[Math.max(0, h.length - 30)] || h[0];
+      const endP = h[h.length - 1];
+      setManualStartDate(startP.date);
+      setManualStartPrice(startP.high || stock.pivotPrice);
+      setManualEndDate(endP.date);
+      setManualEndPrice(endP.close || stock.pivotPrice);
+    }
+  }, [stock]);
+
+  // Preset Generator 1: Resistance Line (Top Contraction Peaks)
+  const handleAddAutoResistance = () => {
+    const contractions = stock.contractions || [];
+    const history = stock.priceHistory || [];
+    if (history.length === 0) return;
+
+    let p1Date = history[Math.max(0, history.length - 40)]?.date || history[0].date;
+    let p1Price = stock.pivotPrice;
+    let p2Date = history[history.length - 1].date;
+    let p2Price = stock.pivotPrice;
+
+    if (contractions.length >= 2) {
+      p1Date = contractions[0].startDate;
+      p1Price = contractions[0].highPrice;
+      p2Date = contractions[contractions.length - 1].startDate;
+      p2Price = contractions[contractions.length - 1].highPrice;
+    } else {
+      p1Price = stock.high52w || stock.pivotPrice;
+      p2Price = stock.pivotPrice;
+    }
+
+    const newRes: CustomTrendline = {
+      id: `auto-res-${Date.now()}`,
+      type: 'RESISTANCE',
+      label: 'Auto VCP Resistance Peak',
+      startDate: p1Date,
+      startPrice: p1Price,
+      endDate: p2Date,
+      endPrice: p2Price,
+      color: '#ef4444',
+      lineWidth: 2,
+      isDashed: false,
+      notes: 'Automatically generated resistance line connecting VCP contraction highs.',
+      createdAt: new Date().toLocaleDateString(),
+    };
+
+    saveTrendlines([...customTrendlines, newRes]);
+  };
+
+  // Preset Generator 2: Support Line (Shakeout Lows)
+  const handleAddAutoSupport = () => {
+    const contractions = stock.contractions || [];
+    const history = stock.priceHistory || [];
+    if (history.length === 0) return;
+
+    let p1Date = history[Math.max(0, history.length - 40)]?.date || history[0].date;
+    let p1Price = stock.stopLossPrice;
+    let p2Date = history[history.length - 1].date;
+    let p2Price = stock.stopLossPrice;
+
+    if (contractions.length >= 2) {
+      p1Date = contractions[0].endDate;
+      p1Price = contractions[0].lowPrice;
+      p2Date = contractions[contractions.length - 1].endDate;
+      p2Price = contractions[contractions.length - 1].lowPrice;
+    }
+
+    const newSup: CustomTrendline = {
+      id: `auto-sup-${Date.now()}`,
+      type: 'SUPPORT',
+      label: 'Auto Shakeout Support Floor',
+      startDate: p1Date,
+      startPrice: p1Price,
+      endDate: p2Date,
+      endPrice: p2Price,
+      color: '#22c55e',
+      lineWidth: 2,
+      isDashed: false,
+      notes: 'Automatically generated support line connecting shakeout contraction lows.',
+      createdAt: new Date().toLocaleDateString(),
+    };
+
+    saveTrendlines([...customTrendlines, newSup]);
+  };
+
+  // Handle Manual Custom Line Submit
+  const handleSaveManualTrendline = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!manualStartDate || !manualEndDate) return;
+
+    const newTrendline: CustomTrendline = {
+      id: `custom-trend-${Date.now()}`,
+      type: manualType,
+      label: manualLabel || 'Custom Trendline',
+      startDate: manualStartDate,
+      startPrice: Number(manualStartPrice) || stock.pivotPrice,
+      endDate: manualEndDate,
+      endPrice: Number(manualEndPrice) || stock.pivotPrice,
+      color: manualColor,
+      lineWidth: 2,
+      isDashed: manualIsDashed,
+      notes: manualNotes,
+      createdAt: new Date().toLocaleDateString(),
+    };
+
+    saveTrendlines([...customTrendlines, newTrendline]);
+    setIsCreatorOpen(false);
+    setManualNotes('');
+  };
+
+  // Remove Trendline
+  const handleRemoveTrendline = (id: string) => {
+    const updated = customTrendlines.filter((l) => l.id !== id);
+    saveTrendlines(updated);
+  };
+
+  // Clear All Trendlines for Stock
+  const handleClearAllTrendlines = () => {
+    saveTrendlines([]);
+  };
+
+  // Proximity Alert Calculation: Detect when stock price is within 1% of any custom trendline
+  const trendlineProximityMap: Record<string, { isNear: boolean; diffPct: number; linePriceAtCurrent: number }> = useMemo(() => {
+    const map: Record<string, { isNear: boolean; diffPct: number; linePriceAtCurrent: number }> = {};
+    const history = stock.priceHistory || [];
+    const currentPrice = stock.currentPrice || (history.length > 0 ? history[history.length - 1].close : stock.pivotPrice);
+
+    customTrendlines.forEach((line) => {
+      if (!currentPrice || currentPrice <= 0) {
+        map[line.id] = { isNear: false, diffPct: 999, linePriceAtCurrent: line.endPrice };
+        return;
+      }
+
+      let linePriceAtCurrent = line.endPrice;
+      if (history.length > 0 && line.startDate && line.endDate) {
+        const sIdx = history.findIndex((p) => p.date === line.startDate);
+        const eIdx = history.findIndex((p) => p.date === line.endDate);
+
+        if (sIdx !== -1 && eIdx !== -1) {
+          const latestIdx = history.length - 1;
+          if (sIdx === eIdx) {
+            linePriceAtCurrent = line.startPrice;
+          } else {
+            const slope = (line.endPrice - line.startPrice) / (eIdx - sIdx);
+            // Evaluate trendline value at current (latest) bar or end date bar
+            const targetIdx = Math.max(sIdx, Math.max(eIdx, latestIdx));
+            linePriceAtCurrent = line.startPrice + slope * (targetIdx - sIdx);
+          }
+        }
+      }
+
+      // Percentage difference between current stock price and trendline price
+      const diffPctCurrent = Math.abs((currentPrice - linePriceAtCurrent) / linePriceAtCurrent) * 100;
+      const diffPctEnd = Math.abs((currentPrice - line.endPrice) / line.endPrice) * 100;
+      const diffPctStart = Math.abs((currentPrice - line.startPrice) / line.startPrice) * 100;
+
+      // Minimum distance to any of the key trendline anchor points or projected value
+      const minDiffPct = Math.min(diffPctCurrent, diffPctEnd, diffPctStart);
+      const isNear = minDiffPct <= 1.0;
+
+      map[line.id] = {
+        isNear,
+        diffPct: Number(minDiffPct.toFixed(2)),
+        linePriceAtCurrent: Number(linePriceAtCurrent.toFixed(2))
+      };
+    });
+
+    return map;
+  }, [customTrendlines, stock.priceHistory, stock.currentPrice, stock.pivotPrice]);
+
+  const proximityAlertCount = useMemo(() => {
+    return Object.values(trendlineProximityMap).filter((item) => item.isNear).length;
+  }, [trendlineProximityMap]);
+
   // Interactive Node Selection state
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
@@ -334,6 +577,43 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
     const start = Math.max(0, Math.min(maxStart, panIndex));
     return full.slice(start, start + windowSize);
   }, [stock.priceHistory, zoomMode, panIndex]);
+
+  // Merge Custom Trendlines into displayedPriceHistory for Recharts rendering
+  const chartDataWithTrendlines = useMemo(() => {
+    const history = displayedPriceHistory || [];
+    if (history.length === 0) return [];
+
+    return history.map((point, idx) => {
+      const pointData: any = { ...point };
+
+      customTrendlines.forEach((line) => {
+        if (line.startDate && line.endDate) {
+          const startIdx = history.findIndex((p) => p.date === line.startDate);
+          const endIdx = history.findIndex((p) => p.date === line.endDate);
+
+          if (startIdx !== -1 && endIdx !== -1) {
+            const minIdx = Math.min(startIdx, endIdx);
+            const maxIdx = Math.max(startIdx, endIdx);
+
+            if (idx >= minIdx && idx <= maxIdx) {
+              const totalSteps = Math.max(1, maxIdx - minIdx);
+              const currentStep = idx - minIdx;
+              const sPrice = startIdx <= endIdx ? line.startPrice : line.endPrice;
+              const ePrice = startIdx <= endIdx ? line.endPrice : line.startPrice;
+              const interpPrice = sPrice + ((ePrice - sPrice) * (currentStep / totalSteps));
+              pointData[`trendline_${line.id}`] = Number(interpPrice.toFixed(2));
+            }
+          } else {
+            pointData[`trendline_${line.id}`] = line.startPrice;
+          }
+        } else {
+          pointData[`trendline_${line.id}`] = line.startPrice;
+        }
+      });
+
+      return pointData;
+    });
+  }, [displayedPriceHistory, customTrendlines]);
 
   // Compute historical Lorentzian Classification signals across price history for backtesting model accuracy
   const historicalLorentzianSignals = useMemo(() => {
@@ -697,6 +977,26 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
           </button>
 
           <button
+            onClick={() => setShowCustomTrendlines(!showCustomTrendlines)}
+            className={`px-3 py-1 border text-xs font-semibold uppercase tracking-wider font-mono transition-all flex items-center space-x-1 cursor-pointer ${
+              showCustomTrendlines
+                ? proximityAlertCount > 0
+                  ? 'bg-orange-600 text-white border-orange-500 shadow-md animate-pulse font-bold'
+                  : 'bg-amber-700 text-white border-amber-800 shadow-xs'
+                : 'bg-[#f9f8f5] text-gray-400 border-[#e5e4e1]'
+            }`}
+            title="Toggle Custom User Trendlines & Technical Annotations"
+          >
+            <Pencil className="w-3.5 h-3.5 text-amber-200" />
+            <span>Trendlines ({customTrendlines.length})</span>
+            {proximityAlertCount > 0 && (
+              <span className="ml-1 px-1.5 py-0.2 bg-white text-orange-600 font-extrabold rounded text-[10px] uppercase">
+                ⚡ {proximityAlertCount} Near!
+              </span>
+            )}
+          </button>
+
+          <button
             onClick={() => setShowBaseFormationArea(!showBaseFormationArea)}
             className={`px-3 py-1 border text-xs font-semibold uppercase tracking-wider font-mono transition-all flex items-center space-x-1 cursor-pointer ${
               showBaseFormationArea
@@ -963,12 +1263,319 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
         )}
       </div>
 
+      {/* Custom Trendlines Interactive Drawing Toolbar */}
+      <div className="bg-[#1a1a1a] border border-[#333] p-2.5 flex flex-wrap items-center justify-between gap-3 text-xs font-mono text-white">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center space-x-1.5 text-amber-400 font-bold uppercase tracking-wider text-[11px] mr-2">
+            <Pencil className="w-3.5 h-3.5" />
+            <span>Custom Trendlines:</span>
+            <span className="bg-amber-950 text-amber-300 px-1.5 py-0.2 border border-amber-800 text-[10px]">
+              {customTrendlines.length} Saved
+            </span>
+          </div>
+
+          {proximityAlertCount > 0 && (
+            <div className="bg-orange-950/90 border border-orange-500 text-orange-200 px-2.5 py-1 text-[10px] font-extrabold uppercase flex items-center space-x-1.5 animate-pulse rounded-xs shadow-xs">
+              <Zap className="w-3.5 h-3.5 text-orange-400 fill-orange-400 animate-bounce" />
+              <span>Proximity Alert: {proximityAlertCount} Line(s) Within 1% of Current Price ({currencySymbol}{(stock.currentPrice || stock.pivotPrice).toFixed(2)})</span>
+            </div>
+          )}
+
+          {/* Toggle Display */}
+          <button
+            onClick={() => setShowCustomTrendlines(!showCustomTrendlines)}
+            className={`px-2.5 py-1 text-[10px] font-bold uppercase transition-all flex items-center space-x-1 border ${
+              showCustomTrendlines
+                ? 'bg-amber-500 text-black border-amber-400 font-black'
+                : 'bg-[#262626] text-gray-400 border-gray-700 hover:bg-[#333]'
+            }`}
+          >
+            {showCustomTrendlines ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+            <span>{showCustomTrendlines ? 'Lines Visible' : 'Lines Hidden'}</span>
+          </button>
+
+          {/* Interactive Click-on-Chart Drawing Mode Toggle */}
+          <button
+            onClick={() => {
+              setIsDrawingMode(!isDrawingMode);
+              setClickStep(0);
+              setPoint1(null);
+            }}
+            className={`px-2.5 py-1 text-[10px] font-bold uppercase transition-all flex items-center space-x-1 border ${
+              isDrawingMode
+                ? 'bg-rose-600 text-white border-rose-500 animate-pulse shadow-xs'
+                : 'bg-[#262626] text-gray-200 border-gray-700 hover:bg-[#333]'
+            }`}
+          >
+            <MousePointer className="w-3 h-3 text-amber-300" />
+            <span>{isDrawingMode ? 'Cancel Drawing' : 'Draw on Chart'}</span>
+          </button>
+
+          {/* Preset Generators */}
+          <button
+            onClick={handleAddAutoResistance}
+            className="px-2 py-1 bg-rose-950/80 hover:bg-rose-900 text-rose-300 border border-rose-800 text-[10px] font-bold uppercase transition-all flex items-center space-x-1"
+            title="Auto-connect VCP contraction peaks with resistance line"
+          >
+            <TrendingUp className="w-3 h-3" />
+            <span>+ Auto Resistance</span>
+          </button>
+
+          <button
+            onClick={handleAddAutoSupport}
+            className="px-2 py-1 bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border border-emerald-800 text-[10px] font-bold uppercase transition-all flex items-center space-x-1"
+            title="Auto-connect shakeout lows with support line"
+          >
+            <TrendingDown className="w-3 h-3" />
+            <span>+ Auto Support</span>
+          </button>
+
+          {/* Open Manual Builder Form */}
+          <button
+            onClick={() => setIsCreatorOpen(!isCreatorOpen)}
+            className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-black font-bold text-[10px] uppercase transition-all flex items-center space-x-1 border border-amber-300"
+          >
+            <Plus className="w-3 h-3" />
+            <span>Manual Line Builder</span>
+          </button>
+        </div>
+
+        {customTrendlines.length > 0 && (
+          <button
+            onClick={handleClearAllTrendlines}
+            className="text-[10px] text-rose-400 hover:text-rose-300 hover:underline flex items-center space-x-1 uppercase font-bold"
+          >
+            <Trash2 className="w-3 h-3" />
+            <span>Clear All Lines</span>
+          </button>
+        )}
+      </div>
+
+      {/* Drawing Mode Interactive Guidance Banner */}
+      {isDrawingMode && (
+        <div className="bg-rose-950/90 border-x border-b border-rose-700 p-2.5 flex items-center justify-between text-xs font-mono text-rose-100 animate-fadeIn">
+          <div className="flex items-center space-x-2">
+            <Sparkles className="w-4 h-4 text-amber-400 animate-spin" />
+            <span>
+              <strong>DRAWING MODE ACTIVE:</strong>{' '}
+              {clickStep === 0 ? (
+                <span className="text-amber-300">Click any candle/point on chart to set START point</span>
+              ) : (
+                <span className="text-emerald-300">
+                  Start set at ({point1?.date}, {currencySymbol}{point1?.price.toFixed(2)}) &rarr; Click 2nd point on chart to complete trendline!
+                </span>
+              )}
+            </span>
+          </div>
+          <div className="flex items-center space-x-2">
+            <span className="text-[10px] uppercase text-gray-300 font-bold">Line Type:</span>
+            <select
+              value={drawingType}
+              onChange={(e) => setDrawingType(e.target.value as any)}
+              className="bg-[#1a1a1a] border border-rose-600 text-white text-[11px] px-2 py-0.5 rounded-none font-mono"
+            >
+              <option value="RESISTANCE">Resistance (Red)</option>
+              <option value="SUPPORT">Support (Green)</option>
+              <option value="TRENDLINE">Trendline (Amber)</option>
+            </select>
+          </div>
+        </div>
+      )}
+
+      {/* Manual Trendline Builder Form Panel */}
+      {isCreatorOpen && (
+        <form onSubmit={handleSaveManualTrendline} className="bg-[#21262d] border border-[#30363d] p-3 space-y-3 font-mono text-xs text-white animate-fadeIn">
+          <div className="flex items-center justify-between border-b border-gray-700 pb-2">
+            <span className="font-bold uppercase tracking-wider text-amber-400 flex items-center space-x-1.5">
+              <Plus className="w-3.5 h-3.5" />
+              <span>Create Precision Custom Trendline</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => setIsCreatorOpen(false)}
+              className="text-gray-400 hover:text-white"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 md:grid-cols-6 gap-3">
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-gray-400 mb-1">Label Name</label>
+              <input
+                type="text"
+                value={manualLabel}
+                onChange={(e) => setManualLabel(e.target.value)}
+                className="w-full bg-[#161b22] border border-gray-700 text-white px-2 py-1 text-xs font-mono"
+                placeholder="e.g. Primary VCP Resistance"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-gray-400 mb-1">Line Type</label>
+              <select
+                value={manualType}
+                onChange={(e) => {
+                  const t = e.target.value as any;
+                  setManualType(t);
+                  if (t === 'RESISTANCE') setManualColor('#ef4444');
+                  else if (t === 'SUPPORT') setManualColor('#22c55e');
+                  else if (t === 'TRENDLINE') setManualColor('#f59e0b');
+                }}
+                className="w-full bg-[#161b22] border border-gray-700 text-white px-2 py-1 text-xs font-mono"
+              >
+                <option value="RESISTANCE">Resistance Line</option>
+                <option value="SUPPORT">Support Line</option>
+                <option value="TRENDLINE">Diagonal Trendline</option>
+                <option value="CUSTOM">Custom Annotation</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-gray-400 mb-1">Start Date</label>
+              <select
+                value={manualStartDate}
+                onChange={(e) => {
+                  const date = e.target.value;
+                  setManualStartDate(date);
+                  const pObj = (stock.priceHistory || []).find((p) => p.date === date);
+                  if (pObj) setManualStartPrice(pObj.close);
+                }}
+                className="w-full bg-[#161b22] border border-gray-700 text-white px-2 py-1 text-xs font-mono"
+              >
+                {(stock.priceHistory || []).map((p) => (
+                  <option key={`start-date-${p.date}`} value={p.date}>
+                    {p.date} ({currencySymbol}{p.close.toFixed(2)})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-gray-400 mb-1">Start Price ({currencySymbol})</label>
+              <input
+                type="number"
+                step="0.01"
+                value={manualStartPrice}
+                onChange={(e) => setManualStartPrice(parseFloat(e.target.value) || 0)}
+                className="w-full bg-[#161b22] border border-gray-700 text-white px-2 py-1 text-xs font-mono"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-gray-400 mb-1">End Date</label>
+              <select
+                value={manualEndDate}
+                onChange={(e) => {
+                  const date = e.target.value;
+                  setManualEndDate(date);
+                  const pObj = (stock.priceHistory || []).find((p) => p.date === date);
+                  if (pObj) setManualEndPrice(pObj.close);
+                }}
+                className="w-full bg-[#161b22] border border-gray-700 text-white px-2 py-1 text-xs font-mono"
+              >
+                {(stock.priceHistory || []).map((p) => (
+                  <option key={`end-date-${p.date}`} value={p.date}>
+                    {p.date} ({currencySymbol}{p.close.toFixed(2)})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-gray-400 mb-1">End Price ({currencySymbol})</label>
+              <input
+                type="number"
+                step="0.01"
+                value={manualEndPrice}
+                onChange={(e) => setManualEndPrice(parseFloat(e.target.value) || 0)}
+                className="w-full bg-[#161b22] border border-gray-700 text-white px-2 py-1 text-xs font-mono"
+                required
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-gray-700">
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-1.5">
+                <label className="text-[10px] uppercase font-bold text-gray-400">Color:</label>
+                <input
+                  type="color"
+                  value={manualColor}
+                  onChange={(e) => setManualColor(e.target.value)}
+                  className="w-6 h-6 bg-transparent border-0 cursor-pointer rounded-none"
+                />
+              </div>
+
+              <label className="flex items-center space-x-1.5 cursor-pointer text-xs">
+                <input
+                  type="checkbox"
+                  checked={manualIsDashed}
+                  onChange={(e) => setManualIsDashed(e.target.checked)}
+                  className="accent-amber-500"
+                />
+                <span>Dashed Line</span>
+              </label>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <button
+                type="button"
+                onClick={() => setIsCreatorOpen(false)}
+                className="px-3 py-1 bg-[#161b22] hover:bg-[#30363d] text-gray-300 border border-gray-700 font-bold uppercase text-[10px]"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-1 bg-amber-500 hover:bg-amber-400 text-black font-bold uppercase text-[10px] flex items-center space-x-1"
+              >
+                <Save className="w-3 h-3" />
+                <span>Save Custom Line</span>
+              </button>
+            </div>
+          </div>
+        </form>
+      )}
+
       {/* Main Chart Container */}
       <div className="w-full h-[380px] bg-[#f9f8f5] p-3 border border-[#e5e4e1] relative">
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart
-            data={displayedPriceHistory}
+            data={chartDataWithTrendlines}
             margin={{ top: 15, right: 20, left: 10, bottom: 5 }}
+            onClick={(e: any) => {
+              if (!isDrawingMode || !e || !e.activeLabel) return;
+              const clickedDate = e.activeLabel;
+              const pointObj = (displayedPriceHistory || []).find((p) => p.date === clickedDate);
+              const clickedPrice = e.activePayload?.[0]?.value || pointObj?.close || stock.pivotPrice;
+
+              if (clickStep === 0) {
+                setPoint1({ date: clickedDate, price: clickedPrice });
+                setClickStep(1);
+              } else if (clickStep === 1 && point1) {
+                const isStartFirst = point1.date <= clickedDate;
+                const newTrendline: CustomTrendline = {
+                  id: `trendline-${Date.now()}`,
+                  type: drawingType,
+                  label: drawingType === 'RESISTANCE' ? 'Custom Resistance' : drawingType === 'SUPPORT' ? 'Custom Support' : 'Custom Trendline',
+                  startDate: isStartFirst ? point1.date : clickedDate,
+                  startPrice: isStartFirst ? point1.price : clickedPrice,
+                  endDate: isStartFirst ? clickedDate : point1.date,
+                  endPrice: isStartFirst ? clickedPrice : point1.price,
+                  color: drawingType === 'RESISTANCE' ? '#ef4444' : drawingType === 'SUPPORT' ? '#22c55e' : '#f59e0b',
+                  lineWidth: 2,
+                  isDashed: false,
+                  createdAt: new Date().toLocaleDateString(),
+                };
+                saveTrendlines([...customTrendlines, newTrendline]);
+                setIsDrawingMode(false);
+                setClickStep(0);
+                setPoint1(null);
+              }
+            }}
           >
             <CartesianGrid strokeDasharray="2 2" stroke="#e5e4e1" vertical={false} />
             <XAxis
@@ -1289,9 +1896,177 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
                 </React.Fragment>
               );
             })}
+
+            {/* Custom Persistent Trendlines Lines & Key Dots */}
+            {showCustomTrendlines && customTrendlines.map((line) => {
+              const prox = trendlineProximityMap[line.id];
+              const isNear = prox?.isNear;
+              const highlightColor = isNear ? '#ea580c' : (line.color || '#f59e0b'); // Vibrant Orange when within 1% proximity
+              const highlightWidth = isNear ? 3.5 : (line.lineWidth || 2);
+
+              return (
+                <React.Fragment key={`trendline-plot-${line.id}`}>
+                  <Line
+                    type="linear"
+                    dataKey={`trendline_${line.id}`}
+                    name={isNear ? `⚡ ${line.label} (1% PROXIMITY ALERT)` : line.label}
+                    stroke={highlightColor}
+                    strokeWidth={highlightWidth}
+                    strokeDasharray={line.isDashed ? '4 4' : undefined}
+                    dot={false}
+                    activeDot={{ r: isNear ? 7 : 5, fill: highlightColor, stroke: '#ffffff', strokeWidth: 2 }}
+                    isAnimationActive={false}
+                  />
+                  {line.startDate && line.startPrice && (
+                    <ReferenceDot
+                      x={line.startDate}
+                      y={line.startPrice}
+                      r={isNear ? 7 : 5}
+                      fill={highlightColor}
+                      stroke="#ffffff"
+                      strokeWidth={2}
+                      isFront={true}
+                      label={{
+                        value: isNear ? `⚡ ${line.label} (PROXIMITY ALERT)` : line.label,
+                        fill: highlightColor,
+                        fontSize: isNear ? 11 : 10,
+                        fontWeight: 'bold',
+                        position: 'top'
+                      }}
+                    />
+                  )}
+                  {line.endDate && line.endPrice && (
+                    <ReferenceDot
+                      x={line.endDate}
+                      y={line.endPrice}
+                      r={isNear ? 7 : 5}
+                      fill={highlightColor}
+                      stroke="#ffffff"
+                      strokeWidth={2}
+                      isFront={true}
+                    />
+                  )}
+                </React.Fragment>
+              );
+            })}
           </ComposedChart>
         </ResponsiveContainer>
       </div>
+
+      {/* Active Custom Trendlines Metadata Table */}
+      {customTrendlines.length > 0 && (
+        <div className="bg-[#f9f8f5] border border-[#e5e4e1] p-3 space-y-2 font-mono text-xs animate-fadeIn">
+          <div className="flex items-center justify-between border-b border-gray-200 pb-1.5">
+            <div className="flex items-center space-x-2">
+              <Pencil className="w-3.5 h-3.5 text-amber-700" />
+              <span className="font-extrabold uppercase text-[#1a1a1a]">
+                Custom Technical Trendlines ({customTrendlines.length}) &ndash; Persisted in {stock.ticker} Metadata
+              </span>
+              {proximityAlertCount > 0 && (
+                <span className="bg-orange-500 text-white font-black px-2 py-0.5 rounded text-[10px] uppercase flex items-center space-x-1 animate-pulse shadow-xs">
+                  <Zap className="w-3 h-3 fill-white" />
+                  <span>{proximityAlertCount} Proximity Alert(s) Active</span>
+                </span>
+              )}
+            </div>
+            <span className="text-[10px] text-gray-500 italic">
+              Orange highlight when stock price is within &le;1% of trendline
+            </span>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-gray-200 text-[10px] uppercase font-bold text-gray-500 bg-[#f1f0ec]">
+                  <th className="p-1.5">Type / Color</th>
+                  <th className="p-1.5">Label</th>
+                  <th className="p-1.5">Start (Date & Price)</th>
+                  <th className="p-1.5">End (Date & Price)</th>
+                  <th className="p-1.5">Slope / Change</th>
+                  <th className="p-1.5">Proximity Status (&le;1%)</th>
+                  <th className="p-1.5 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200 text-xs text-[#1a1a1a]">
+                {customTrendlines.map((line) => {
+                  const prox = trendlineProximityMap[line.id];
+                  const isNear = prox?.isNear;
+                  const pctSlope = line.startPrice > 0
+                    ? (((line.endPrice - line.startPrice) / line.startPrice) * 100).toFixed(1)
+                    : '0.0';
+
+                  return (
+                    <tr
+                      key={line.id}
+                      className={`transition-colors ${
+                        isNear
+                          ? 'bg-orange-100/90 border-l-4 border-l-orange-500 font-medium'
+                          : 'hover:bg-amber-50/50'
+                      }`}
+                    >
+                      <td className="p-1.5">
+                        <div className="flex items-center space-x-1.5">
+                          <span
+                            className="w-3.5 h-3.5 rounded-full shrink-0 border border-black/20"
+                            style={{ backgroundColor: isNear ? '#ea580c' : line.color }}
+                          />
+                          <span className="font-bold text-[10px] uppercase px-1.5 py-0.5 bg-gray-100 border border-gray-300">
+                            {line.type}
+                          </span>
+                        </div>
+                      </td>
+
+                      <td className="p-1.5 font-bold flex items-center space-x-1">
+                        <span>{line.label}</span>
+                        {isNear && <Zap className="w-3.5 h-3.5 text-orange-600 fill-orange-500" />}
+                      </td>
+
+                      <td className="p-1.5">
+                        <span className="text-gray-600">{line.startDate}</span>{' '}
+                        <strong className="text-emerald-700">({currencySymbol}{line.startPrice.toFixed(2)})</strong>
+                      </td>
+
+                      <td className="p-1.5">
+                        <span className="text-gray-600">{line.endDate}</span>{' '}
+                        <strong className="text-emerald-700">({currencySymbol}{line.endPrice.toFixed(2)})</strong>
+                      </td>
+
+                      <td className="p-1.5">
+                        <span className={`font-bold ${Number(pctSlope) >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                          {Number(pctSlope) >= 0 ? `+${pctSlope}%` : `${pctSlope}%`}
+                        </span>
+                      </td>
+
+                      <td className="p-1.5">
+                        {isNear ? (
+                          <span className="inline-flex items-center space-x-1 px-2 py-0.5 bg-orange-600 text-white text-[10px] font-black uppercase rounded shadow-xs animate-pulse">
+                            <Zap className="w-3 h-3 fill-white" />
+                            <span>1% ALERT ({prox.diffPct}% Away)</span>
+                          </span>
+                        ) : (
+                          <span className="text-gray-500 text-[10px] font-mono">
+                            {prox?.diffPct !== undefined && prox.diffPct < 100 ? `${prox.diffPct}% away` : 'Normal'}
+                          </span>
+                        )}
+                      </td>
+
+                      <td className="p-1.5 text-right">
+                        <button
+                          onClick={() => handleRemoveTrendline(line.id)}
+                          className="text-rose-700 hover:text-rose-900 p-1 rounded-none hover:bg-rose-100 transition-colors"
+                          title="Delete trendline"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Secondary Volatility Overlay: Contraction Magnitude (%) Squeeze Panel */}
       {showVolatilityOverlay && (

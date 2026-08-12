@@ -32,6 +32,21 @@ export interface TrendTemplateRule {
   requiredConditionStr: string;
 }
 
+export interface CustomTrendline {
+  id: string;
+  type: 'SUPPORT' | 'RESISTANCE' | 'TRENDLINE' | 'CUSTOM';
+  label: string;
+  startDate: string;
+  startPrice: number;
+  endDate: string;
+  endPrice: number;
+  color: string;
+  lineWidth?: number;
+  isDashed?: boolean;
+  notes?: string;
+  createdAt?: string;
+}
+
 export interface MinerviniTradeSetup {
   ticker: string;
   name: string;
@@ -137,6 +152,9 @@ export interface MinerviniTradeSetup {
   epsYoYGrowthLastQ?: number; // e.g. 85%
   revYoYGrowthLastQ?: number; // e.g. 42%
   earningsRiskStatus?: 'DANGER_IMMINENT' | 'WARNING_SOON' | 'SAFE_WINDOW' | 'POST_EARNINGS_GAP';
+
+  // Custom User Trendlines & Technical Annotations Persistence
+  customTrendlines?: CustomTrendline[];
 }
 
 export interface ScreenerFilters {
