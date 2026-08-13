@@ -23,6 +23,42 @@ async function startServer() {
     });
   };
 
+  // Resilient helper to handle transient 503 (high demand) and 429 (quota) with model fallback
+  const generateContentWithFallback = async (ai: GoogleGenAI, options: any) => {
+    const primaryModel = options.model || 'gemini-3.6-flash';
+    const modelsToTry = [primaryModel, 'gemini-2.5-flash'];
+    let lastError: any = null;
+
+    for (let i = 0; i < modelsToTry.length; i++) {
+      const currentModel = modelsToTry[i];
+      try {
+        const res = await ai.models.generateContent({
+          ...options,
+          model: currentModel
+        });
+        return res;
+      } catch (err: any) {
+        lastError = err;
+        const errStr = String(err?.message || err);
+        const isTransient =
+          err?.status === 503 ||
+          err?.status === 429 ||
+          errStr.includes('503') ||
+          errStr.includes('429') ||
+          errStr.includes('high demand') ||
+          errStr.includes('UNAVAILABLE') ||
+          errStr.includes('prepayment credits') ||
+          errStr.includes('RESOURCE_EXHAUSTED');
+
+        if (!isTransient || i === modelsToTry.length - 1) {
+          throw err;
+        }
+        console.log(`Notice: Model ${currentModel} returned transient error (${err?.status || '503/429'}). Attempting secondary fallback ${modelsToTry[i + 1]}...`);
+      }
+    }
+    throw lastError;
+  };
+
   // API endpoint for AI-powered Mark Minervini SEPA analysis
   app.post('/api/analyze-setup', async (req, res) => {
     let stock: any = null;
@@ -65,24 +101,34 @@ Provide a structured, expert, authoritative analysis in Mark Minervini's signatu
 3. **Tactical Trade Plan (Entry, Stop Loss Exit, Scaling Out at Targets)**
 4. **Invalidation Trigger (When to abort)**`;
 
-      const response = await ai.models.generateContent({
+      const response = await generateContentWithFallback(ai, {
         model: 'gemini-3.6-flash',
         contents: prompt
       });
 
       res.json({ analysis: response.text });
     } catch (err: any) {
-      if (err?.status === 429 || err?.message?.includes('429') || err?.message?.includes('prepayment credits')) {
-        console.log(`Notice: Gemini API quota temporarily limited for analyze-setup (using robust offline Minervini analysis).`);
+      const errStr = String(err?.message || err);
+      const isExpectedQuotaOrTransient =
+        err?.status === 429 ||
+        err?.status === 503 ||
+        errStr.includes('429') ||
+        errStr.includes('503') ||
+        errStr.includes('high demand') ||
+        errStr.includes('UNAVAILABLE') ||
+        errStr.includes('prepayment credits');
+
+      if (isExpectedQuotaOrTransient) {
+        console.log(`Notice: Gemini API temporarily high demand/quota limited for analyze-setup (using robust offline Minervini analysis).`);
       } else {
-        console.error('Gemini API Error (fallback triggered):', err?.message || err);
+        console.error('Gemini API Error (fallback triggered):', errStr);
       }
       res.json({
         analysis: `**Mark Minervini SEPA Analysis (Offline / Fallback Mode)** for ${stock?.ticker || 'Stock'}:\n\n` +
           `• **Stage 2 Confirmation**: ${stock?.trendScore || 6}/8 Trend Template rules passing. Price action remains stable relative to moving averages.\n` +
           `• **VCP Structure**: ${stock?.patternType || 'Volatility Contraction'} pattern identified with volume drying up by ${stock?.volumeDryUpPercent || 45}%.\n` +
           `• **Tactical Execution**: Watch pivot price $${stock?.pivotPrice || 100}. Keep stop loss strict at $${stock?.stopLossPrice || 95}.\n\n` +
-          `*(Note: Live Gemini API quota temporarily limited or credits depleted. Displaying robust offline Minervini technical analysis).*`
+          `*(Note: Live Gemini AI API currently experiencing temporary high demand or quota limits. Displaying robust offline Minervini technical analysis).*`
       });
     }
   });
@@ -160,7 +206,7 @@ Format your response as a strictly valid JSON object with the following structur
 
 Provide 4 to 6 accurate, realistic, high-signal financial headlines. Return ONLY raw valid JSON without markdown code fences or conversational filler.`;
 
-      const response = await ai.models.generateContent({
+      const response = await generateContentWithFallback(ai, {
         model: 'gemini-3.6-flash',
         contents: prompt,
         config: {
@@ -200,14 +246,24 @@ Provide 4 to 6 accurate, realistic, high-signal financial headlines. Return ONLY
       });
 
     } catch (err: any) {
-      if (err?.status === 429 || err?.message?.includes('429') || err?.message?.includes('prepayment credits')) {
-        console.log(`Notice: Gemini API quota temporarily limited for ${ticker} news grounding (using curated offline fallback).`);
+      const errStr = String(err?.message || err);
+      const isExpectedQuotaOrTransient =
+        err?.status === 429 ||
+        err?.status === 503 ||
+        errStr.includes('429') ||
+        errStr.includes('503') ||
+        errStr.includes('high demand') ||
+        errStr.includes('UNAVAILABLE') ||
+        errStr.includes('prepayment credits');
+
+      if (isExpectedQuotaOrTransient) {
+        console.log(`Notice: Gemini API temporarily high demand/quota limited for ${ticker} news grounding (using curated offline fallback).`);
       } else {
-        console.error('Ticker News Grounding API Error (fallback triggered):', err?.message || err);
+        console.error('Ticker News Grounding API Error (fallback triggered):', errStr);
       }
       // Return robust fallback news response instead of 500 error
       res.json({
-        summary: `Financial headline summary for ${ticker}. (Note: Live AI search quota temporarily limited; displaying robust curated catalyst headlines).`,
+        summary: `Financial headline summary for ${ticker}. (Note: Live AI search quota or model availability temporarily limited; displaying robust curated catalyst headlines).`,
         headlines: [
           {
             title: `${ticker} Expands Market Share with Strong Quarterly Execution`,
@@ -291,7 +347,7 @@ User Prompt / Query: "${prompt || 'Provide Hermes Agent complete audit for this 
 
 Respond directly as Hermes Agent in clean markdown with bullet points, strategic directives, and clear risk parameters.`;
 
-      const response = await ai.models.generateContent({
+      const response = await generateContentWithFallback(ai, {
         model: 'gemini-3.6-flash',
         contents: systemPrompt
       });
@@ -303,10 +359,20 @@ Respond directly as Hermes Agent in clean markdown with bullet points, strategic
       });
 
     } catch (err: any) {
-      if (err?.status === 429 || err?.message?.includes('429') || err?.message?.includes('prepayment credits')) {
-        console.log(`Notice: Gemini API quota temporarily limited for hermes-agent endpoint.`);
+      const errStr = String(err?.message || err);
+      const isExpectedQuotaOrTransient =
+        err?.status === 429 ||
+        err?.status === 503 ||
+        errStr.includes('429') ||
+        errStr.includes('503') ||
+        errStr.includes('high demand') ||
+        errStr.includes('UNAVAILABLE') ||
+        errStr.includes('prepayment credits');
+
+      if (isExpectedQuotaOrTransient) {
+        console.log(`Notice: Gemini API temporarily high demand/quota limited for hermes-agent endpoint.`);
       } else {
-        console.error('Hermes Agent API Error:', err?.message || err);
+        console.error('Hermes Agent API Error:', errStr);
       }
 
       res.json({
@@ -314,7 +380,7 @@ Respond directly as Hermes Agent in clean markdown with bullet points, strategic
           `• **Trend Assessment**: Stage 2 Trend Template remains robust above key 50-day and 200-day moving averages.\n` +
           `• **VCP Contraction**: Tight price consolidation with drying volume indicates supply absorption.\n` +
           `• **Execution Rules**: Enter on price crossing pivot with +50% above average volume. Hard stop loss strictly enforced.\n\n` +
-          `*(Note: Gemini AI API quota temporarily limited. Displaying Hermes Agent offline algorithmic diagnostic).*`,
+          `*(Note: Gemini AI API model availability temporarily limited due to high demand. Displaying Hermes Agent offline algorithmic diagnostic).*`,
         agentScore: 85,
         recommendation: 'BUY_ON_PIVOT_BREAKOUT'
       });

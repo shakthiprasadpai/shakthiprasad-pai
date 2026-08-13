@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { MinerviniTradeSetup, PricePoint, CustomTrendline } from '../types';
+import { MinerviniTradeSetup, PricePoint, CustomTrendline, TradeJournalNote, EmotionalState, TradeStatus } from '../types';
 import { formatCurrency, formatVolume, getCurrencySymbol, evaluateTrendTemplate } from '../utils/sepaCalculator';
-import { getStoredJournalNotes } from '../utils/tradeJournalStorage';
+import { getStoredJournalNotes, saveStoredJournalNotes } from '../utils/tradeJournalStorage';
 import { PineScriptExporter } from './PineScriptExporter';
 import { LorentzianClassification } from './LorentzianClassification';
 import { VcpTemplateOverlay } from './VcpTemplateOverlay';
 import { RiskRewardChart } from './RiskRewardChart';
 import { VolatilityTrendChart } from './VolatilityTrendChart';
+import { toPng } from 'html-to-image';
 import {
   ComposedChart,
   Line,
@@ -54,7 +55,15 @@ import {
   X,
   MousePointer,
   Save,
-  RefreshCw
+  RefreshCw,
+  Camera,
+  Download,
+  Copy,
+  BookMarked,
+  Star,
+  Maximize2,
+  Share2,
+  Image as ImageIcon
 } from 'lucide-react';
 
 interface VcpChartProps {
@@ -438,6 +447,127 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
   const proximityAlertCount = useMemo(() => {
     return Object.values(trendlineProximityMap).filter((item) => item.isNear).length;
   }, [trendlineProximityMap]);
+
+  // Ref & State for 'Take Snapshot' Chart Image Capture
+  const chartCaptureRef = React.useRef<HTMLDivElement>(null);
+  const [snapshotImage, setSnapshotImage] = useState<string | null>(null);
+  const [isCapturingSnapshot, setIsCapturingSnapshot] = useState<boolean>(false);
+  const [isSnapshotModalOpen, setIsSnapshotModalOpen] = useState<boolean>(false);
+  const [journalSuccessMessage, setJournalSuccessMessage] = useState<string | null>(null);
+
+  // Journal export form state inside snapshot modal
+  const [journalSetupType, setJournalSetupType] = useState<string>(stock.patternType || 'VCP (3 Contractions)');
+  const [journalEmotionalState, setJournalEmotionalState] = useState<EmotionalState>('DISCIPLINED');
+  const [journalNotes, setJournalNotes] = useState<string>('');
+  const [journalKeyLesson, setJournalKeyLesson] = useState<string>('Follow pivot rules and monitor volume dry-up on contractions.');
+  const [journalStatus, setJournalStatus] = useState<TradeStatus>('PLANNING');
+  const [journalRating, setJournalRating] = useState<number>(5);
+  const [isEnlargedSnapshot, setIsEnlargedSnapshot] = useState<boolean>(false);
+
+  // Auto-populate default journal notes when stock or trendlines change
+  useEffect(() => {
+    const symbol = getCurrencySymbol(stock.exchange);
+    const priceStr = `${symbol}${(stock.currentPrice || stock.pivotPrice).toFixed(2)}`;
+    const lineCount = customTrendlines.length;
+    const proxCount = proximityAlertCount;
+    setJournalNotes(
+      `Captured VCP chart snapshot for ${stock.ticker} (${stock.name}).\n` +
+      `Price: ${priceStr} | Pivot: ${symbol}${stock.pivotPrice.toFixed(2)} | Stop Loss: ${symbol}${stock.stopLossPrice.toFixed(2)} (${stock.stopLossPercent.toFixed(1)}%)\n` +
+      `Contractions: ${stock.contractions?.length || 0} | Drawn Trendlines: ${lineCount} | Proximity Alerts: ${proxCount > 0 ? `${proxCount} Active (<=1% away)` : 'None'}\n` +
+      `SEPA Analysis: ${stock.sepaNotes || 'Stage 2 Confirmed'}`
+    );
+  }, [stock, customTrendlines, proximityAlertCount]);
+
+  // Take Snapshot function using html-to-image toPng
+  const handleTakeSnapshot = async () => {
+    if (!chartCaptureRef.current) return;
+    setIsCapturingSnapshot(true);
+    try {
+      const dataUrl = await toPng(chartCaptureRef.current, {
+        cacheBust: true,
+        backgroundColor: '#ffffff',
+        quality: 0.95,
+        pixelRatio: 2,
+      });
+      setSnapshotImage(dataUrl);
+      setIsSnapshotModalOpen(true);
+      setJournalSuccessMessage(null);
+    } catch (err) {
+      console.error('Snapshot capture error:', err);
+      try {
+        const fallbackUrl = await toPng(chartCaptureRef.current, {
+          backgroundColor: '#ffffff',
+        });
+        setSnapshotImage(fallbackUrl);
+        setIsSnapshotModalOpen(true);
+      } catch (e) {
+        alert('Could not capture chart snapshot. Please try again.');
+      }
+    } finally {
+      setIsCapturingSnapshot(false);
+    }
+  };
+
+  // Download snapshot image as PNG file
+  const handleDownloadSnapshot = () => {
+    if (!snapshotImage) return;
+    const link = document.createElement('a');
+    const dateStr = new Date().toISOString().slice(0, 10);
+    link.download = `${stock.ticker}_VCP_Chart_${dateStr}.png`;
+    link.href = snapshotImage;
+    link.click();
+  };
+
+  // Copy snapshot image to clipboard
+  const handleCopySnapshotToClipboard = async () => {
+    if (!snapshotImage) return;
+    try {
+      const res = await fetch(snapshotImage);
+      const blob = await res.blob();
+      await navigator.clipboard.write([
+        new ClipboardItem({ 'image/png': blob })
+      ]);
+      setJournalSuccessMessage('Chart image copied to clipboard!');
+      setTimeout(() => setJournalSuccessMessage(null), 3500);
+    } catch (err) {
+      handleDownloadSnapshot();
+      setJournalSuccessMessage('Image downloaded to your device!');
+      setTimeout(() => setJournalSuccessMessage(null), 3500);
+    }
+  };
+
+  // Save snapshot entry to Trade Journal
+  const handleSaveToTradeJournal = () => {
+    if (!snapshotImage) return;
+    try {
+      const existingNotes = getStoredJournalNotes();
+      const newNote: TradeJournalNote = {
+        id: `journal-${stock.ticker.toLowerCase()}-${Date.now()}`,
+        ticker: stock.ticker,
+        stockName: stock.name,
+        exchange: stock.exchange,
+        date: new Date().toISOString().slice(0, 10),
+        setupType: journalSetupType,
+        entryPrice: stock.pivotPrice,
+        stopLossPrice: stock.stopLossPrice,
+        emotionalState: journalEmotionalState,
+        notes: journalNotes,
+        keyLesson: journalKeyLesson,
+        tradeStatus: journalStatus,
+        rating: journalRating,
+        chartSnapshotUrl: snapshotImage,
+      };
+
+      saveStoredJournalNotes([newNote, ...existingNotes]);
+      setJournalSuccessMessage('✓ Saved chart snapshot & note to Trade Journal!');
+      setTimeout(() => {
+        setJournalSuccessMessage(null);
+      }, 5000);
+    } catch (err) {
+      console.error('Error saving to trade journal:', err);
+      alert('Failed to save to Trade Journal.');
+    }
+  };
 
   // Interactive Node Selection state
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -836,12 +966,26 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
         {/* SMA & Level Toggles - Editorial Buttons */}
         <div className="flex flex-wrap items-center gap-2 text-xs font-sans">
           <button
+            onClick={handleTakeSnapshot}
+            disabled={isCapturingSnapshot}
+            className="px-3.5 py-1 bg-amber-600 hover:bg-amber-700 text-white border border-amber-700 text-xs font-mono font-bold uppercase tracking-wider flex items-center space-x-1.5 transition-all cursor-pointer shadow-xs disabled:opacity-50"
+            title="Capture current chart view, drawn trendlines & alerts as an image file or export to Trade Journal"
+          >
+            {isCapturingSnapshot ? (
+              <RefreshCw className="w-3.5 h-3.5 animate-spin text-white" />
+            ) : (
+              <Camera className="w-3.5 h-3.5 text-amber-200" />
+            )}
+            <span>{isCapturingSnapshot ? 'Capturing...' : 'Take Snapshot'}</span>
+          </button>
+
+          <button
             onClick={() => setIsPineModalOpen(true)}
             className="px-3 py-1 bg-[#1a1a1a] hover:bg-black text-amber-300 border border-amber-500/40 text-xs font-mono font-bold uppercase tracking-wider flex items-center space-x-1 transition-all cursor-pointer"
-            title="View TradingView Pine Script v5 Code"
+            title="View TradingView Pine Script v6 Code"
           >
             <Code className="w-3.5 h-3.5 text-amber-400" />
-            <span>Pine Script v5</span>
+            <span>Pine Script v6</span>
           </button>
 
           <button
@@ -1068,7 +1212,7 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
       )}
 
       {chartSubTab === 'vcp_candlestick' && (
-        <>
+        <div ref={chartCaptureRef} className="space-y-6 bg-white p-2 border border-[#e5e4e1]">
           {/* Automatically Detected VCP Base Formation Timeframe Banner */}
       {vcpBaseInfo && showBaseFormationArea && (
         <div className="bg-amber-50/90 border-l-4 border-l-amber-500 border border-[#e5e4e1] p-3 flex flex-wrap items-center justify-between gap-3 text-xs font-mono animate-fadeIn">
@@ -2545,7 +2689,210 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
         isOpen={isPineModalOpen}
         onClose={() => setIsPineModalOpen(false)}
       />
-        </>
+        </div>
+      )}
+
+      {/* Chart Snapshot & Trade Journal Export Modal */}
+      {isSnapshotModalOpen && snapshotImage && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto animate-fadeIn">
+          <div className="bg-white border border-[#e5e4e1] shadow-2xl max-w-4xl w-full my-8 max-h-[90vh] flex flex-col overflow-hidden">
+            
+            {/* Modal Header */}
+            <div className="bg-[#1a1a1a] text-white p-4 flex items-center justify-between border-b border-black">
+              <div className="flex items-center space-x-2.5">
+                <div className="p-1.5 bg-amber-600 rounded">
+                  <Camera className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h3 className="font-serif font-black text-lg text-white leading-tight">
+                    Chart Snapshot — {stock.ticker} ({stock.name})
+                  </h3>
+                  <p className="text-xs text-amber-300 font-mono">
+                    Captured with Trendlines ({customTrendlines.length}) & Proximity Alerts ({proximityAlertCount})
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setIsSnapshotModalOpen(false)}
+                className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-800 transition cursor-pointer"
+                title="Close Modal"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Notification Toast */}
+            {journalSuccessMessage && (
+              <div className="bg-emerald-800 text-white p-3 text-xs font-mono font-bold flex items-center justify-between border-b border-emerald-900 animate-slideDown">
+                <div className="flex items-center space-x-2">
+                  <Check className="w-4 h-4 text-emerald-300" />
+                  <span>{journalSuccessMessage}</span>
+                </div>
+                <button
+                  onClick={() => setJournalSuccessMessage(null)}
+                  className="text-emerald-200 hover:text-white text-xs underline cursor-pointer"
+                >
+                  Dismiss
+                </button>
+              </div>
+            )}
+
+            {/* Modal Body */}
+            <div className="p-5 overflow-y-auto space-y-6 flex-1 text-xs font-sans">
+              
+              {/* Snapshot Image Preview */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] uppercase font-bold tracking-wider text-gray-500 font-mono">
+                    Captured Chart Image Preview
+                  </span>
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={() => setIsEnlargedSnapshot(!isEnlargedSnapshot)}
+                      className="text-xs text-amber-700 hover:text-amber-900 font-mono font-bold flex items-center space-x-1 cursor-pointer"
+                    >
+                      <Maximize2 className="w-3.5 h-3.5" />
+                      <span>{isEnlargedSnapshot ? 'Fit View' : 'Full Width View'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className={`border border-[#e5e4e1] bg-gray-50 p-2 overflow-auto max-h-[360px] ${isEnlargedSnapshot ? 'max-h-[600px]' : ''}`}>
+                  <img
+                    src={snapshotImage}
+                    alt={`${stock.ticker} VCP Chart Snapshot`}
+                    className="w-full object-contain mx-auto border border-gray-200 shadow-xs"
+                  />
+                </div>
+              </div>
+
+              {/* Action Buttons: Download & Copy Image */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 font-mono">
+                <button
+                  onClick={handleDownloadSnapshot}
+                  className="px-4 py-2.5 bg-[#1a1a1a] hover:bg-black text-white text-xs font-bold uppercase tracking-wider flex items-center justify-center space-x-2 transition cursor-pointer shadow-xs"
+                >
+                  <Download className="w-4 h-4 text-amber-400" />
+                  <span>Download Chart Image (.PNG)</span>
+                </button>
+
+                <button
+                  onClick={handleCopySnapshotToClipboard}
+                  className="px-4 py-2.5 bg-[#f9f8f5] hover:bg-amber-50 text-[#1a1a1a] border border-[#e5e4e1] text-xs font-bold uppercase tracking-wider flex items-center justify-center space-x-2 transition cursor-pointer shadow-xs"
+                >
+                  <Copy className="w-4 h-4 text-amber-600" />
+                  <span>Copy Image to Clipboard</span>
+                </button>
+              </div>
+
+              {/* Export to Trade Journal Section */}
+              <div className="bg-[#f9f8f5] border border-[#e5e4e1] p-4 space-y-4 rounded-xs">
+                <div className="flex items-center space-x-2 border-b border-[#e5e4e1] pb-2">
+                  <BookMarked className="w-4 h-4 text-amber-700" />
+                  <h4 className="font-serif font-black text-sm text-[#1a1a1a]">
+                    Attach Snapshot to Trade Journal Entry
+                  </h4>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 font-mono text-xs">
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase text-gray-500 mb-1">
+                      Setup Pattern
+                    </label>
+                    <input
+                      type="text"
+                      value={journalSetupType}
+                      onChange={(e) => setJournalSetupType(e.target.value)}
+                      className="w-full p-2 bg-white border border-[#e5e4e1] focus:border-amber-600 outline-none text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase text-gray-500 mb-1">
+                      Trade Status
+                    </label>
+                    <select
+                      value={journalStatus}
+                      onChange={(e) => setJournalStatus(e.target.value as TradeStatus)}
+                      className="w-full p-2 bg-white border border-[#e5e4e1] focus:border-amber-600 outline-none text-xs cursor-pointer"
+                    >
+                      <option value="PLANNING">Planning Setup</option>
+                      <option value="WATCHLIST">Watchlist Monitoring</option>
+                      <option value="OPEN">Open Position</option>
+                      <option value="CLOSED_PROFIT">Closed (Profit Target)</option>
+                      <option value="CLOSED_LOSS">Closed (Stop Loss)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase text-gray-500 mb-1">
+                      Psychological State
+                    </label>
+                    <select
+                      value={journalEmotionalState}
+                      onChange={(e) => setJournalEmotionalState(e.target.value as EmotionalState)}
+                      className="w-full p-2 bg-white border border-[#e5e4e1] focus:border-amber-600 outline-none text-xs cursor-pointer"
+                    >
+                      <option value="DISCIPLINED">Disciplined (Systematic)</option>
+                      <option value="CONFIDENT">Confident</option>
+                      <option value="PATIENT">Patient</option>
+                      <option value="ANXIOUS">Anxious</option>
+                      <option value="FOMO">FOMO / Impulsive</option>
+                      <option value="HESITANT">Hesitant</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold uppercase text-gray-500 mb-1 font-mono">
+                    Journal Trade Notes & Metadata
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={journalNotes}
+                    onChange={(e) => setJournalNotes(e.target.value)}
+                    className="w-full p-2.5 bg-white border border-[#e5e4e1] focus:border-amber-600 outline-none font-mono text-xs leading-relaxed"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold uppercase text-gray-500 mb-1 font-mono">
+                    Key Lesson / Execution Rule
+                  </label>
+                  <input
+                    type="text"
+                    value={journalKeyLesson}
+                    onChange={(e) => setJournalKeyLesson(e.target.value)}
+                    className="w-full p-2 bg-white border border-[#e5e4e1] focus:border-amber-600 outline-none font-mono text-xs"
+                  />
+                </div>
+
+                <div className="pt-2 flex justify-end">
+                  <button
+                    onClick={handleSaveToTradeJournal}
+                    className="px-5 py-2.5 bg-emerald-800 hover:bg-emerald-900 text-white font-mono font-bold text-xs uppercase tracking-wider flex items-center space-x-2 transition cursor-pointer shadow-xs"
+                  >
+                    <Save className="w-4 h-4 text-emerald-300" />
+                    <span>Save Entry & Image to Trade Journal</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="bg-[#f9f8f5] p-3 border-t border-[#e5e4e1] flex items-center justify-between font-mono text-xs text-gray-500">
+              <span>Chart Image: PNG Base64 • Resolution: 2x Canvas</span>
+              <button
+                onClick={() => setIsSnapshotModalOpen(false)}
+                className="px-4 py-1.5 bg-gray-200 hover:bg-gray-300 text-[#1a1a1a] font-bold uppercase text-[11px] cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+
+          </div>
+        </div>
       )}
 
     </div>

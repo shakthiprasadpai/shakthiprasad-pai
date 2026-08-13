@@ -177,7 +177,7 @@ export const TrendTemplateChecklist: React.FC<TrendTemplateChecklistProps> = ({ 
             className="px-3 py-1.5 bg-[#1a1a1a] hover:bg-black text-amber-300 border border-amber-500/40 text-xs font-mono font-bold uppercase tracking-wider flex items-center space-x-1.5 transition-all shadow-xs cursor-pointer"
           >
             <Code className="w-3.5 h-3.5 text-amber-400" />
-            <span>TradingView Pine Script (v5)</span>
+            <span>TradingView Pine Script (v6)</span>
           </button>
 
           <div

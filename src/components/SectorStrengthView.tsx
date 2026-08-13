@@ -4,6 +4,7 @@ import { formatCurrency, getCurrencySymbol } from '../utils/sepaCalculator';
 import { SectorPerformanceWidget } from './SectorPerformanceWidget';
 import { SectorCorrelationMatrix } from './SectorCorrelationMatrix';
 import { SectorRadarChart } from './SectorRadarChart';
+import { RelativeRotationGraph } from './RelativeRotationGraph';
 import {
   Layers,
   TrendingUp,
@@ -26,7 +27,8 @@ import {
   Building2,
   ChevronDown,
   ChevronUp,
-  ListFilter
+  ListFilter,
+  Compass
 } from 'lucide-react';
 
 interface SectorStrengthViewProps {
@@ -67,7 +69,7 @@ export const SectorStrengthView: React.FC<SectorStrengthViewProps> = ({
   const [heatmapMetric, setHeatmapMetric] = useState<HeatmapMetric>('AVG_CHANGE');
   const [selectedSector, setSelectedSector] = useState<string | null>(null);
   const [sectorSearch, setSectorSearch] = useState<string>('');
-  const [displayMode, setDisplayMode] = useState<'COMBINED' | 'HEATMAP_ONLY' | 'LEADERBOARD_ONLY' | 'RADAR_ANALYSIS' | 'CORRELATION_MATRIX'>('COMBINED');
+  const [displayMode, setDisplayMode] = useState<'COMBINED' | 'HEATMAP_ONLY' | 'LEADERBOARD_ONLY' | 'RRG_ROTATION' | 'RADAR_ANALYSIS' | 'CORRELATION_MATRIX'>('COMBINED');
 
   // Compute aggregated sector metrics
   const sectorAggregates = useMemo(() => {
@@ -417,6 +419,16 @@ export const SectorStrengthView: React.FC<SectorStrengthViewProps> = ({
                 title="View Leaderboard Table only"
               >
                 Leaderboard
+              </button>
+              <button
+                onClick={() => setDisplayMode('RRG_ROTATION')}
+                className={`px-2.5 py-1 text-[11px] font-bold uppercase transition-all flex items-center space-x-1 ${
+                  displayMode === 'RRG_ROTATION' ? 'bg-amber-600 text-black font-black' : 'text-amber-400 hover:text-white'
+                }`}
+                title="View Relative Rotation Graph (RRG) JdK Rotation Analysis"
+              >
+                <Compass className="w-3 h-3" />
+                <span>RRG Rotation</span>
               </button>
               <button
                 onClick={() => setDisplayMode('RADAR_ANALYSIS')}
@@ -825,6 +837,16 @@ export const SectorStrengthView: React.FC<SectorStrengthViewProps> = ({
             </table>
           </div>
         </div>
+      )}
+
+      {/* RELATIVE ROTATION GRAPH (RRG) SECTION */}
+      {(displayMode === 'COMBINED' || displayMode === 'RRG_ROTATION') && (
+        <RelativeRotationGraph
+          sectorAggregates={filteredSectors}
+          selectedSectorName={selectedSector}
+          onSelectSector={(sectorName) => setSelectedSector(sectorName)}
+          onSelectStock={onSelectStock}
+        />
       )}
 
       {/* D3 SECTOR RELATIVE STRENGTH RADAR CHART SECTION */}

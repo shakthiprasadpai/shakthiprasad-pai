@@ -9,7 +9,7 @@ interface PineScriptExporterProps {
   onClose?: () => void;
 }
 
-export const PINE_SCRIPT_CODE = `//@version=5
+export const PINE_SCRIPT_CODE = `//@version=6
 indicator("Mark Minervini Trend Template", overlay=true)
 
 // --- Inputs ---
@@ -115,11 +115,11 @@ export const PineScriptExporter: React.FC<PineScriptExporterProps> = ({
         <div className="bg-[#161b22] px-6 py-4 border-b border-[#2d3748] flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <div className="w-8 h-8 bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 font-mono text-xs font-bold">
-              v5
+              v6
             </div>
             <div>
               <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-amber-400 block">
-                TradingView Pine Script v5
+                TradingView Pine Script v6
               </span>
               <h3 className="text-lg font-serif font-black text-white leading-tight">
                 Mark Minervini Trend Template Indicator Code
@@ -170,7 +170,7 @@ export const PineScriptExporter: React.FC<PineScriptExporterProps> = ({
                 1. Copy Script
               </span>
               <p className="text-gray-300 font-serif italic">
-                Click "Copy Pine Code" above to copy the complete TradingView v5 script to your clipboard.
+                Click "Copy Pine Code" above to copy the complete TradingView v6 script to your clipboard.
               </p>
             </div>
 
@@ -235,9 +235,9 @@ export const PineScriptExporter: React.FC<PineScriptExporterProps> = ({
             <div className="flex items-center justify-between text-xs font-mono text-gray-400">
               <span className="flex items-center space-x-1.5">
                 <Terminal className="w-4 h-4 text-amber-400" />
-                <span className="text-white font-bold">Pine Script v5 Source Code</span>
+                <span className="text-white font-bold">Pine Script v6 Source Code</span>
               </span>
-              <span>Language: TradingView PineScript v5</span>
+              <span>Language: TradingView PineScript v6</span>
             </div>
 
             <div className="relative bg-[#0d1117] border border-[#30363d] p-4 font-mono text-xs text-slate-300 overflow-x-auto leading-relaxed shadow-inner selection:bg-amber-500 selection:text-black">

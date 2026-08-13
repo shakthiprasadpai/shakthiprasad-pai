@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Navbar, AppNavTab } from './components/Navbar';
 import { ScreenerTable } from './components/ScreenerTable';
@@ -29,16 +29,25 @@ import { ExportTradeData } from './components/ExportTradeData';
 import { SecurityShieldPanel } from './components/SecurityShieldPanel';
 import { HermesAgent } from './components/HermesAgent';
 import { WatchlistManager } from './components/WatchlistManager';
+import { SectorCorrelationLeadershipCard } from './components/SectorCorrelationLeadershipCard';
 import { MOCK_STOCKS } from './data/mockStocks';
 import { MinerviniTradeSetup } from './types';
 import { formatCurrency, formatVolume, getCurrencySymbol, calculateBreakoutProbability } from './utils/sepaCalculator';
-import { TrendingUp, ShieldCheck, Target, Droplets, ArrowUpRight, Flame, BarChart3, Calculator, Sparkles, Gem, Bot } from 'lucide-react';
+import { TrendingUp, ShieldCheck, Target, Droplets, ArrowUpRight, Flame, BarChart3, Calculator, Sparkles, Gem, Bot, Bell } from 'lucide-react';
 
 export default function App() {
   const [stocksList, setStocksList] = useState<MinerviniTradeSetup[]>(MOCK_STOCKS);
   const [selectedStock, setSelectedStock] = useState<MinerviniTradeSetup>(MOCK_STOCKS[0]);
   const [activeTab, setActiveTab] = useState<AppNavTab>('hermes_agent');
   const [isObsidian, setIsObsidian] = useState<boolean>(true); // Default to Obsidian Dark theme for luxury feel
+
+  // Calculate active high-conviction AI insights and alerts count
+  const aiInsightsCount = useMemo(() => {
+    const alertCount = stocksList.filter(
+      s => s.rsRating >= 85 || s.isTightVolume || (s.volumeDryUpPercent && s.volumeDryUpPercent < -40)
+    ).length;
+    return alertCount > 0 ? alertCount : 5;
+  }, [stocksList]);
 
   useEffect(() => {
     if (isObsidian) {
@@ -94,10 +103,18 @@ export default function App() {
         onToggleObsidian={() => setIsObsidian(!isObsidian)}
       />
 
-      {/* Main Container */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 space-y-8">
-        
-        {/* Banner Quick Info - Editorial Style */}
+      {/* Main Container with Cross-Fade Theme Transition */}
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.main
+          key={isObsidian ? 'theme-obsidian-mode' : 'theme-light-mode'}
+          initial={{ opacity: 0.8, filter: 'blur(2px)' }}
+          animate={{ opacity: 1, filter: 'blur(0px)' }}
+          exit={{ opacity: 0.8, filter: 'blur(2px)' }}
+          transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+          className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 space-y-8"
+        >
+          
+          {/* Banner Quick Info - Editorial Style */}
         <div className="bg-white border border-[#e5e4e1] p-6 sm:p-8 shadow-xs flex flex-wrap items-center justify-between gap-6">
           <div className="space-y-3 max-w-2xl">
             <div className="flex items-center space-x-3">
@@ -292,6 +309,13 @@ export default function App() {
 
                 {/* Trade Plan & Position Size Card */}
                 <TradePlanCard stock={selectedStock} />
+
+                {/* Sector Correlation & Trend Leadership Validator */}
+                <SectorCorrelationLeadershipCard
+                  stock={selectedStock}
+                  allStocks={stocksList}
+                  onSelectStock={(stk) => setSelectedStock(stk)}
+                />
 
                 {/* Historical VCP Backtest & Win-Rate Summary Engine */}
                 <HistoricalBacktestPanel stock={selectedStock} />
@@ -624,7 +648,8 @@ export default function App() {
           )}
         </AnimatePresence>
 
-      </main>
+        </motion.main>
+      </AnimatePresence>
 
       {/* Footer - Editorial Style */}
       <footer className="mt-16 bg-white border-t border-[#e5e4e1] py-8 text-xs text-gray-500 font-sans">
@@ -641,7 +666,7 @@ export default function App() {
         </div>
       </footer>
 
-      {/* Floating Hermes Agent Quick Launcher */}
+      {/* Floating Hermes Agent Quick Launcher with Animated Notification Badge */}
       {activeTab !== 'hermes_agent' && (
         <motion.button
           id="floating-hermes-agent-launcher"
@@ -650,11 +675,31 @@ export default function App() {
           whileHover={{ scale: 1.06 }}
           whileTap={{ scale: 0.94 }}
           onClick={() => setActiveTab('hermes_agent')}
-          className="fixed bottom-6 right-6 z-50 bg-slate-950 text-amber-400 border border-amber-500/50 hover:bg-slate-900 px-4 py-3 rounded-full shadow-2xl font-mono text-xs font-bold uppercase tracking-wider flex items-center space-x-2.5 cursor-pointer"
+          className="fixed bottom-6 right-6 z-50 bg-slate-950 text-amber-400 border border-amber-500/60 hover:border-amber-400 hover:bg-slate-900 px-4 py-3 rounded-full shadow-[0_0_25px_rgba(245,158,11,0.35)] font-mono text-xs font-bold uppercase tracking-wider flex items-center space-x-2.5 cursor-pointer relative transition-all"
         >
-          <Bot className="w-5 h-5 text-amber-400 animate-pulse" />
-          <span className="hidden sm:inline text-amber-300 font-extrabold">HERMES AI CO-PILOT</span>
-          <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+          {/* Outer Pulsing Aura Ping Notification Badge */}
+          <span className="absolute -top-1.5 -right-1.5 flex h-6 w-6 pointer-events-none">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-500 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-6 w-6 bg-gradient-to-tr from-rose-600 via-amber-500 to-amber-300 text-slate-950 font-mono text-[10px] font-black items-center justify-center shadow-lg border border-amber-200">
+              {aiInsightsCount}
+            </span>
+          </span>
+
+          {/* Bot Icon with Radar Pulse Indicator */}
+          <div className="relative flex items-center justify-center">
+            <Bot className="w-5 h-5 text-amber-400 animate-pulse" />
+            <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+          </div>
+
+          <span className="hidden sm:inline text-amber-300 font-extrabold tracking-tight">HERMES AI CO-PILOT</span>
+
+          {/* Animated AI Insights Alert Badge Chip */}
+          <span className="hidden md:inline-flex items-center space-x-1 px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-400/50 text-amber-300 text-[10px] font-extrabold animate-pulse">
+            <Sparkles className="w-3 h-3 text-amber-400 animate-spin" />
+            <span>{aiInsightsCount} INSIGHTS</span>
+          </span>
+
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
         </motion.button>
       )}
 

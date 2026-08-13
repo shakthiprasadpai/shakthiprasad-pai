@@ -27,7 +27,12 @@ import {
   ArrowUpRight,
   TrendingDown,
   Layers,
-  Award
+  Award,
+  X,
+  Zap,
+  RefreshCw,
+  Plus,
+  Info
 } from 'lucide-react';
 
 interface ScreenerTableProps {
@@ -56,7 +61,88 @@ export type SortField =
   | 'TICKER'
   | 'RS_RATING'
   | 'PRICE'
-  | 'CHANGE_PERCENT';
+  | 'CHANGE_PERCENT'
+  | 'PCT_OFF_HIGH';
+
+export interface SortCriterion {
+  field: SortField;
+  order: 'asc' | 'desc';
+}
+
+export const SORT_FIELD_LABELS: Record<
+  SortField,
+  { short: string; full: string; defaultOrder: 'asc' | 'desc'; descText: string; ascText: string }
+> = {
+  RS_RATING: {
+    short: 'RS Rating',
+    full: 'Relative Strength Rating (1-99)',
+    defaultOrder: 'desc',
+    descText: '99 → 1 (Highest First)',
+    ascText: '1 → 99 (Lowest First)',
+  },
+  PCT_OFF_HIGH: {
+    short: '% Off High',
+    full: 'Distance Off 52-Week High (%)',
+    defaultOrder: 'asc',
+    ascText: '0% → 25% (Nearest High First)',
+    descText: '25% → 0% (Furthest First)',
+  },
+  DRY_UP: {
+    short: 'Volume Dry-Up',
+    full: 'VCP Volume Dry-Up Percentage',
+    defaultOrder: 'desc',
+    descText: 'Tightest First (-70% → 0%)',
+    ascText: 'Loosest First (0% → -70%)',
+  },
+  VCP_INTENSITY: {
+    short: 'VCP Intensity',
+    full: 'VCP Contraction Heatmap Score',
+    defaultOrder: 'desc',
+    descText: 'Highest Score First (100 → 0)',
+    ascText: 'Lowest Score First (0 → 100)',
+  },
+  SEPA_SCORE: {
+    short: 'SEPA Score',
+    full: 'Trend Template Score (0-8)',
+    defaultOrder: 'desc',
+    descText: 'Perfect 8/8 First',
+    ascText: 'Lowest Score First',
+  },
+  TREND_SLOPE: {
+    short: '200MA Slope',
+    full: '200-Day MA Trend Slope (%/mo)',
+    defaultOrder: 'desc',
+    descText: 'Steepest First (+10% → -5%)',
+    ascText: 'Flattest First (-5% → +10%)',
+  },
+  PRICE: {
+    short: 'Current Price',
+    full: 'Stock Current Price',
+    defaultOrder: 'desc',
+    descText: 'Highest Price First',
+    ascText: 'Lowest Price First',
+  },
+  CHANGE_PERCENT: {
+    short: 'Daily Chg %',
+    full: 'Daily Price Change %',
+    defaultOrder: 'desc',
+    descText: 'Top Gainers First',
+    ascText: 'Top Decliners First',
+  },
+  TICKER: {
+    short: 'Ticker',
+    full: 'Stock Ticker Symbol',
+    defaultOrder: 'asc',
+    ascText: 'Alphabetical (A → Z)',
+    descText: 'Reverse Alphabetical (Z → A)',
+  },
+};
+
+export const DEFAULT_MULTI_SORT: SortCriterion[] = [
+  { field: 'RS_RATING', order: 'desc' },
+  { field: 'PCT_OFF_HIGH', order: 'asc' },
+  { field: 'DRY_UP', order: 'desc' },
+];
 
 export function calculateVcpHeatmap(stock: MinerviniTradeSetup): VcpHeatmapInfo {
   const dryUpAbs = Math.min(100, Math.abs(stock.volumeDryUpPercent || 0));
@@ -136,37 +222,149 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
   const [filterCategory, setFilterCategory] = useState<string>('ALL');
   const [viewMode, setViewMode] = useState<'table' | 'heatmap' | 'sector_strength'>('table');
   const [highlightRows, setHighlightRows] = useState<boolean>(true);
-  const [sortBy, setSortBy] = useState<SortField>('VCP_INTENSITY');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [sortCriteria, setSortCriteria] = useState<SortCriterion[]>([...DEFAULT_MULTI_SORT]);
+  const [isMultiSortMode, setIsMultiSortMode] = useState<boolean>(true);
   const [isRefinedModalOpen, setIsRefinedModalOpen] = useState<boolean>(false);
 
-  const handleSort = (field: SortField) => {
-    if (sortBy === field) {
-      setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+  // Helper to compare two stocks by a specific SortCriterion
+  const compareByCriterion = (a: MinerviniTradeSetup, b: MinerviniTradeSetup, criterion: SortCriterion): number => {
+    const { field, order } = criterion;
+    let diff = 0;
+
+    if (field === 'RS_RATING') {
+      diff = b.rsRating - a.rsRating; // desc = highest RS rating first
+      return order === 'desc' ? diff : -diff;
+    }
+
+    if (field === 'PCT_OFF_HIGH') {
+      const pctA = a.high52w > 0 ? ((a.high52w - a.currentPrice) / a.high52w) * 100 : 999;
+      const pctB = b.high52w > 0 ? ((b.high52w - b.currentPrice) / b.high52w) * 100 : 999;
+      diff = pctA - pctB; // asc = smallest distance off high first
+      return order === 'asc' ? diff : -diff;
+    }
+
+    if (field === 'DRY_UP') {
+      diff = a.volumeDryUpPercent - b.volumeDryUpPercent; // desc = most negative / tightest volume dry up first
+      return order === 'desc' ? diff : -diff;
+    }
+
+    if (field === 'VCP_INTENSITY') {
+      diff = calculateVcpHeatmap(b).score - calculateVcpHeatmap(a).score;
+      return order === 'desc' ? diff : -diff;
+    }
+
+    if (field === 'TREND_SLOPE') {
+      diff = calculateTrendStrengthMeter(b).slopePercent - calculateTrendStrengthMeter(a).slopePercent;
+      return order === 'desc' ? diff : -diff;
+    }
+
+    if (field === 'SEPA_SCORE') {
+      diff = b.trendScore - a.trendScore;
+      return order === 'desc' ? diff : -diff;
+    }
+
+    if (field === 'PRICE') {
+      diff = b.currentPrice - a.currentPrice;
+      return order === 'desc' ? diff : -diff;
+    }
+
+    if (field === 'CHANGE_PERCENT') {
+      diff = b.changePercent - a.changePercent;
+      return order === 'desc' ? diff : -diff;
+    }
+
+    if (field === 'TICKER') {
+      diff = a.ticker.localeCompare(b.ticker);
+      return order === 'asc' ? diff : -diff;
+    }
+
+    return 0;
+  };
+
+  const handleHeaderClick = (field: SortField, isShiftPressed: boolean) => {
+    if (!isMultiSortMode && !isShiftPressed) {
+      // Single sort mode
+      const primaryIndex = sortCriteria.findIndex((c) => c.field === field);
+      if (primaryIndex === 0) {
+        // Toggle direction
+        const nextOrder = sortCriteria[0].order === 'asc' ? 'desc' : 'asc';
+        setSortCriteria([{ field, order: nextOrder }]);
+      } else {
+        const defaultOrder = SORT_FIELD_LABELS[field].defaultOrder;
+        setSortCriteria([{ field, order: defaultOrder }]);
+      }
     } else {
-      setSortBy(field);
-      setSortOrder(field === 'TICKER' ? 'asc' : 'desc');
+      // Multi sort mode enabled or shift key held
+      const existingIndex = sortCriteria.findIndex((c) => c.field === field);
+      if (existingIndex >= 0) {
+        // Toggle order
+        const currentOrder = sortCriteria[existingIndex].order;
+        const nextOrder = currentOrder === 'asc' ? 'desc' : 'asc';
+        const updated = [...sortCriteria];
+        updated[existingIndex] = { field, order: nextOrder };
+        setSortCriteria(updated);
+      } else {
+        // Add field to criteria stack
+        const defaultOrder = SORT_FIELD_LABELS[field].defaultOrder;
+        setSortCriteria([...sortCriteria, { field, order: defaultOrder }]);
+      }
     }
   };
 
+  const toggleCriterionOrder = (index: number) => {
+    setSortCriteria((prev) => {
+      const updated = [...prev];
+      if (updated[index]) {
+        updated[index] = {
+          ...updated[index],
+          order: updated[index].order === 'asc' ? 'desc' : 'asc',
+        };
+      }
+      return updated;
+    });
+  };
+
+  const removeCriterion = (index: number) => {
+    setSortCriteria((prev) => {
+      if (prev.length <= 1) return prev;
+      return prev.filter((_, i) => i !== index);
+    });
+  };
+
+  const addSortCriterion = (field: SortField) => {
+    if (sortCriteria.some((c) => c.field === field)) return;
+    const defaultOrder = SORT_FIELD_LABELS[field].defaultOrder;
+    setSortCriteria([...sortCriteria, { field, order: defaultOrder }]);
+  };
+
+  const availableFieldsToAdd = (Object.keys(SORT_FIELD_LABELS) as SortField[]).filter(
+    (f) => !sortCriteria.some((c) => c.field === f)
+  );
+
   const renderSortHeader = (label: string, field: SortField, align: 'left' | 'center' | 'right' = 'left') => {
-    const isActive = sortBy === field;
+    const activeIndex = sortCriteria.findIndex((c) => c.field === field);
+    const isActive = activeIndex >= 0;
+    const criterion = isActive ? sortCriteria[activeIndex] : null;
+
     return (
       <th
-        onClick={() => handleSort(field)}
-        className={`py-3 px-2.5 cursor-pointer hover:bg-gray-200/80 transition-all select-none group ${
+        onClick={(e) => handleHeaderClick(field, e.shiftKey)}
+        className={`py-3 px-2.5 cursor-pointer hover:bg-amber-100/70 transition-all select-none group relative ${
           align === 'center' ? 'text-center' : align === 'right' ? 'text-right' : 'text-left'
-        } ${isActive ? 'bg-amber-100/80 text-black font-extrabold border-b-2 border-b-amber-500' : ''}`}
-        title={`Click to rank by ${label} (${isActive && sortOrder === 'desc' ? 'Ascending' : 'Descending'})`}
+        } ${isActive ? 'bg-amber-100/90 text-black font-extrabold border-b-2 border-b-amber-600' : ''}`}
+        title={`Click to sort by ${label}. Hold Shift or enable Multi-Column Mode to build composite sort stacks. (Rank #${isActive ? activeIndex + 1 : 'none'})`}
       >
-        <div className={`inline-flex items-center space-x-1 ${align === 'center' ? 'justify-center' : align === 'right' ? 'justify-end' : 'justify-start'}`}>
+        <div className={`inline-flex items-center space-x-1.5 ${align === 'center' ? 'justify-center' : align === 'right' ? 'justify-end' : 'justify-start'}`}>
           <span>{label}</span>
-          {isActive ? (
-            sortOrder === 'asc' ? (
-              <ChevronUp className="w-3.5 h-3.5 text-amber-600 font-bold shrink-0" />
-            ) : (
-              <ChevronDown className="w-3.5 h-3.5 text-amber-600 font-bold shrink-0" />
-            )
+          {isActive && criterion ? (
+            <span className="inline-flex items-center space-x-1 bg-amber-600 text-white text-[9px] font-mono px-1.5 py-0.5 font-black shadow-2xs">
+              <span>#{activeIndex + 1}</span>
+              {criterion.order === 'asc' ? (
+                <ChevronUp className="w-3 h-3 font-extrabold shrink-0" />
+              ) : (
+                <ChevronDown className="w-3 h-3 font-extrabold shrink-0" />
+              )}
+            </span>
           ) : (
             <ArrowUpDown className="w-3 h-3 text-gray-400 group-hover:text-gray-700 opacity-60 group-hover:opacity-100 transition-all shrink-0" />
           )}
@@ -196,28 +394,15 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
     return true;
   });
 
-  // Sorting logic
+  // Multi-Column Sorting logic
   filteredStocks = [...filteredStocks].sort((a, b) => {
-    let diff = 0;
-    if (sortBy === 'VCP_INTENSITY') {
-      diff = calculateVcpHeatmap(b).score - calculateVcpHeatmap(a).score;
-    } else if (sortBy === 'RS_RATING') {
-      diff = b.rsRating - a.rsRating;
-    } else if (sortBy === 'PRICE') {
-      diff = b.currentPrice - a.currentPrice;
-    } else if (sortBy === 'CHANGE_PERCENT') {
-      diff = b.changePercent - a.changePercent;
-    } else if (sortBy === 'TREND_SLOPE') {
-      diff = calculateTrendStrengthMeter(b).slopePercent - calculateTrendStrengthMeter(a).slopePercent;
-    } else if (sortBy === 'DRY_UP') {
-      diff = a.volumeDryUpPercent - b.volumeDryUpPercent; // Tightest first when desc
-    } else if (sortBy === 'SEPA_SCORE') {
-      diff = b.trendScore - a.trendScore;
-    } else if (sortBy === 'TICKER') {
-      diff = a.ticker.localeCompare(b.ticker);
+    for (const criterion of sortCriteria) {
+      const diff = compareByCriterion(a, b, criterion);
+      if (diff !== 0) {
+        return diff;
+      }
     }
-
-    return sortOrder === 'desc' ? diff : -diff;
+    return 0;
   });
 
   return (
@@ -315,9 +500,150 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
           </div>
         </div>
 
-        {/* Legend Bar & Sort Selector */}
-        <div className="flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
-          {/* Legend Items */}
+        {/* Multi-Column Ranking Active Chain Control Panel */}
+        <div className="bg-[#10141d] text-white p-3.5 border border-black space-y-3 shadow-xs font-mono">
+          <div className="flex flex-wrap items-center justify-between gap-3 text-xs border-b border-gray-800 pb-2.5">
+            <div className="flex items-center space-x-2">
+              <SlidersHorizontal className="w-4 h-4 text-amber-400" />
+              <span className="font-serif font-black text-amber-300 text-xs tracking-wider uppercase">
+                Multi-Column SEPA Ranking Engine
+              </span>
+              <span className="text-[10px] text-gray-400 font-sans italic hidden md:inline">
+                (Ranks candidates simultaneously by primary ➔ secondary ➔ tertiary criteria)
+              </span>
+            </div>
+
+            {/* Mode & Presets */}
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="inline-flex items-center space-x-1.5 text-[11px] text-gray-300 cursor-pointer mr-2 select-none">
+                <input
+                  type="checkbox"
+                  checked={isMultiSortMode}
+                  onChange={(e) => {
+                    setIsMultiSortMode(e.target.checked);
+                    if (!e.target.checked && sortCriteria.length > 1) {
+                      setSortCriteria([sortCriteria[0]]);
+                    }
+                  }}
+                  className="accent-amber-500 w-3.5 h-3.5 cursor-pointer"
+                />
+                <span className="font-bold text-amber-100">Multi-Column Stack</span>
+              </label>
+
+              {/* Presets */}
+              <button
+                onClick={() => setSortCriteria([...DEFAULT_MULTI_SORT])}
+                className="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-bold uppercase tracking-wider flex items-center space-x-1 transition-all cursor-pointer shadow-2xs"
+                title="Triple SEPA Preset: 1st RS Rating (Desc) | 2nd % Off High (Asc) | 3rd Volume Dry-Up (Desc)"
+              >
+                <Zap className="w-3 h-3 fill-amber-200" />
+                <span>Triple SEPA Rank</span>
+              </button>
+
+              <button
+                onClick={() =>
+                  setSortCriteria([
+                    { field: 'DRY_UP', order: 'desc' },
+                    { field: 'RS_RATING', order: 'desc' },
+                    { field: 'PCT_OFF_HIGH', order: 'asc' },
+                  ])
+                }
+                className="px-2.5 py-1 bg-gray-800 hover:bg-gray-700 text-amber-300 text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer"
+                title="Tight Coil Focus: 1st Volume Dry-Up | 2nd RS Rating | 3rd % Off High"
+              >
+                <span>Tight Dry-Up Focus</span>
+              </button>
+
+              <button
+                onClick={() =>
+                  setSortCriteria([
+                    { field: 'PCT_OFF_HIGH', order: 'asc' },
+                    { field: 'RS_RATING', order: 'desc' },
+                    { field: 'SEPA_SCORE', order: 'desc' },
+                  ])
+                }
+                className="px-2.5 py-1 bg-gray-800 hover:bg-gray-700 text-amber-300 text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer"
+                title="52W High Leaderboard: 1st % Off High | 2nd RS Rating | 3rd SEPA Score"
+              >
+                <span>52W High Leaders</span>
+              </button>
+
+              <button
+                onClick={() => setSortCriteria([{ field: 'RS_RATING', order: 'desc' }])}
+                className="px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white text-[10px] uppercase font-bold transition-all cursor-pointer"
+                title="Reset to Single Column Sort"
+              >
+                <RefreshCw className="w-3 h-3" />
+              </button>
+            </div>
+          </div>
+
+          {/* Active Criteria Chips & Add Dropdown */}
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span className="text-[10px] uppercase tracking-wider text-gray-400 font-bold mr-1">
+              Active Hierarchy:
+            </span>
+
+            {sortCriteria.map((criterion, idx) => {
+              const meta = SORT_FIELD_LABELS[criterion.field];
+              const isAsc = criterion.order === 'asc';
+              return (
+                <div
+                  key={`${criterion.field}-${idx}`}
+                  className="inline-flex items-center space-x-1.5 px-2.5 py-1 bg-gray-900 border border-amber-500/50 text-white text-[11px] font-bold shadow-2xs"
+                >
+                  <span className="text-amber-400 font-black text-[10px]">#{idx + 1}</span>
+                  <span className="text-white">{meta.short}</span>
+
+                  <button
+                    onClick={() => toggleCriterionOrder(idx)}
+                    className="px-1.5 py-0.5 bg-gray-800 hover:bg-amber-600 text-amber-300 hover:text-white transition-all cursor-pointer flex items-center space-x-0.5 text-[9px] font-mono font-bold uppercase"
+                    title={`Current: ${isAsc ? meta.ascText : meta.descText}. Click to flip direction.`}
+                  >
+                    <span>{criterion.order}</span>
+                    {isAsc ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                  </button>
+
+                  {sortCriteria.length > 1 && (
+                    <button
+                      onClick={() => removeCriterion(idx)}
+                      className="text-gray-400 hover:text-rose-400 transition-all cursor-pointer p-0.5 ml-0.5"
+                      title="Remove criterion from multi-sort chain"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* Dropdown to add more sort criteria */}
+            {availableFieldsToAdd.length > 0 && (
+              <select
+                onChange={(e) => {
+                  if (e.target.value) {
+                    addSortCriterion(e.target.value as SortField);
+                    e.target.value = '';
+                  }
+                }}
+                defaultValue=""
+                className="bg-gray-900 border border-gray-700 text-amber-300 hover:border-amber-500/80 text-[10px] font-mono p-1 focus:outline-none cursor-pointer"
+              >
+                <option value="" disabled>
+                  + Add Sort Criterion...
+                </option>
+                {availableFieldsToAdd.map((f) => (
+                  <option key={f} value={f}>
+                    + {SORT_FIELD_LABELS[f].short} ({SORT_FIELD_LABELS[f].full})
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+        </div>
+
+        {/* Legend Scale */}
+        <div className="flex flex-wrap items-center justify-between gap-3 text-xs font-mono pt-1">
           <div className="flex flex-wrap items-center gap-3 text-[11px]">
             <span className="text-gray-500 uppercase tracking-wider font-bold">VCP Intensity Scale:</span>
             <div className="flex items-center space-x-1.5">
@@ -338,27 +664,8 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
             </div>
           </div>
 
-          {/* Sort Control */}
-          <div className="flex items-center space-x-2">
-            <ArrowUpDown className="w-3.5 h-3.5 text-gray-400" />
-            <span className="text-gray-500 font-bold uppercase text-[10px]">Sort By:</span>
-            <select
-              value={sortBy}
-              onChange={(e: any) => {
-                setSortBy(e.target.value as SortField);
-                setSortOrder('desc');
-              }}
-              className="bg-white border border-[#e5e4e1] p-1 text-xs font-bold text-[#1a1a1a] focus:outline-none cursor-pointer"
-            >
-              <option value="VCP_INTENSITY">VCP Intensity Score</option>
-              <option value="RS_RATING">⭐ RS Rating (1-99 Highest)</option>
-              <option value="PRICE">Current Price ($ / ₹)</option>
-              <option value="CHANGE_PERCENT">Daily Change % (+/-)</option>
-              <option value="TREND_SLOPE">200MA Trend Slope (Steepest First)</option>
-              <option value="DRY_UP">Volume Dry-Up % (Tightest First)</option>
-              <option value="SEPA_SCORE">SEPA Score (8/8)</option>
-              <option value="TICKER">Ticker Symbol (A-Z)</option>
-            </select>
+          <div className="text-[10px] text-gray-500 font-sans italic">
+            Tip: Hold <kbd className="px-1 py-0.5 bg-gray-200 border border-gray-300 font-mono text-[9px]">Shift</kbd> and click table headers to dynamically stack multiple sort columns.
           </div>
         </div>
 
@@ -428,6 +735,7 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
                 {renderSortHeader('Price', 'PRICE')}
                 {renderSortHeader('Chg %', 'CHANGE_PERCENT')}
                 {renderSortHeader('RS Rating', 'RS_RATING', 'center')}
+                {renderSortHeader('% Off High', 'PCT_OFF_HIGH', 'center')}
                 {renderSortHeader('Trend Readiness', 'SEPA_SCORE', 'center')}
                 {renderSortHeader('200MA Trend', 'TREND_SLOPE', 'center')}
                 <th className="py-3 px-2.5">Pattern / Stage</th>
@@ -442,7 +750,7 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
             <tbody className="divide-y divide-[#e5e4e1] text-xs">
               {filteredStocks.length === 0 ? (
                 <tr>
-                  <td colSpan={13} className="py-8 text-center text-gray-500 font-serif italic text-sm">
+                  <td colSpan={14} className="py-8 text-center text-gray-500 font-serif italic text-sm">
                     No growth setups match the selected search or SEPA filter criteria.
                   </td>
                 </tr>
@@ -513,6 +821,36 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
                           <Award className="w-3 h-3 text-amber-400" />
                           <span>{stock.rsRating} RS</span>
                         </span>
+                      </td>
+
+                      {/* % Off High Column */}
+                      <td className="py-3.5 px-2.5 text-center font-mono">
+                        {(() => {
+                          const pctOffHigh = stock.high52w > 0
+                            ? ((stock.high52w - stock.currentPrice) / stock.high52w) * 100
+                            : 0;
+                          const isNearHigh = pctOffHigh <= 5.0;
+                          return (
+                            <div className="flex flex-col items-center">
+                              <span
+                                className={`inline-flex items-center space-x-1 px-2 py-0.5 text-xs font-bold border ${
+                                  isNearHigh
+                                    ? 'bg-[#107c41] text-white border-[#0d6233] font-black shadow-2xs'
+                                    : pctOffHigh <= 15.0
+                                    ? 'bg-amber-50 text-amber-900 border-amber-300'
+                                    : 'bg-gray-50 text-gray-700 border-gray-200'
+                                }`}
+                                title={`52-Week High: ${currency}${stock.high52w.toFixed(2)} | Distance Off High: -${pctOffHigh.toFixed(1)}%`}
+                              >
+                                {isNearHigh && <TrendingUp className="w-3 h-3 text-amber-300" />}
+                                <span>-{pctOffHigh.toFixed(1)}%</span>
+                              </span>
+                              <span className="text-[9px] text-gray-500 font-sans mt-0.5">
+                                52W: {currency}{stock.high52w.toFixed(0)}
+                              </span>
+                            </div>
+                          );
+                        })()}
                       </td>
 
                       {/* Trend Readiness Score Column */}
@@ -746,6 +1084,27 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
                       </span>
                     </div>
                   </div>
+
+                  {/* Triple Metrics Highlight Row: RS Rating & % Off High */}
+                  {(() => {
+                    const pctOffHigh = stock.high52w > 0
+                      ? ((stock.high52w - stock.currentPrice) / stock.high52w) * 100
+                      : 0;
+                    return (
+                      <div className="flex items-center justify-between text-[11px] font-mono bg-white p-2 border border-[#e5e4e1]">
+                        <div className="flex items-center space-x-1">
+                          <Award className="w-3.5 h-3.5 text-amber-500" />
+                          <span className="font-bold text-[#1a1a1a]">{stock.rsRating} RS</span>
+                        </div>
+                        <div className="flex items-center space-x-1">
+                          <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
+                          <span className="font-bold text-emerald-800">
+                            -{pctOffHigh.toFixed(1)}% High
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   {/* VCP Contraction Meter Bar */}
                   <div className="space-y-1.5 bg-white p-2.5 border border-[#e5e4e1]">

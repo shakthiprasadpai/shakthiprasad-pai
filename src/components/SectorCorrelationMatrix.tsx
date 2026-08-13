@@ -160,7 +160,7 @@ export function calculateBeta(stockReturns: number[], etfReturns: number[]): num
 }
 
 // Generate realistic daily returns array for a stock based on price action and volatility
-function deriveStockDailyReturns(stock: MinerviniTradeSetup): number[] {
+export function deriveStockDailyReturns(stock: MinerviniTradeSetup): number[] {
   if (stock.priceHistory && stock.priceHistory.length >= 20) {
     const recent20 = stock.priceHistory.slice(-21);
     const returns: number[] = [];

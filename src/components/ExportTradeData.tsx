@@ -242,9 +242,9 @@ Total Qualified Stocks: **${stocks.length}**
     return { content: md, filename: `Minervini_Setups_${today}.md` };
   };
 
-  // Generate PineScript v5 Indicator
+  // Generate PineScript v6 Indicator
   const generatePineScript = (): { content: string; filename: string } => {
-    const code = `//@version=5
+    const code = `//@version=6
 indicator("Minervini SEPA VCP Overlay [Growth Stock Alpha]", overlay=true)
 
 // --- MINERVINI TREND TEMPLATE EMAs & SMAs ---
@@ -519,7 +519,7 @@ alertcondition(vcpPrimed, title="Minervini VCP Primed Alert", message="VCP Volat
             >
               <Code className="w-6 h-6 text-sky-400" />
               <div>
-                <strong className="block text-sm text-white">PineScript v5</strong>
+                <strong className="block text-sm text-white">PineScript v6</strong>
                 <span className="text-[10px] text-gray-400">TradingView Chart Overlay</span>
               </div>
             </button>
