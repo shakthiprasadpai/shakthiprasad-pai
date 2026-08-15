@@ -49,6 +49,20 @@ export default function App() {
     return alertCount > 0 ? alertCount : 5;
   }, [stocksList]);
 
+  // High-Volume Breakout & Volume Spike Watchlist Alert Detector
+  const volumeSpikeStocks = useMemo(() => {
+    return stocksList.filter(s => {
+      const volRatio = s.pivotVolume && s.avgVolume20d ? s.pivotVolume / s.avgVolume20d : 0;
+      const isActiveBreakout = s.vcpStage === 'Active Breakout';
+      const isVolSurge = volRatio >= 1.5;
+      const isPosDryUpSurge = Boolean(s.volumeDryUpPercent && s.volumeDryUpPercent > 50);
+      return isActiveBreakout || isVolSurge || isPosDryUpSurge;
+    });
+  }, [stocksList]);
+
+  const volumeSpikeCount = volumeSpikeStocks.length;
+  const topVolumeSpikeStock = volumeSpikeStocks[0] || null;
+
   useEffect(() => {
     if (isObsidian) {
       document.body.classList.add('obsidian-theme');
@@ -677,11 +691,21 @@ export default function App() {
           onClick={() => setActiveTab('hermes_agent')}
           className="fixed bottom-6 right-6 z-50 bg-slate-950 text-amber-400 border border-amber-500/60 hover:border-amber-400 hover:bg-slate-900 px-4 py-3 rounded-full shadow-[0_0_25px_rgba(245,158,11,0.35)] font-mono text-xs font-bold uppercase tracking-wider flex items-center space-x-2.5 cursor-pointer relative transition-all"
         >
+          {/* High-Volume Breakout Alert Floating Banner Tooltip */}
+          {volumeSpikeCount > 0 && (
+            <div className="absolute -top-9 right-0 bg-rose-950/95 text-rose-200 border border-rose-500 px-3 py-1 rounded-full text-[10px] font-mono font-bold uppercase tracking-wide flex items-center space-x-1.5 shadow-2xl animate-bounce pointer-events-none whitespace-nowrap">
+              <Flame className="w-3.5 h-3.5 text-rose-400 animate-pulse" />
+              <span className="text-rose-300 font-extrabold">VOL SPIKE BREAKOUT:</span>
+              <span className="text-white font-black">{topVolumeSpikeStock?.ticker || 'SUVEN'}</span>
+              <span className="text-emerald-400 font-black">+{topVolumeSpikeStock?.changePercent || 9.95}%</span>
+            </div>
+          )}
+
           {/* Outer Pulsing Aura Ping Notification Badge */}
           <span className="absolute -top-1.5 -right-1.5 flex h-6 w-6 pointer-events-none">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-500 opacity-75"></span>
             <span className="relative inline-flex rounded-full h-6 w-6 bg-gradient-to-tr from-rose-600 via-amber-500 to-amber-300 text-slate-950 font-mono text-[10px] font-black items-center justify-center shadow-lg border border-amber-200">
-              {aiInsightsCount}
+              {aiInsightsCount + volumeSpikeCount}
             </span>
           </span>
 
@@ -698,6 +722,14 @@ export default function App() {
             <Sparkles className="w-3 h-3 text-amber-400 animate-spin" />
             <span>{aiInsightsCount} INSIGHTS</span>
           </span>
+
+          {/* High Volume Spike Breakout Notification Badge Chip */}
+          {volumeSpikeCount > 0 && (
+            <span className="hidden lg:inline-flex items-center space-x-1 px-2 py-0.5 rounded-full bg-rose-500/25 border border-rose-500/70 text-rose-300 text-[10px] font-black animate-pulse shadow-[0_0_12px_rgba(244,63,94,0.5)]">
+              <Flame className="w-3.5 h-3.5 text-rose-400 animate-bounce" />
+              <span>VOLUME SPIKE ({volumeSpikeCount})</span>
+            </span>
+          )}
 
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
         </motion.button>

@@ -3,6 +3,7 @@ import { PortfolioHolding, MinerviniTradeSetup } from '../types';
 import { formatCurrency, getCurrencySymbol } from '../utils/sepaCalculator';
 import { exportPortfolioToCsv } from '../utils/csvExport';
 import { PortfolioRebalancing } from './PortfolioRebalancing';
+import { PortfolioSectorPieChart } from './PortfolioSectorPieChart';
 import {
   Briefcase,
   TrendingUp,
@@ -24,7 +25,9 @@ import {
   Info,
   ChevronRight,
   Download,
-  FileSpreadsheet
+  FileSpreadsheet,
+  GripVertical,
+  ListOrdered
 } from 'lucide-react';
 
 interface MyPortfolioProps {
@@ -87,6 +90,86 @@ export const MyPortfolio: React.FC<MyPortfolioProps> = ({
 
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
   const [editingHoldingId, setEditingHoldingId] = useState<string | null>(null);
+  const [selectedSectorFilter, setSelectedSectorFilter] = useState<string | null>(null);
+
+  // Drag and Drop state for custom holdings reordering
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const [reorderNotification, setReorderNotification] = useState<string | null>(null);
+
+  // Drag and drop handlers
+  const handleDragStart = (e: React.DragEvent, index: number) => {
+    setDraggedIndex(index);
+    e.dataTransfer.setData('text/plain', index.toString());
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragOverIndex !== index) {
+      setDragOverIndex(index);
+    }
+  };
+
+  const handleDragEnd = () => {
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+  };
+
+  const handleDrop = (e: React.DragEvent, dropIndex: number) => {
+    e.preventDefault();
+    if (draggedIndex === null || draggedIndex === dropIndex) {
+      setDraggedIndex(null);
+      setDragOverIndex(null);
+      return;
+    }
+
+    const updated = [...holdings];
+    const [movedItem] = updated.splice(draggedIndex, 1);
+    updated.splice(dropIndex, 0, movedItem);
+
+    setHoldings(updated);
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+
+    setReorderNotification(`Moved ${movedItem.ticker} to position #${dropIndex + 1}`);
+    setTimeout(() => setReorderNotification(null), 3000);
+  };
+
+  // Preset Quick Sort Helpers
+  const handleSortByPnL = () => {
+    const sorted = [...holdings].sort((a, b) => {
+      const pnlA = (a.currentPrice - a.entryPrice) / a.entryPrice;
+      const pnlB = (b.currentPrice - b.entryPrice) / b.entryPrice;
+      return pnlB - pnlA;
+    });
+    setHoldings(sorted);
+    setReorderNotification('Sorted holdings by Conviction P&L % (High to Low)');
+    setTimeout(() => setReorderNotification(null), 3000);
+  };
+
+  const handleGroupBySector = () => {
+    const sorted = [...holdings].sort((a, b) => {
+      const secA = stocks.find((s) => s.ticker === a.ticker)?.sector || '';
+      const secB = stocks.find((s) => s.ticker === b.ticker)?.sector || '';
+      return secA.localeCompare(secB);
+    });
+    setHoldings(sorted);
+    setReorderNotification('Grouped holdings by Sector Industry');
+    setTimeout(() => setReorderNotification(null), 3000);
+  };
+
+  const handleSortByValue = () => {
+    const sorted = [...holdings].sort((a, b) => {
+      const valA = a.shares * a.currentPrice;
+      const valB = b.shares * b.currentPrice;
+      return valB - valA;
+    });
+    setHoldings(sorted);
+    setReorderNotification('Sorted holdings by Position Market Value');
+    setTimeout(() => setReorderNotification(null), 3000);
+  };
 
   // Real-time market index benchmark state for performance summary widget
   const [selectedBenchmark, setSelectedBenchmark] = useState<'SP500' | 'NASDAQ' | 'NIFTY50' | 'RUSSELL'>('SP500');
@@ -652,11 +735,74 @@ export const MyPortfolio: React.FC<MyPortfolioProps> = ({
 
       </div>
 
+      {/* D3-Based SEPA Capital Allocation & Sector Distribution Pie Chart */}
+      <PortfolioSectorPieChart
+        holdings={holdings}
+        stocksList={stocks}
+        onSelectStock={onSelectStock}
+        onFilterSector={(sec) => setSelectedSectorFilter(sec)}
+        selectedSector={selectedSectorFilter}
+      />
+
+      {/* Position Reordering & Sector Grouping Control Bar */}
+      <div className="bg-[#1a1a1a] text-white p-3 border border-black flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
+        <div className="flex items-center space-x-2">
+          <GripVertical className="w-4 h-4 text-amber-400 animate-pulse" />
+          <span className="font-bold uppercase text-[11px] text-amber-300">
+            Drag & Drop Reordering Active
+          </span>
+          <span className="text-[10px] text-gray-400 font-sans hidden sm:inline">
+            (Drag rows using handle <GripVertical className="w-3.5 h-3.5 inline text-amber-400" /> to organize holdings by conviction rank)
+          </span>
+        </div>
+
+        {/* Quick Sorting Presets */}
+        <div className="flex flex-wrap items-center gap-1.5 text-[10px] uppercase font-bold">
+          <span className="text-gray-400 pr-1 hidden md:inline">Quick Presets:</span>
+          <button
+            onClick={handleSortByPnL}
+            className="bg-white/10 hover:bg-amber-400 hover:text-black text-amber-300 px-2.5 py-1 border border-white/20 transition-all flex items-center space-x-1 cursor-pointer"
+            title="Reorder holdings by highest conviction P&L gain %"
+          >
+            <TrendingUp className="w-3 h-3" />
+            <span>Conviction (P&L %)</span>
+          </button>
+          <button
+            onClick={handleGroupBySector}
+            className="bg-white/10 hover:bg-amber-400 hover:text-black text-sky-300 px-2.5 py-1 border border-white/20 transition-all flex items-center space-x-1 cursor-pointer"
+            title="Group holdings by sector industry"
+          >
+            <ListOrdered className="w-3 h-3" />
+            <span>Group by Sector</span>
+          </button>
+          <button
+            onClick={handleSortByValue}
+            className="bg-white/10 hover:bg-amber-400 hover:text-black text-emerald-300 px-2.5 py-1 border border-white/20 transition-all flex items-center space-x-1 cursor-pointer"
+            title="Sort holdings by position size market value"
+          >
+            <DollarSign className="w-3 h-3" />
+            <span>Position Value</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Reorder Notification Toast */}
+      {reorderNotification && (
+        <div className="bg-amber-500 text-black px-4 py-2 font-mono text-xs font-bold uppercase tracking-wider flex items-center justify-between border border-amber-600 shadow-md">
+          <div className="flex items-center space-x-2">
+            <Sparkles className="w-4 h-4" />
+            <span>{reorderNotification}</span>
+          </div>
+          <span className="text-[10px] bg-black text-amber-400 px-1.5 py-0.5">Saved to Local Storage</span>
+        </div>
+      )}
+
       {/* Main Holdings Table */}
       <div className="overflow-x-auto border border-[#e5e4e1]">
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="border-b border-[#e5e4e1] text-[10px] uppercase tracking-[0.2em] text-[#b5a68d] font-bold bg-[#f9f8f5]">
+              <th className="py-3 px-3 text-center w-12" title="Drag handle to reorder rows"># Drag</th>
               <th className="py-3 px-4">Stock & Exchange</th>
               <th className="py-3 px-4">Position Size</th>
               <th className="py-3 px-4">Cost Basis</th>
@@ -670,12 +816,12 @@ export const MyPortfolio: React.FC<MyPortfolioProps> = ({
           <tbody className="divide-y divide-[#e5e4e1] text-xs">
             {holdings.length === 0 ? (
               <tr>
-                <td colSpan={8} className="py-12 text-center text-gray-500 font-serif italic text-sm">
+                <td colSpan={9} className="py-12 text-center text-gray-500 font-serif italic text-sm">
                   No actual portfolio holdings tracked yet. Click "Add Portfolio Holding" to monitor your positions.
                 </td>
               </tr>
             ) : (
-              holdings.map((h) => {
+              holdings.map((h, index) => {
                 const currency = getCurrencySymbol(h.exchange);
                 const totalCost = h.shares * h.entryPrice;
                 const currentValue = h.shares * h.currentPrice;
@@ -687,18 +833,43 @@ export const MyPortfolio: React.FC<MyPortfolioProps> = ({
                 const isStage2Intact = !h.sma200 || h.currentPrice >= h.sma200;
 
                 const matchedStock = stocks.find((s) => s.ticker === h.ticker);
+                const holdingSector = matchedStock?.sector?.trim() || (h.exchange === 'NSE' ? 'NSE Growth Leader' : 'Technology / Growth');
+                const isSectorMatch = selectedSectorFilter ? holdingSector.toLowerCase() === selectedSectorFilter.toLowerCase() : true;
 
                 return (
                   <tr
                     key={h.id}
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, index)}
+                    onDragOver={(e) => handleDragOver(e, index)}
+                    onDragEnd={handleDragEnd}
+                    onDrop={(e) => handleDrop(e, index)}
                     className={`transition-all ${
-                      isStopViolated
+                      draggedIndex === index
+                        ? 'opacity-30 bg-amber-100 border-2 border-dashed border-amber-500'
+                        : dragOverIndex === index
+                        ? 'bg-amber-100/90 border-t-4 border-t-amber-600 shadow-md scale-[1.01]'
+                        : selectedSectorFilter && !isSectorMatch
+                        ? 'opacity-40 bg-gray-50'
+                        : selectedSectorFilter && isSectorMatch
+                        ? 'bg-amber-50/70 border-l-4 border-l-amber-500'
+                        : isStopViolated
                         ? 'bg-rose-50/80 border-l-4 border-l-rose-600'
                         : isTargetReached
                         ? 'bg-emerald-50/80 border-l-4 border-l-emerald-600'
                         : 'hover:bg-gray-50/80'
                     }`}
                   >
+                    {/* Position Rank & Drag Handle */}
+                    <td className="py-4 px-2 text-center align-middle select-none">
+                      <div className="flex flex-col items-center justify-center space-y-1 cursor-grab active:cursor-grabbing group" title="Drag to reorder position rank">
+                        <GripVertical className="w-4 h-4 text-gray-400 group-hover:text-amber-600 transition-colors" />
+                        <span className="text-[9px] font-mono font-bold bg-[#1a1a1a] text-amber-400 px-1 py-0.2">
+                          #{index + 1}
+                        </span>
+                      </div>
+                    </td>
+
                     {/* Ticker & Name */}
                     <td className="py-4 px-4">
                       <div className="flex items-center space-x-2">
@@ -712,6 +883,11 @@ export const MyPortfolio: React.FC<MyPortfolioProps> = ({
                       <div className="text-[11px] text-gray-500 truncate max-w-[160px] mt-0.5 font-sans">
                         {h.stockName}
                       </div>
+                      {matchedStock?.sector && (
+                        <span className="text-[9px] font-mono px-1.5 py-0.2 bg-gray-100 text-gray-700 border border-gray-300 font-semibold inline-block mt-0.5">
+                          📂 {matchedStock.sector}
+                        </span>
+                      )}
                       <div className="text-[10px] font-mono text-gray-500 mt-0.5 flex flex-wrap items-center gap-1">
                         <span>Bought {h.buyDate}</span>
                         {(() => {
