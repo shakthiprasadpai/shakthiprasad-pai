@@ -13,9 +13,10 @@ import {
 import { 
   Bookmark, Star, Plus, Trash2, FileText, Download, TrendingUp, 
   Target, ShieldCheck, Sparkles, Filter, Check, Bot, Eye, Layers, Search,
-  Bell, BellRing, Zap, CheckCircle2, AlertTriangle, Activity
+  Bell, BellRing, Zap, CheckCircle2, AlertTriangle, Activity, Newspaper
 } from 'lucide-react';
 import { playAlertChime, appendTrackerLog } from '../utils/backgroundPriceChecker';
+import { simulateWatchlistMajorNewsAlert } from '../utils/watchlistNewsListener';
 
 interface WatchlistManagerProps {
   stocks: MinerviniTradeSetup[];
@@ -538,6 +539,14 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
                             className="p-1.5 rounded bg-amber-500/10 hover:bg-amber-500 text-amber-400 hover:text-black border border-amber-500/30 transition-all cursor-pointer"
                           >
                             <Zap className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            onClick={() => simulateWatchlistMajorNewsAlert(stock)}
+                            title="Trigger Major News Catalyst Grounding Notification"
+                            className="p-1.5 rounded bg-amber-600/15 hover:bg-amber-600 text-amber-300 hover:text-black border border-amber-500/30 transition-all cursor-pointer"
+                          >
+                            <Newspaper className="w-3.5 h-3.5" />
                           </button>
 
                           <button
