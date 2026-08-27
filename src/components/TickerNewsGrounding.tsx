@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { MinerviniTradeSetup } from '../types';
+import { evaluateAndDispatchWatchlistNewsEvents } from '../utils/watchlistNewsListener';
 import { Newspaper, Globe, ExternalLink, RefreshCw, Sparkles, TrendingUp, TrendingDown, AlertCircle, Search, ShieldCheck, Tag } from 'lucide-react';
 
 interface TickerNewsGroundingProps {
@@ -13,6 +14,8 @@ interface HeadlineItem {
   snippet: string;
   sentiment: 'BULLISH' | 'BEARISH' | 'NEUTRAL' | 'CATALYST';
   catalystType: string;
+  isMajorEvent?: boolean;
+  impactLevel?: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 }
 
 interface GroundingSource {
@@ -54,6 +57,11 @@ export const TickerNewsGrounding: React.FC<TickerNewsGroundingProps> = ({ stock 
 
       const data = await res.json();
       setNewsData(data);
+
+      // Trigger watchlist news listener to evaluate if any major catalyst should alert user
+      if (data && data.headlines) {
+        evaluateAndDispatchWatchlistNewsEvents(stock, data);
+      }
     } catch (err: any) {
       console.error('Failed to fetch ticker news grounding', err);
       setError('Unable to fetch grounded headlines at this moment. Please check your network connection.');

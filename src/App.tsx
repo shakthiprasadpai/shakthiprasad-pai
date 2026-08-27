@@ -378,7 +378,9 @@ export default function App() {
               <BigMoneyTracker stock={selectedStock} />
 
               {/* Live Google Search Grounded Financial Headlines Module */}
-              <TickerNewsGrounding stock={selectedStock} />
+              <div id="ticker-news-grounding-section">
+                <TickerNewsGrounding stock={selectedStock} />
+              </div>
 
               {/* Trade Execution Levels Card */}
               <TradePlanCard stock={selectedStock} />

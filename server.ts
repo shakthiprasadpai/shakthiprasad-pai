@@ -158,8 +158,10 @@ Provide a structured, expert, authoritative analysis in Mark Minervini's signatu
               source: 'Wall Street Journal',
               date: 'Recent',
               snippet: `${ticker} delivered Q1 performance topping analyst consensus, driven by strong enterprise backlog in ${sectorVal}. Management expanded full-year guidance.`,
-              sentiment: 'BULLISH',
-              catalystType: 'Earnings & Guidance'
+              sentiment: 'CATALYST',
+              catalystType: 'Earnings & Guidance',
+              isMajorEvent: true,
+              impactLevel: 'CRITICAL'
             },
             {
               title: `Institutional Funds Increase Allocation in ${ticker} Amid Base Formation`,
@@ -167,7 +169,9 @@ Provide a structured, expert, authoritative analysis in Mark Minervini's signatu
               date: 'Recent',
               snippet: `Significant accumulation detected as large institutions accumulate shares ahead of key product announcements, providing floor support near key moving averages.`,
               sentiment: 'BULLISH',
-              catalystType: 'Institutional Buying'
+              catalystType: 'Institutional Buying',
+              isMajorEvent: true,
+              impactLevel: 'HIGH'
             },
             {
               title: `Analyst Consortium Raises Price Targets on ${ticker} Citing Competitive Advantages`,
@@ -175,7 +179,9 @@ Provide a structured, expert, authoritative analysis in Mark Minervini's signatu
               date: 'Recent',
               snippet: `Major equity research firms adjusted 12-month target prices upward, highlighting strong market position and improving supply chain dynamics.`,
               sentiment: 'BULLISH',
-              catalystType: 'Analyst Rating'
+              catalystType: 'Analyst Rating',
+              isMajorEvent: false,
+              impactLevel: 'MEDIUM'
             }
           ],
           groundingSources: [
@@ -199,7 +205,9 @@ Format your response as a strictly valid JSON object with the following structur
       "date": "Approximate date or timeframe (e.g. 2 days ago, July 2026, Recent)",
       "snippet": "Concise 1-2 sentence key takeaway of the news story",
       "sentiment": "BULLISH" | "BEARISH" | "NEUTRAL" | "CATALYST",
-      "catalystType": "Category like 'Earnings', 'Product Launch', 'Analyst Rating', 'Macro/Sector', 'Institutional'"
+      "catalystType": "Category like 'Earnings & Guidance', 'Product Launch', 'Contract Win', 'Analyst Rating', 'Macro/Sector', 'Institutional Accumulation', 'M&A / Acquisition', 'FDA Approval'",
+      "isMajorEvent": true | false (set true if this is a high-impact catalyst, earnings beat/guidance, major contract, M&A, FDA, or significant institutional catalyst),
+      "impactLevel": "CRITICAL" | "HIGH" | "MEDIUM"
     }
   ]
 }

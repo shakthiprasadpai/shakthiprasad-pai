@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { PriceAlert, MinerviniTradeSetup, PortfolioHolding } from '../types';
+import { PriceAlert, MinerviniTradeSetup, PortfolioHolding, MajorNewsEventPayload } from '../types';
 import {
   getStoredAlerts,
   saveStoredAlerts,
@@ -8,6 +8,10 @@ import {
   initializeLocalStorageAlerts,
   syncPortfolioAlerts,
 } from '../utils/backgroundPriceChecker';
+import {
+  isTickerInUserWatchlists,
+  simulateWatchlistMajorNewsAlert,
+} from '../utils/watchlistNewsListener';
 import { formatCurrency, getCurrencySymbol } from '../utils/sepaCalculator';
 import {
   BellRing,
@@ -25,22 +29,36 @@ import {
   Zap,
   ChevronUp,
   ChevronDown,
+  Newspaper,
+  Globe,
+  ExternalLink,
+  Flame,
 } from 'lucide-react';
 
 interface GlobalNotificationToastProps {
   stocks: MinerviniTradeSetup[];
   onSelectStock: (stock: MinerviniTradeSetup) => void;
-  onNavigateTab: (tab: 'screener' | 'chart' | 'calculator' | 'portfolio') => void;
+  onNavigateTab: (tab: 'screener' | 'chart' | 'calculator' | 'portfolio' | 'watchlist') => void;
 }
 
 export interface ActiveToastNotification {
   alert: PriceAlert;
   previousPrice: number;
   currentPrice: number;
-  crossoverType: 'PIVOT_CROSSOVER' | 'STOP_LOSS_HIT' | 'PROXIMITY_ALERT' | 'VOLATILITY_DRYUP' | 'PORTFOLIO_PIVOT_CROSSOVER' | 'PORTFOLIO_STOP_LOSS_HIT' | 'STAGE_2_COMPLETED' | 'VCP_BASE_FORMED';
+  crossoverType:
+    | 'PIVOT_CROSSOVER'
+    | 'STOP_LOSS_HIT'
+    | 'PROXIMITY_ALERT'
+    | 'VOLATILITY_DRYUP'
+    | 'PORTFOLIO_PIVOT_CROSSOVER'
+    | 'PORTFOLIO_STOP_LOSS_HIT'
+    | 'STAGE_2_COMPLETED'
+    | 'VCP_BASE_FORMED'
+    | 'MAJOR_NEWS_CATALYST';
   triggeredAt: string;
   isPortfolioHolding?: boolean;
   portfolioHolding?: PortfolioHolding;
+  majorNewsPayload?: MajorNewsEventPayload;
 }
 
 export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = ({
@@ -60,17 +78,49 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
     syncPortfolioAlerts();
   }, [stocks]);
 
-  // Listen to custom window events for immediate alert/portfolio re-sync
+  // Listen to custom window events for immediate alert/portfolio re-sync and major news detection
   useEffect(() => {
     const handleSync = () => {
       syncPortfolioAlerts();
     };
 
+    const handleMajorNewsEvent = (e: Event) => {
+      const customEvt = e as CustomEvent<MajorNewsEventPayload>;
+      const payload = customEvt.detail;
+      if (!payload) return;
+
+      const match = stocksRef.current.find((s) => s.ticker === payload.ticker);
+      const alertItem: PriceAlert = {
+        id: `news-${payload.ticker}-${Date.now()}`,
+        ticker: payload.ticker,
+        stockName: payload.stockName,
+        targetType: 'MAJOR_NEWS_CATALYST',
+        targetPrice: match ? match.pivotPrice : 0,
+        triggerProximityPercent: 0,
+        currentPrice: match ? match.currentPrice : 0,
+        status: 'TRIGGERED',
+        createdAt: new Date().toLocaleDateString(),
+        exchange: (payload.exchange as any) || 'NASDAQ',
+        notes: `⚡ Watchlist Major News: ${payload.headlineTitle}`,
+      };
+
+      setActiveToast({
+        alert: alertItem,
+        previousPrice: match ? match.currentPrice - 1 : 0,
+        currentPrice: match ? match.currentPrice : 0,
+        crossoverType: 'MAJOR_NEWS_CATALYST',
+        triggeredAt: payload.triggeredAt || new Date().toLocaleTimeString(),
+        majorNewsPayload: payload,
+      });
+    };
+
     window.addEventListener('minervini_portfolio_updated', handleSync);
     window.addEventListener('minervini_alerts_updated', handleSync);
+    window.addEventListener('minervini_major_news_detected', handleMajorNewsEvent);
     return () => {
       window.removeEventListener('minervini_portfolio_updated', handleSync);
       window.removeEventListener('minervini_alerts_updated', handleSync);
+      window.removeEventListener('minervini_major_news_detected', handleMajorNewsEvent);
     };
   }, []);
 
@@ -437,6 +487,21 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
     });
   };
 
+  // View News Grounding handler
+  const handleViewNews = () => {
+    if (!activeToast) return;
+    const match = stocks.find((s) => s.ticker === activeToast.alert.ticker);
+    if (match) onSelectStock(match);
+    onNavigateTab('screener');
+    setActiveToast(null);
+    setTimeout(() => {
+      const el = document.getElementById('ticker-news-grounding-section');
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 150);
+  };
+
   // View Portfolio handler
   const handleViewPortfolio = () => {
     if (!activeToast) return;
@@ -548,6 +613,17 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
               <button
                 onClick={() => {
                   const stock = stocks[0];
+                  simulateWatchlistMajorNewsAlert(stock);
+                }}
+                className="bg-amber-600 hover:bg-amber-500 text-white px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center space-x-1.5 shadow-sm transition-all"
+              >
+                <Newspaper className="w-3 h-3" />
+                <span>Test Watchlist Major News Toast</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  const stock = stocks[0];
                   playAlertChime();
                   if ('Notification' in window && Notification.permission === 'granted') {
                     new Notification(`⚡ VCP Base Formed Alert: ${stock.ticker}`, {
@@ -575,7 +651,7 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
                     triggeredAt: new Date().toLocaleTimeString(),
                   });
                 }}
-                className="bg-amber-600 hover:bg-amber-500 text-white px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center space-x-1.5 shadow-sm transition-all"
+                className="bg-amber-700 hover:bg-amber-600 text-white px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center space-x-1.5 shadow-sm transition-all"
               >
                 <Zap className="w-3 h-3" />
                 <span>Test VCP Base Notification</span>
@@ -610,6 +686,8 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
   const isVolatility = activeToast.crossoverType === 'VOLATILITY_DRYUP';
   const isStage2 = activeToast.crossoverType === 'STAGE_2_COMPLETED';
   const isVcpBase = activeToast.crossoverType === 'VCP_BASE_FORMED';
+  const isMajorNews = activeToast.crossoverType === 'MAJOR_NEWS_CATALYST';
+  const newsPayload = activeToast.majorNewsPayload;
 
   const holding = activeToast.portfolioHolding;
   const shares = holding ? holding.shares : 50;
@@ -618,6 +696,131 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
   const positionCost = shares * entryPrice;
   const pnlDollar = positionValue - positionCost;
   const pnlPercent = entryPrice > 0 ? ((activeToast.currentPrice - entryPrice) / entryPrice) * 100 : 0;
+
+  // Render Specialized Major News Catalyst Toast Card
+  if (isMajorNews && newsPayload) {
+    return (
+      <div className="fixed top-5 right-5 z-50 max-w-xl w-full animate-slide-down shadow-2xl">
+        <div className="p-5 border-2 bg-[#120e09] text-white border-amber-400 shadow-amber-500/30">
+          {/* Top Header Tag */}
+          <div className="flex items-start justify-between border-b border-white/15 pb-2.5 mb-3">
+            <div className="flex items-center space-x-2.5">
+              <div className="w-8 h-8 bg-amber-400 text-black flex items-center justify-center font-bold">
+                <Newspaper className="w-5 h-5" />
+              </div>
+
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[10px] uppercase font-mono tracking-[0.2em] font-extrabold text-amber-400 block">
+                    ⚡ WATCHLIST MAJOR NEWS DETECTED
+                  </span>
+                  <span className="bg-[#1a1a1a] text-amber-300 border border-amber-500/40 text-[9px] font-black uppercase px-2 py-0.5 font-mono">
+                    Google Search Grounded
+                  </span>
+                  {newsPayload.watchlistName && (
+                    <span className="bg-amber-400 text-black text-[9px] font-black uppercase px-2 py-0.5 font-mono">
+                      {newsPayload.watchlistName}
+                    </span>
+                  )}
+                </div>
+
+                <h4 className="text-lg font-mono font-black text-white leading-tight mt-0.5">
+                  {newsPayload.ticker} ({newsPayload.exchange || 'NASDAQ'}) — {newsPayload.stockName}
+                </h4>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setActiveToast(null)}
+              className="text-gray-400 hover:text-white p-1 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Breaking Headline Detail Block */}
+          <div className="bg-white/5 border border-white/10 p-3.5 mb-3 font-mono text-xs space-y-2.5">
+            <div className="flex items-center justify-between text-[10px] pb-1.5 border-b border-white/10">
+              <div className="flex items-center space-x-2">
+                <span className="font-bold text-gray-300 uppercase flex items-center space-x-1">
+                  <Globe className="w-3 h-3 text-amber-400" />
+                  <span>{newsPayload.source}</span>
+                </span>
+                <span className="text-gray-400">• {newsPayload.date}</span>
+              </div>
+              <span className="bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 font-bold uppercase tracking-wider text-[9px]">
+                {newsPayload.catalystType || 'High-Impact Catalyst'}
+              </span>
+            </div>
+
+            <h3 className="text-sm font-serif font-black text-amber-100 leading-snug">
+              {newsPayload.headlineTitle}
+            </h3>
+
+            <p className="text-xs font-sans text-gray-300 leading-relaxed italic">
+              "{newsPayload.snippet}"
+            </p>
+
+            {newsPayload.summary && (
+              <div className="bg-black/40 p-2.5 border-l-2 border-amber-400 text-[11px] font-sans text-gray-200">
+                <strong className="text-amber-300 font-serif">SEPA Catalyst Alignment: </strong>
+                {newsPayload.summary}
+              </div>
+            )}
+
+            {newsPayload.groundingSources && newsPayload.groundingSources.length > 0 && (
+              <div className="pt-1 flex flex-wrap items-center gap-2 text-[10px]">
+                <span className="text-gray-400">Source:</span>
+                {newsPayload.groundingSources.slice(0, 2).map((src, i) => (
+                  <a
+                    key={i}
+                    href={src.uri}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-amber-300 hover:underline flex items-center space-x-1 truncate max-w-[200px]"
+                  >
+                    <ExternalLink className="w-2.5 h-2.5" />
+                    <span className="truncate">{src.title}</span>
+                  </a>
+                ))}
+              </div>
+            )}
+
+            <div className="text-[10px] text-gray-400 border-t border-white/10 pt-1.5 flex justify-between">
+              <span>Listener Triggered At:</span>
+              <span className="text-gray-200 font-bold">{newsPayload.triggeredAt}</span>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex items-center justify-end space-x-2 text-xs font-mono">
+            <button
+              onClick={() => setActiveToast(null)}
+              className="bg-white/10 hover:bg-white/20 text-gray-200 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider transition-colors border border-white/20"
+            >
+              Dismiss
+            </button>
+
+            <button
+              onClick={handleViewChart}
+              className="bg-white/10 hover:bg-white/20 text-amber-300 px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wider flex items-center space-x-1.5 transition-all border border-amber-400/40"
+            >
+              <BarChart3 className="w-3.5 h-3.5" />
+              <span>Open Chart</span>
+            </button>
+
+            <button
+              onClick={handleViewNews}
+              className="bg-amber-400 hover:bg-amber-300 text-black px-4 py-1.5 text-[11px] font-black uppercase tracking-wider flex items-center space-x-1.5 transition-all shadow-md"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Inspect Grounded News</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed top-5 right-5 z-50 max-w-lg w-full animate-slide-down shadow-2xl">

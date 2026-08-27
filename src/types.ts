@@ -183,7 +183,7 @@ export interface PriceAlert {
   id: string;
   ticker: string;
   stockName: string;
-  targetType: 'PIVOT_ENTRY' | 'STOP_LOSS' | 'CUSTOM_ABOVE' | 'CUSTOM_BELOW' | 'VOLATILITY_DRYUP' | 'RISK_REWARD_RATIO' | 'STAGE_2_COMPLETED' | 'VCP_BASE_FORMED';
+  targetType: 'PIVOT_ENTRY' | 'STOP_LOSS' | 'CUSTOM_ABOVE' | 'CUSTOM_BELOW' | 'VOLATILITY_DRYUP' | 'RISK_REWARD_RATIO' | 'STAGE_2_COMPLETED' | 'VCP_BASE_FORMED' | 'MAJOR_NEWS_CATALYST';
   targetPrice: number;
   triggerProximityPercent: number; // e.g. within 1.5% of target
   currentPrice: number;
@@ -201,6 +201,26 @@ export interface PriceAlert {
   stage2RuleThreshold?: number; // e.g. 7 or 8 rules passed for Stage 2
   vcpContractionThreshold?: number; // e.g. 3 or 4 contractions
   watchlistId?: string;
+}
+
+export interface MajorNewsEventPayload {
+  ticker: string;
+  stockName: string;
+  exchange: 'NASDAQ' | 'NYSE' | 'NSE' | 'BSE' | string;
+  headlineTitle: string;
+  source: string;
+  date: string;
+  snippet: string;
+  sentiment: 'BULLISH' | 'BEARISH' | 'NEUTRAL' | 'CATALYST';
+  catalystType: string;
+  impactLevel?: 'CRITICAL' | 'HIGH' | 'MEDIUM';
+  isMajorEvent: boolean;
+  summary?: string;
+  groundingUri?: string;
+  groundingSources?: { title: string; uri: string }[];
+  groundingQueries?: string[];
+  watchlistName?: string;
+  triggeredAt: string;
 }
 
 export interface PortfolioHolding {
