@@ -29,6 +29,7 @@ import { ExportTradeData } from './components/ExportTradeData';
 import { SecurityShieldPanel } from './components/SecurityShieldPanel';
 import { HermesAgent } from './components/HermesAgent';
 import { WatchlistManager } from './components/WatchlistManager';
+import { DailyReview } from './components/DailyReview';
 import { SectorCorrelationLeadershipCard } from './components/SectorCorrelationLeadershipCard';
 import { MOCK_STOCKS } from './data/mockStocks';
 import { MinerviniTradeSetup } from './types';
@@ -175,6 +176,30 @@ export default function App() {
 
         {/* TAB ANIMATED CONTAINER */}
         <AnimatePresence mode="wait">
+          {activeTab === 'daily_review' && (
+            <motion.div
+              key="daily_review"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.25, ease: 'easeInOut' }}
+              className="space-y-8"
+            >
+              <DailyReview
+                stocks={stocksList}
+                onSelectStock={(stock) => setSelectedStock(stock)}
+                onViewChart={(stock) => {
+                  setSelectedStock(stock);
+                  setActiveTab('chart');
+                }}
+                onViewTradePlan={(stock) => {
+                  setSelectedStock(stock);
+                  setActiveTab('calculator');
+                }}
+              />
+            </motion.div>
+          )}
+
           {activeTab === 'hermes_agent' && (
             <motion.div
               key="hermes_agent"

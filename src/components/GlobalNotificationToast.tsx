@@ -12,6 +12,15 @@ import {
   isTickerInUserWatchlists,
   simulateWatchlistMajorNewsAlert,
 } from '../utils/watchlistNewsListener';
+import {
+  getAudioSettings,
+  saveAudioSettings,
+  playVolumeSpikeChime,
+  playHighConvictionBreakoutChime,
+  triggerWatchlistAudioAlert,
+  VolumeBreakoutAlertPayload,
+  AudioSettings,
+} from '../utils/audioAlertEngine';
 import { formatCurrency, getCurrencySymbol } from '../utils/sepaCalculator';
 import {
   BellRing,
@@ -33,6 +42,10 @@ import {
   Globe,
   ExternalLink,
   Flame,
+  Volume2,
+  VolumeX,
+  Volume1,
+  Radio,
 } from 'lucide-react';
 
 interface GlobalNotificationToastProps {
@@ -54,11 +67,14 @@ export interface ActiveToastNotification {
     | 'PORTFOLIO_STOP_LOSS_HIT'
     | 'STAGE_2_COMPLETED'
     | 'VCP_BASE_FORMED'
-    | 'MAJOR_NEWS_CATALYST';
+    | 'MAJOR_NEWS_CATALYST'
+    | 'VOLUME_SPIKE'
+    | 'HIGH_CONVICTION_BREAKOUT';
   triggeredAt: string;
   isPortfolioHolding?: boolean;
   portfolioHolding?: PortfolioHolding;
   majorNewsPayload?: MajorNewsEventPayload;
+  volumeBreakoutPayload?: VolumeBreakoutAlertPayload;
 }
 
 export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = ({
@@ -71,6 +87,7 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
   const [lastCheckTime, setLastCheckTime] = useState<string>('');
   const [checksCount, setChecksCount] = useState<number>(0);
   const [isTestDrawerOpen, setIsTestDrawerOpen] = useState<boolean>(false);
+  const [audioSettings, setAudioSettings] = useState<AudioSettings>(() => getAudioSettings());
 
   // Initialize LocalStorage Alerts & Portfolio Sync on mount
   useEffect(() => {
@@ -78,10 +95,47 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
     syncPortfolioAlerts();
   }, [stocks]);
 
-  // Listen to custom window events for immediate alert/portfolio re-sync and major news detection
+  // Listen to custom window events for immediate alert/portfolio re-sync, major news, and volume breakout alerts
   useEffect(() => {
     const handleSync = () => {
       syncPortfolioAlerts();
+    };
+
+    const handleAudioSettingsUpdate = (e: Event) => {
+      const customEvt = e as CustomEvent<AudioSettings>;
+      if (customEvt.detail) {
+        setAudioSettings(customEvt.detail);
+      }
+    };
+
+    const handleVolumeBreakoutEvent = (e: Event) => {
+      const customEvt = e as CustomEvent<VolumeBreakoutAlertPayload>;
+      const payload = customEvt.detail;
+      if (!payload) return;
+
+      const match = stocksRef.current.find((s) => s.ticker === payload.stock.ticker) || payload.stock;
+      const alertItem: PriceAlert = {
+        id: `volbreak-${payload.stock.ticker}-${Date.now()}`,
+        ticker: payload.stock.ticker,
+        stockName: payload.stock.name,
+        targetType: payload.type,
+        targetPrice: match.pivotPrice,
+        triggerProximityPercent: 0,
+        currentPrice: match.currentPrice,
+        status: 'TRIGGERED',
+        createdAt: new Date().toLocaleDateString(),
+        exchange: match.exchange,
+        notes: payload.description,
+      };
+
+      setActiveToast({
+        alert: alertItem,
+        previousPrice: match.currentPrice - 1.2,
+        currentPrice: match.currentPrice,
+        crossoverType: payload.type,
+        triggeredAt: payload.triggeredAt || new Date().toLocaleTimeString(),
+        volumeBreakoutPayload: payload,
+      });
     };
 
     const handleMajorNewsEvent = (e: Event) => {
@@ -117,10 +171,14 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
     window.addEventListener('minervini_portfolio_updated', handleSync);
     window.addEventListener('minervini_alerts_updated', handleSync);
     window.addEventListener('minervini_major_news_detected', handleMajorNewsEvent);
+    window.addEventListener('minervini_volume_breakout_alert', handleVolumeBreakoutEvent);
+    window.addEventListener('minervini_audio_settings_updated', handleAudioSettingsUpdate);
     return () => {
       window.removeEventListener('minervini_portfolio_updated', handleSync);
       window.removeEventListener('minervini_alerts_updated', handleSync);
       window.removeEventListener('minervini_major_news_detected', handleMajorNewsEvent);
+      window.removeEventListener('minervini_volume_breakout_alert', handleVolumeBreakoutEvent);
+      window.removeEventListener('minervini_audio_settings_updated', handleAudioSettingsUpdate);
     };
   }, []);
 
@@ -534,6 +592,27 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
     setActiveToast(null);
   };
 
+  const toggleAudioMute = () => {
+    const updated: AudioSettings = {
+      ...audioSettings,
+      enabled: !audioSettings.enabled,
+    };
+    setAudioSettings(updated);
+    saveAudioSettings(updated);
+    if (updated.enabled) {
+      playVolumeSpikeChime();
+    }
+  };
+
+  const handleVolumeChange = (vol: number) => {
+    const updated: AudioSettings = {
+      ...audioSettings,
+      volume: vol,
+    };
+    setAudioSettings(updated);
+    saveAudioSettings(updated);
+  };
+
   if (!activeToast) {
     return (
       <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end space-y-1.5 font-mono text-xs">
@@ -547,20 +626,88 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
               </span>
               <button
                 onClick={() => setIsTestDrawerOpen(false)}
-                className="text-gray-400 hover:text-white"
+                className="text-gray-400 hover:text-white cursor-pointer"
               >
                 <X className="w-3 h-3" />
               </button>
             </div>
 
             <p className="text-[10px] text-gray-300 font-sans leading-tight">
-              Test real-time notification toasts for portfolio positions crossing thresholds:
+              Test real-time notification toasts and subtle audio alerts:
             </p>
+
+            {/* Audio Settings Inline Mini Control */}
+            <div className="bg-white/5 p-2 border border-white/10 space-y-1 text-[10px]">
+              <div className="flex items-center justify-between">
+                <span className="text-gray-300 flex items-center gap-1">
+                  {audioSettings.enabled ? <Volume2 className="w-3 h-3 text-amber-400" /> : <VolumeX className="w-3 h-3 text-rose-400" />}
+                  <span>Subtle Browser Audio:</span>
+                </span>
+                <button
+                  onClick={toggleAudioMute}
+                  className={`px-2 py-0.5 font-bold uppercase rounded text-[9px] cursor-pointer ${
+                    audioSettings.enabled
+                      ? 'bg-amber-500 text-slate-950 hover:bg-amber-400'
+                      : 'bg-rose-500/30 text-rose-300 border border-rose-500/50 hover:bg-rose-500/50'
+                  }`}
+                >
+                  {audioSettings.enabled ? 'ON' : 'MUTED'}
+                </button>
+              </div>
+
+              {audioSettings.enabled && (
+                <div className="flex items-center space-x-2 pt-1">
+                  <span className="text-gray-400 text-[9px]">Volume:</span>
+                  <input
+                    type="range"
+                    min="0.1"
+                    max="1"
+                    step="0.05"
+                    value={audioSettings.volume}
+                    onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
+                    className="w-full accent-amber-400 h-1 bg-white/20 rounded cursor-pointer"
+                  />
+                  <span className="text-amber-300 font-bold text-[9px]">
+                    {Math.round(audioSettings.volume * 100)}%
+                  </span>
+                </div>
+              )}
+            </div>
 
             <div className="grid grid-cols-1 gap-1.5 pt-1">
               <button
+                onClick={() => {
+                  const stock = stocks[0];
+                  playVolumeSpikeChime();
+                  triggerWatchlistAudioAlert(stock, 'VOLUME_SPIKE', {
+                    forceChime: true,
+                    customDescription: `⚡ Extreme Volume Surge: ${stock.ticker} is trading at 2.8x 20-day average volume at pivot ₹${stock.pivotPrice}.`,
+                  });
+                }}
+                className="bg-purple-600 hover:bg-purple-500 text-white px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center space-x-1.5 shadow-sm transition-all cursor-pointer"
+              >
+                <Volume2 className="w-3 h-3 text-purple-200" />
+                <span>Test Volume Spike Chime 🔔</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  const stock = stocks[0];
+                  playHighConvictionBreakoutChime();
+                  triggerWatchlistAudioAlert(stock, 'HIGH_CONVICTION_BREAKOUT', {
+                    forceChime: true,
+                    customDescription: `🎯 High-Conviction Setup: ${stock.ticker} confirmed 8/8 Trend Template & RS ${stock.rsRating} with VCP contraction coil!`,
+                  });
+                }}
+                className="bg-emerald-600 hover:bg-emerald-500 text-white px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center space-x-1.5 shadow-sm transition-all cursor-pointer"
+              >
+                <Sparkles className="w-3 h-3 text-emerald-200" />
+                <span>Test Breakout Setup Chime 🎵</span>
+              </button>
+
+              <button
                 onClick={() => triggerSimulatedPortfolioToast('PORTFOLIO_PIVOT_CROSSOVER')}
-                className="bg-emerald-600 hover:bg-emerald-500 text-white px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center space-x-1.5 shadow-sm transition-all"
+                className="bg-emerald-700 hover:bg-emerald-600 text-white px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center space-x-1.5 shadow-sm transition-all cursor-pointer"
               >
                 <Target className="w-3 h-3" />
                 <span>Test Pivot Target Breakout</span>
@@ -568,7 +715,7 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
 
               <button
                 onClick={() => triggerSimulatedPortfolioToast('PORTFOLIO_STOP_LOSS_HIT')}
-                className="bg-rose-600 hover:bg-rose-500 text-white px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center space-x-1.5 shadow-sm transition-all"
+                className="bg-rose-600 hover:bg-rose-500 text-white px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center space-x-1.5 shadow-sm transition-all cursor-pointer"
               >
                 <ShieldAlert className="w-3 h-3" />
                 <span>Test Stop Loss Level Hit</span>
@@ -577,84 +724,12 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
               <button
                 onClick={() => {
                   const stock = stocks[0];
-                  playAlertChime();
-                  if ('Notification' in window && Notification.permission === 'granted') {
-                    new Notification(`🎯 Stage 2 Criteria Completed: ${stock.ticker}`, {
-                      body: `${stock.ticker} (${stock.name}) passed 8/8 Stage 2 Trend Template rules! Price in confirmed Stage 2 uptrend with RS ${stock.rsRating}.`,
-                      icon: '/favicon.ico',
-                    });
-                  }
-                  setActiveToast({
-                    alert: {
-                      id: `sim-stage2-${Date.now()}`,
-                      ticker: stock.ticker,
-                      stockName: stock.name,
-                      targetType: 'STAGE_2_COMPLETED',
-                      targetPrice: stock.pivotPrice,
-                      triggerProximityPercent: 0,
-                      currentPrice: stock.currentPrice,
-                      status: 'TRIGGERED',
-                      createdAt: new Date().toLocaleDateString(),
-                      exchange: stock.exchange,
-                      notes: '🎯 Stage 2 Criteria Completed Alert Test',
-                    },
-                    previousPrice: stock.currentPrice - 2.5,
-                    currentPrice: stock.currentPrice,
-                    crossoverType: 'STAGE_2_COMPLETED',
-                    triggeredAt: new Date().toLocaleTimeString(),
-                  });
-                }}
-                className="bg-cyan-600 hover:bg-cyan-500 text-white px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center space-x-1.5 shadow-sm transition-all"
-              >
-                <Sparkles className="w-3 h-3" />
-                <span>Test Stage 2 Notification</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  const stock = stocks[0];
                   simulateWatchlistMajorNewsAlert(stock);
                 }}
-                className="bg-amber-600 hover:bg-amber-500 text-white px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center space-x-1.5 shadow-sm transition-all"
+                className="bg-amber-600 hover:bg-amber-500 text-white px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center space-x-1.5 shadow-sm transition-all cursor-pointer"
               >
                 <Newspaper className="w-3 h-3" />
                 <span>Test Watchlist Major News Toast</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  const stock = stocks[0];
-                  playAlertChime();
-                  if ('Notification' in window && Notification.permission === 'granted') {
-                    new Notification(`⚡ VCP Base Formed Alert: ${stock.ticker}`, {
-                      body: `${stock.ticker} (${stock.name}) formed a tight ${stock.patternType} with ${stock.contractions?.length || 3} contractions and ${stock.volumeDryUpPercent}% volume dry-up!`,
-                      icon: '/favicon.ico',
-                    });
-                  }
-                  setActiveToast({
-                    alert: {
-                      id: `sim-vcp-${Date.now()}`,
-                      ticker: stock.ticker,
-                      stockName: stock.name,
-                      targetType: 'VCP_BASE_FORMED',
-                      targetPrice: stock.pivotPrice,
-                      triggerProximityPercent: 0,
-                      currentPrice: stock.currentPrice,
-                      status: 'TRIGGERED',
-                      createdAt: new Date().toLocaleDateString(),
-                      exchange: stock.exchange,
-                      notes: '⚡ VCP Base Formed & Coiled Alert Test',
-                    },
-                    previousPrice: stock.currentPrice - 1.2,
-                    currentPrice: stock.currentPrice,
-                    crossoverType: 'VCP_BASE_FORMED',
-                    triggeredAt: new Date().toLocaleTimeString(),
-                  });
-                }}
-                className="bg-amber-700 hover:bg-amber-600 text-white px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center space-x-1.5 shadow-sm transition-all"
-              >
-                <Zap className="w-3 h-3" />
-                <span>Test VCP Base Notification</span>
               </button>
             </div>
           </div>
@@ -664,12 +739,27 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
         <div className="flex items-center space-x-2 bg-[#1a1a1a] text-white px-3 py-1.5 border border-amber-500/40 text-[10px] font-mono shadow-lg rounded-none opacity-90 hover:opacity-100 transition-opacity">
           <Activity className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
           <span>
-            Portfolio & Pivot Monitor: <strong className="text-emerald-400">LIVE</strong>
+            Watchlist Audio & Pivot Monitor: <strong className="text-emerald-400">LIVE</strong>
           </span>
 
           <button
+            onClick={toggleAudioMute}
+            title={audioSettings.enabled ? 'Click to Mute Alert Audio' : 'Click to Enable Alert Audio'}
+            className="flex items-center space-x-1 px-1.5 py-0.5 rounded bg-white/10 hover:bg-white/20 text-gray-300 hover:text-white cursor-pointer transition-colors"
+          >
+            {audioSettings.enabled ? (
+              <Volume2 className="w-3 h-3 text-emerald-400" />
+            ) : (
+              <VolumeX className="w-3 h-3 text-rose-400" />
+            )}
+            <span className="text-[9px] uppercase font-bold">
+              {audioSettings.enabled ? 'Audio ON' : 'Muted'}
+            </span>
+          </button>
+
+          <button
             onClick={() => setIsTestDrawerOpen(!isTestDrawerOpen)}
-            className="ml-2 bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 px-2 py-0.5 border border-amber-500/30 text-[9px] font-bold uppercase flex items-center space-x-1 transition-colors"
+            className="ml-2 bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 px-2 py-0.5 border border-amber-500/30 text-[9px] font-bold uppercase flex items-center space-x-1 transition-colors cursor-pointer"
           >
             <span>Test Alerts</span>
             {isTestDrawerOpen ? <ChevronDown className="w-2.5 h-2.5" /> : <ChevronUp className="w-2.5 h-2.5" />}
@@ -687,7 +777,10 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
   const isStage2 = activeToast.crossoverType === 'STAGE_2_COMPLETED';
   const isVcpBase = activeToast.crossoverType === 'VCP_BASE_FORMED';
   const isMajorNews = activeToast.crossoverType === 'MAJOR_NEWS_CATALYST';
+  const isVolumeSpike = activeToast.crossoverType === 'VOLUME_SPIKE';
+  const isHighConvictionBreakout = activeToast.crossoverType === 'HIGH_CONVICTION_BREAKOUT';
   const newsPayload = activeToast.majorNewsPayload;
+  const volumeBreakoutPayload = activeToast.volumeBreakoutPayload;
 
   const holding = activeToast.portfolioHolding;
   const shares = holding ? holding.shares : 50;
@@ -826,7 +919,11 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
     <div className="fixed top-5 right-5 z-50 max-w-lg w-full animate-slide-down shadow-2xl">
       <div
         className={`p-5 border-2 ${
-          isPortfolio && isPivot
+          isVolumeSpike
+            ? 'bg-[#180d28] text-white border-purple-400 shadow-purple-500/30'
+            : isHighConvictionBreakout
+            ? 'bg-[#061e18] text-white border-emerald-400 shadow-emerald-500/30'
+            : isPortfolio && isPivot
             ? 'bg-[#0a1a12] text-white border-emerald-400 shadow-emerald-500/30'
             : isPortfolio && isStopHit
             ? 'bg-[#21090c] text-white border-rose-500 shadow-rose-500/30'
@@ -846,7 +943,11 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
           <div className="flex items-center space-x-2.5">
             <div
               className={`w-8 h-8 flex items-center justify-center font-bold ${
-                isPortfolio && isPivot
+                isVolumeSpike
+                  ? 'bg-purple-500 text-white animate-bounce'
+                  : isHighConvictionBreakout
+                  ? 'bg-emerald-400 text-slate-950 animate-pulse'
+                  : isPortfolio && isPivot
                   ? 'bg-emerald-500 text-black'
                   : isPortfolio && isStopHit
                   ? 'bg-rose-600 text-white'
@@ -861,7 +962,11 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
                   : 'bg-rose-500 text-white'
               }`}
             >
-              {isPortfolio ? (
+              {isVolumeSpike ? (
+                <Volume2 className="w-5 h-5" />
+              ) : isHighConvictionBreakout ? (
+                <Sparkles className="w-5 h-5" />
+              ) : isPortfolio ? (
                 <Briefcase className="w-5 h-5" />
               ) : isStage2 ? (
                 <Sparkles className="w-5 h-5" />
@@ -880,10 +985,20 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
               <div className="flex items-center space-x-2">
                 <span
                   className={`text-[10px] uppercase font-mono tracking-[0.2em] font-extrabold block ${
-                    isPortfolio ? 'text-amber-300' : 'text-amber-400'
+                    isVolumeSpike
+                      ? 'text-purple-300'
+                      : isHighConvictionBreakout
+                      ? 'text-emerald-300'
+                      : isPortfolio
+                      ? 'text-amber-300'
+                      : 'text-amber-400'
                   }`}
                 >
-                  {isPortfolio && isPivot
+                  {isVolumeSpike
+                    ? '⚡ WATCHLIST VOLUME SPIKE DETECTED'
+                    : isHighConvictionBreakout
+                    ? '🎯 HIGH-CONVICTION BREAKOUT SETUP'
+                    : isPortfolio && isPivot
                     ? '💼 PORTFOLIO POSITION BREAKOUT'
                     : isPortfolio && isStopHit
                     ? '💼 PORTFOLIO STOP LOSS TRIGGERED'
@@ -897,6 +1012,16 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
                     ? '🎯 PIVOT ENTRY CROSSOVER'
                     : '🚨 STOP LOSS HIT WARNING'}
                 </span>
+                {isVolumeSpike && (
+                  <span className="bg-purple-500 text-white text-[9px] font-black uppercase px-1.5 py-0.5 rounded">
+                    Audio Chime Fired 🔔
+                  </span>
+                )}
+                {isHighConvictionBreakout && (
+                  <span className="bg-emerald-500 text-slate-950 text-[9px] font-black uppercase px-1.5 py-0.5 rounded">
+                    Alpha Setup 🎵
+                  </span>
+                )}
                 {isPortfolio && (
                   <span className="bg-amber-400 text-black text-[9px] font-black uppercase px-1.5 py-0.5">
                     Portfolio Stock
@@ -905,7 +1030,7 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
               </div>
 
               <h4 className="text-lg font-mono font-black text-white leading-tight">
-                {activeToast.alert.ticker} ({activeToast.alert.exchange || 'NASDAQ'})
+                {activeToast.alert.ticker} ({activeToast.alert.exchange || 'NASDAQ'}) — {activeToast.alert.stockName}
                 {isPortfolio && <span className="text-xs font-normal text-gray-300 ml-2">[{shares} Shares]</span>}
               </h4>
             </div>
@@ -913,18 +1038,18 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
 
           <button
             onClick={() => setActiveToast(null)}
-            className="text-gray-400 hover:text-white p-1 transition-colors"
+            className="text-gray-400 hover:text-white p-1 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Crossover Detail Grid */}
+        {/* Crossover & Surge Detail Grid */}
         <div className="bg-white/5 border border-white/10 p-3.5 mb-3 font-mono text-xs space-y-2">
           <div className="grid grid-cols-2 gap-2 pb-2 border-b border-white/10">
             <div>
               <span className="text-gray-300 text-[10px] uppercase font-bold block">
-                {isPivot ? 'Target Pivot Price:' : 'Stop Loss Threshold:'}
+                {isVolumeSpike || isHighConvictionBreakout ? 'Pivot Entry Level:' : isPivot ? 'Target Pivot Price:' : 'Stop Loss Threshold:'}
               </span>
               <span className="text-amber-300 font-extrabold text-sm">
                 {formatCurrency(activeToast.alert.targetPrice, currencySymbol)}
@@ -932,16 +1057,48 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
             </div>
 
             <div>
-              <span className="text-gray-300 text-[10px] uppercase font-bold block">Live Crossed Price:</span>
+              <span className="text-gray-300 text-[10px] uppercase font-bold block">
+                {isVolumeSpike ? 'Live Volume Surge:' : 'Live Price:'}
+              </span>
               <span
                 className={`text-sm font-black ${
-                  isPivot ? 'text-emerald-400 animate-pulse' : 'text-rose-400 animate-pulse'
+                  isVolumeSpike
+                    ? 'text-purple-300 animate-pulse'
+                    : isHighConvictionBreakout || isPivot
+                    ? 'text-emerald-400 animate-pulse'
+                    : 'text-rose-400 animate-pulse'
                 }`}
               >
-                {formatCurrency(activeToast.currentPrice, currencySymbol)}
+                {isVolumeSpike && volumeBreakoutPayload
+                  ? `${volumeBreakoutPayload.volumeRatio}x 20-Day Avg`
+                  : formatCurrency(activeToast.currentPrice, currencySymbol)}
               </span>
             </div>
           </div>
+
+          {/* Volume Breakout Key Metrics */}
+          {volumeBreakoutPayload && (
+            <div className="bg-black/40 p-2 border border-white/10 grid grid-cols-3 gap-2 text-center text-[10px]">
+              <div>
+                <span className="text-gray-400 block uppercase">Volume Ratio</span>
+                <strong className="text-purple-300 font-black text-xs font-mono">
+                  {volumeBreakoutPayload.volumeRatio}x
+                </strong>
+              </div>
+              <div>
+                <span className="text-gray-400 block uppercase">Dry-up Pre-Breakout</span>
+                <strong className="text-emerald-300 font-black text-xs font-mono">
+                  {volumeBreakoutPayload.volumeDryUpPercent}%
+                </strong>
+              </div>
+              <div>
+                <span className="text-gray-400 block uppercase">Conviction Score</span>
+                <strong className="text-amber-300 font-black text-xs font-mono">
+                  {volumeBreakoutPayload.breakoutProbability}%
+                </strong>
+              </div>
+            </div>
+          )}
 
           {/* Portfolio P&L Summary Block */}
           {isPortfolio && (
@@ -967,7 +1124,15 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
 
           {/* Minervini Trade Management Discipline Rule */}
           <div className="text-[11px] font-sans text-gray-200 leading-relaxed pt-1">
-            {isPivot ? (
+            {isVolumeSpike ? (
+              <p>
+                <strong className="text-purple-300 font-serif italic">Mark Minervini SEPA Rule:</strong> Institutional accumulation confirmed. Heavy volume spike ({volumeBreakoutPayload?.volumeRatio || 2.5}x average) indicates large funds stepping in at the pivot. A subtle browser audio chime was triggered for real-time awareness.
+              </p>
+            ) : isHighConvictionBreakout ? (
+              <p>
+                <strong className="text-emerald-300 font-serif italic">High-Conviction Setup:</strong> Stock satisfies all 8 Stage 2 Trend Template rules, boasts top Relative Strength (RS rating &ge; 85), and displays proper VCP contraction tightness.
+              </p>
+            ) : isPivot ? (
               <p>
                 <strong className="text-emerald-300 font-serif italic">SEPA Discipline Rule:</strong> Position crossed
                 its pivot entry price on expanding volume. Consider taking partial 20-25% profits into strength or trailing
@@ -996,8 +1161,23 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
         {/* Action Buttons */}
         <div className="flex items-center justify-end space-x-2 text-xs font-mono">
           <button
+            onClick={() => {
+              if (isVolumeSpike) {
+                playVolumeSpikeChime();
+              } else {
+                playHighConvictionBreakoutChime();
+              }
+            }}
+            title="Replay subtle audio chime"
+            className="bg-white/10 hover:bg-white/20 text-purple-300 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider flex items-center space-x-1 transition-colors border border-purple-400/40 cursor-pointer"
+          >
+            <Volume2 className="w-3.5 h-3.5" />
+            <span>Replay Chime</span>
+          </button>
+
+          <button
             onClick={handleRearmAlert}
-            className="bg-white/10 hover:bg-white/20 text-gray-200 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider flex items-center space-x-1 transition-colors border border-white/20"
+            className="bg-white/10 hover:bg-white/20 text-gray-200 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider flex items-center space-x-1 transition-colors border border-white/20 cursor-pointer"
           >
             <RotateCcw className="w-3 h-3 text-blue-400" />
             <span>Re-arm</span>
@@ -1006,7 +1186,7 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
           {isPortfolio && (
             <button
               onClick={handleViewPortfolio}
-              className="bg-emerald-500 hover:bg-emerald-400 text-black px-3.5 py-1.5 text-[11px] font-black uppercase tracking-wider flex items-center space-x-1.5 transition-all shadow-md"
+              className="bg-emerald-500 hover:bg-emerald-400 text-black px-3.5 py-1.5 text-[11px] font-black uppercase tracking-wider flex items-center space-x-1.5 transition-all shadow-md cursor-pointer"
             >
               <Briefcase className="w-3.5 h-3.5" />
               <span>View Portfolio</span>
@@ -1015,7 +1195,7 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
 
           <button
             onClick={handleViewChart}
-            className="bg-amber-500 hover:bg-amber-400 text-black px-3.5 py-1.5 text-[11px] font-black uppercase tracking-wider flex items-center space-x-1.5 transition-all shadow-md"
+            className="bg-amber-500 hover:bg-amber-400 text-black px-3.5 py-1.5 text-[11px] font-black uppercase tracking-wider flex items-center space-x-1.5 transition-all shadow-md cursor-pointer"
           >
             <BarChart3 className="w-3.5 h-3.5" />
             <span>View VCP Chart</span>

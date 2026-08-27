@@ -183,7 +183,7 @@ export interface PriceAlert {
   id: string;
   ticker: string;
   stockName: string;
-  targetType: 'PIVOT_ENTRY' | 'STOP_LOSS' | 'CUSTOM_ABOVE' | 'CUSTOM_BELOW' | 'VOLATILITY_DRYUP' | 'RISK_REWARD_RATIO' | 'STAGE_2_COMPLETED' | 'VCP_BASE_FORMED' | 'MAJOR_NEWS_CATALYST';
+  targetType: 'PIVOT_ENTRY' | 'STOP_LOSS' | 'CUSTOM_ABOVE' | 'CUSTOM_BELOW' | 'VOLATILITY_DRYUP' | 'RISK_REWARD_RATIO' | 'STAGE_2_COMPLETED' | 'VCP_BASE_FORMED' | 'MAJOR_NEWS_CATALYST' | 'VOLUME_SPIKE' | 'HIGH_CONVICTION_BREAKOUT';
   targetPrice: number;
   triggerProximityPercent: number; // e.g. within 1.5% of target
   currentPrice: number;
@@ -282,6 +282,49 @@ export interface TradeJournalNote {
   tradeStatus: TradeStatus;
   rating: number; // 1 to 5 stars
   chartSnapshotUrl?: string;
+}
+
+// ==========================================
+// DAILY REVIEW & TOP PICKS RANKING TYPES
+// ==========================================
+
+export interface DailyMinerviniCriteriaItem {
+  id: string;
+  category: 'TREND' | 'RS' | 'PATTERN' | 'VOLUME' | 'RISK_REWARD' | 'PROXIMITY' | 'FUNDAMENTALS' | 'EARNINGS_SAFETY';
+  name: string;
+  shortLabel: string;
+  description: string;
+  passed: boolean;
+  actualValueStr: string;
+  thresholdStr: string;
+  iconName: string;
+}
+
+export interface DailyStockEvaluation {
+  stock: MinerviniTradeSetup;
+  criteriaPassedCount: number;
+  totalCriteriaCount: number;
+  criteriaList: DailyMinerviniCriteriaItem[];
+  meetsThreePlusCriteria: boolean;
+  compositeAlphaScore: number; // 0 to 100
+  tierLabel: 'SUPERPERFORMER_ELITE' | 'HIGH_CONVICTION_SETUP' | 'QUALIFIED_SEPA' | 'BELOW_THRESHOLD';
+  distanceToPivotPercent: number; // e.g. -1.2% (1.2% below pivot)
+  inBuyZone: boolean;
+  pivotStatus: 'IN_BUY_ZONE' | 'APPROACHING_PIVOT' | 'EXTENDED' | 'BELOW_PIVOT' | 'ACTIVE_BREAKOUT';
+}
+
+export type ConvictionTier = 'CONVICTION_A_PLUS' | 'FOCUS_LIST' | 'TACTICAL_CHEAT' | 'STALKING';
+export type DailyTradeAction = 'BUY_ON_BREAKOUT' | 'BUY_ON_PULLBACK' | 'BUY_3C_CHEAT' | 'WAIT_VOLUME_DRYUP' | 'HOLD_FOR_PROFIT';
+
+export interface DailyRankedPick {
+  ticker: string;
+  rank: number; // 1, 2, 3...
+  conviction: ConvictionTier;
+  action: DailyTradeAction;
+  notes: string;
+  plannedAllocationPct: number; // e.g. 15%
+  pinnedDate: string;
+  updatedAt: string;
 }
 
 

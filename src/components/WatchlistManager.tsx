@@ -7,16 +7,26 @@ import {
   getStoredWatchlists, 
   saveStoredWatchlists, 
   getFavoriteTickers, 
-  saveFavoriteTickers,
+  saveFavoriteTickers, 
   CustomWatchlist 
 } from '../utils/watchlistStorage';
 import { 
   Bookmark, Star, Plus, Trash2, FileText, Download, TrendingUp, 
   Target, ShieldCheck, Sparkles, Filter, Check, Bot, Eye, Layers, Search,
-  Bell, BellRing, Zap, CheckCircle2, AlertTriangle, Activity, Newspaper
+  Bell, BellRing, Zap, CheckCircle2, AlertTriangle, Activity, Newspaper,
+  Volume2, VolumeX, Volume1
 } from 'lucide-react';
 import { playAlertChime, appendTrackerLog } from '../utils/backgroundPriceChecker';
 import { simulateWatchlistMajorNewsAlert } from '../utils/watchlistNewsListener';
+import {
+  getAudioSettings,
+  saveAudioSettings,
+  playVolumeSpikeChime,
+  playHighConvictionBreakoutChime,
+  scanAndTriggerWatchlistAudio,
+  triggerWatchlistAudioAlert,
+  AudioSettings
+} from '../utils/audioAlertEngine';
 
 interface WatchlistManagerProps {
   stocks: MinerviniTradeSetup[];
@@ -40,6 +50,7 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
   const [favorites, setFavorites] = useState<string[]>(() => getFavoriteTickers());
   const [searchTerm, setSearchTerm] = useState('');
   const [filterFavoritesOnly, setFilterFavoritesOnly] = useState(false);
+  const [audioSettings, setAudioSettings] = useState<AudioSettings>(() => getAudioSettings());
 
   // New Watchlist Form Modal State
   const [isCreatingList, setIsCreatingList] = useState(false);
@@ -121,6 +132,43 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
     window.dispatchEvent(new CustomEvent('minervini_alerts_updated'));
   };
 
+  const toggleAudioMute = () => {
+    const updated: AudioSettings = {
+      ...audioSettings,
+      enabled: !audioSettings.enabled,
+    };
+    setAudioSettings(updated);
+    saveAudioSettings(updated);
+    if (updated.enabled) {
+      playVolumeSpikeChime();
+    }
+  };
+
+  const handleVolumeChange = (vol: number) => {
+    const updated: AudioSettings = {
+      ...audioSettings,
+      volume: vol,
+    };
+    setAudioSettings(updated);
+    saveAudioSettings(updated);
+  };
+
+  const handleTestVolumeSpikeAudio = (stock: MinerviniTradeSetup) => {
+    playVolumeSpikeChime();
+    triggerWatchlistAudioAlert(stock, 'VOLUME_SPIKE', {
+      forceChime: true,
+      customDescription: `⚡ Institutional Volume Spike: ${stock.ticker} trading at 2.8x average volume with RS ${stock.rsRating}.`,
+    });
+  };
+
+  const handleTestBreakoutAudio = (stock: MinerviniTradeSetup) => {
+    playHighConvictionBreakoutChime();
+    triggerWatchlistAudioAlert(stock, 'HIGH_CONVICTION_BREAKOUT', {
+      forceChime: true,
+      customDescription: `🎯 High-Conviction SEPA Breakout: ${stock.ticker} passing 8/8 Stage 2 rules with RS ${stock.rsRating}.`,
+    });
+  };
+
   useEffect(() => {
     saveStoredWatchlists(watchlists);
   }, [watchlists]);
@@ -139,6 +187,13 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
                           stock.name.toLowerCase().includes(searchTerm.toLowerCase());
     return isListed && isFav && matchesSearch;
   });
+
+  // Automated Watchlist Scan for Subtle Audio Notifications on Volume Spike / High-Conviction setups
+  useEffect(() => {
+    if (watchlistStocks.length > 0 && audioSettings.enabled) {
+      scanAndTriggerWatchlistAudio(watchlistStocks);
+    }
+  }, [watchlistStocks, audioSettings.enabled]);
 
   const toggleFavorite = (ticker: string) => {
     if (favorites.includes(ticker)) {
@@ -292,7 +347,7 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
         </div>
       </div>
 
-      {/* REAL-TIME PATTERN ALERT SYSTEM BANNER */}
+      {/* REAL-TIME PATTERN & AUDIO ALERT SYSTEM BANNER */}
       <div className="bg-gradient-to-r from-slate-900 via-amber-950/30 to-slate-900 border border-amber-500/30 p-5 rounded-xl shadow-lg font-mono text-xs space-y-3 relative overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center space-x-3">
@@ -300,10 +355,10 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
               <BellRing className="w-5 h-5 text-amber-400 animate-pulse" />
             </div>
             <div>
-              <div className="flex items-center space-x-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[10px] font-bold uppercase tracking-widest text-amber-400 flex items-center gap-1">
                   <Zap className="w-3 h-3 text-amber-400" />
-                  REAL-TIME PATTERN ALERTS
+                  REAL-TIME PATTERN & AUDIO ALERTS
                 </span>
                 <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded border ${
                   notifPermission === 'granted'
@@ -318,15 +373,61 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
                     ? '🔴 Notifications Blocked in Browser'
                     : '🟡 Browser Permission Required'}
                 </span>
+                <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded border flex items-center gap-1 ${
+                  audioSettings.enabled
+                    ? 'bg-purple-500/20 text-purple-300 border-purple-500/30'
+                    : 'bg-slate-800 text-slate-400 border-slate-700'
+                }`}>
+                  {audioSettings.enabled ? <Volume2 className="w-3 h-3 text-purple-400" /> : <VolumeX className="w-3 h-3 text-slate-500" />}
+                  <span>{audioSettings.enabled ? `Subtle Audio Chimes Active (${Math.round(audioSettings.volume * 100)}%)` : 'Audio Muted'}</span>
+                </span>
               </div>
               <h2 className="text-base font-serif font-black text-white mt-0.5">
-                Stage 2 Completion & VCP Base Formation Notifications
+                Volume Spike Surge & High-Conviction Breakout Audio Notifications
               </h2>
             </div>
           </div>
 
-          {/* Action & Test Controls */}
+          {/* Action & Audio Test Controls */}
           <div className="flex flex-wrap items-center gap-2">
+            {/* Audio Settings Toggle */}
+            <button
+              onClick={toggleAudioMute}
+              title={audioSettings.enabled ? 'Click to Mute Audio Alerts' : 'Click to Enable Audio Alerts'}
+              className={`px-3 py-2 rounded-lg font-bold flex items-center space-x-1.5 cursor-pointer transition-all border ${
+                audioSettings.enabled
+                  ? 'bg-purple-900/60 hover:bg-purple-900 text-purple-200 border-purple-500/50 shadow-md'
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+              }`}
+            >
+              {audioSettings.enabled ? (
+                <Volume2 className="w-4 h-4 text-purple-300" />
+              ) : (
+                <VolumeX className="w-4 h-4 text-rose-400" />
+              )}
+              <span>{audioSettings.enabled ? 'Audio Chime ON' : 'Audio Muted'}</span>
+            </button>
+
+            {/* Test Volume Spike Chime */}
+            <button
+              onClick={() => handleTestVolumeSpikeAudio(watchlistStocks[0] || selectedStock)}
+              className="bg-purple-600 hover:bg-purple-500 text-white px-3 py-2 rounded-lg font-bold flex items-center space-x-1.5 cursor-pointer shadow-md transition-all"
+              title="Test subtle harmonic arpeggio chime for Volume Spikes (institutional accumulation)"
+            >
+              <Volume2 className="w-3.5 h-3.5 text-purple-200" />
+              <span>Test Volume Spike Sound 🔔</span>
+            </button>
+
+            {/* Test High-Conviction Breakout Chime */}
+            <button
+              onClick={() => handleTestBreakoutAudio(watchlistStocks[0] || selectedStock)}
+              className="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded-lg font-bold flex items-center space-x-1.5 cursor-pointer shadow-md transition-all"
+              title="Test uplifting ascending major triad chime for High-Conviction Breakouts"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-emerald-200" />
+              <span>Test Breakout Setup Sound 🎵</span>
+            </button>
+
             {notifPermission !== 'granted' && (
               <button
                 onClick={handleRequestPermission}
@@ -336,29 +437,11 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
                 <span>Enable Browser Notifications</span>
               </button>
             )}
-
-            <button
-              onClick={() => handleSimulateStage2Alert(watchlistStocks[0] || selectedStock)}
-              className="bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/40 px-3 py-2 rounded-lg font-bold flex items-center space-x-1.5 cursor-pointer transition-all"
-              title="Test real-time browser notification when a watchlist stock passes Stage 2 rules"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Test Stage 2 Alert</span>
-            </button>
-
-            <button
-              onClick={() => handleSimulateVcpBaseAlert(watchlistStocks[0] || selectedStock)}
-              className="bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/40 px-3 py-2 rounded-lg font-bold flex items-center space-x-1.5 cursor-pointer transition-all"
-              title="Test real-time browser notification when a watchlist stock completes a VCP base"
-            >
-              <Zap className="w-3.5 h-3.5 text-amber-400" />
-              <span>Test VCP Base Alert</span>
-            </button>
           </div>
         </div>
 
         <p className="text-[11px] font-sans text-slate-300 leading-relaxed border-t border-slate-800/80 pt-2.5">
-          The background pattern monitor scans your active watchlist every 3.5 seconds. When a stock completes its <strong>Stage 2 Trend Template criteria (7+ rules passed)</strong> or coils into a tight <strong>VCP Base (3+ contractions with volume dry-up ≤ -50%)</strong>, the <strong>Browser Notification API</strong> triggers an instant native desktop alert with custom chime.
+          The watch-list engine continuously monitors setups in real time. When an institutional <strong>Volume Spike (&ge; 1.5x volume expansion)</strong> or a <strong>High-Conviction Breakout Setup (8/8 Trend rules, RS &ge; 85, tight VCP coil)</strong> is detected, the Web Audio engine synthesizes a subtle, pleasant harmonic chime without freezing the UI.
         </p>
       </div>
       <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl shadow-md space-y-4 font-mono text-xs">
@@ -524,7 +607,23 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
 
                       {/* Actions */}
                       <td className="p-3.5 text-right">
-                        <div className="flex items-center justify-end space-x-2">
+                        <div className="flex items-center justify-end space-x-1.5">
+                          <button
+                            onClick={() => handleTestVolumeSpikeAudio(stock)}
+                            title="Play subtle Volume Spike chime and fire notification"
+                            className="p-1.5 rounded bg-purple-500/10 hover:bg-purple-500 text-purple-300 hover:text-white border border-purple-500/30 transition-all cursor-pointer"
+                          >
+                            <Volume2 className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            onClick={() => handleTestBreakoutAudio(stock)}
+                            title="Play subtle High-Conviction Breakout chime and fire notification"
+                            className="p-1.5 rounded bg-emerald-500/10 hover:bg-emerald-500 text-emerald-300 hover:text-slate-950 border border-emerald-500/30 transition-all cursor-pointer"
+                          >
+                            <Volume1 className="w-3.5 h-3.5" />
+                          </button>
+
                           <button
                             onClick={() => handleSimulateStage2Alert(stock)}
                             title="Trigger Stage 2 Completed Pattern Notification"

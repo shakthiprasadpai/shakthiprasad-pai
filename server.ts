@@ -23,10 +23,33 @@ async function startServer() {
     });
   };
 
-  // Resilient helper to handle transient 503 (high demand) and 429 (quota) with model fallback
+  // Simple in-memory response cache to prevent redundant Gemini calls and 429 rate limits
+  const apiCache = new Map<string, { data: any; timestamp: number }>();
+  const CACHE_TTL_MS = 60000; // 60 seconds
+
+  const getCached = (key: string) => {
+    const cached = apiCache.get(key);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+      return cached.data;
+    }
+    return null;
+  };
+
+  const setCached = (key: string, data: any) => {
+    apiCache.set(key, { data, timestamp: Date.now() });
+    if (apiCache.size > 200) {
+      // Evict oldest entries
+      const oldestKey = apiCache.keys().next().value;
+      if (oldestKey) apiCache.delete(oldestKey);
+    }
+  };
+
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  // Resilient helper to handle transient 503 (high demand) and 429 (quota) with model fallback & retry
   const generateContentWithFallback = async (ai: GoogleGenAI, options: any) => {
-    const primaryModel = options.model || 'gemini-3.6-flash';
-    const modelsToTry = [primaryModel, 'gemini-2.5-flash'];
+    const primaryModel = options.model || 'gemini-3.7-flash';
+    const modelsToTry = [primaryModel, 'gemini-3.1-flash-lite'];
     let lastError: any = null;
 
     for (let i = 0; i < modelsToTry.length; i++) {
@@ -51,9 +74,25 @@ async function startServer() {
           errStr.includes('RESOURCE_EXHAUSTED');
 
         if (!isTransient || i === modelsToTry.length - 1) {
+          // If we had tools attached (e.g. googleSearch) and failed, try one final attempt without tools
+          if (options.config?.tools && options.config.tools.length > 0) {
+            try {
+              const optionsWithoutTools = { ...options };
+              delete optionsWithoutTools.config;
+              const fallbackRes = await ai.models.generateContent({
+                ...optionsWithoutTools,
+                model: 'gemini-3.1-flash-lite'
+              });
+              return fallbackRes;
+            } catch (innerErr) {
+              throw err;
+            }
+          }
           throw err;
         }
-        console.log(`Notice: Model ${currentModel} returned transient error (${err?.status || '503/429'}). Attempting secondary fallback ${modelsToTry[i + 1]}...`);
+
+        // Brief exponential backoff before fallback attempt
+        await sleep(600 * (i + 1));
       }
     }
     throw lastError;
@@ -68,15 +107,23 @@ async function startServer() {
         return res.status(400).json({ error: 'Missing stock setup payload' });
       }
 
+      const cacheKey = `analysis_${stock.ticker}_${stock.trendScore}_${stock.vcpStage}_${stock.pivotPrice}`;
+      const cached = getCached(cacheKey);
+      if (cached) {
+        return res.json(cached);
+      }
+
       const ai = getGeminiClient();
       if (!ai) {
-        return res.json({
+        const fallbackRes = {
           analysis: `**Mark Minervini Setup Insights for ${stock.ticker}**:\n\n` +
             `• **Stage 2 Confirmation**: ${stock.trendScore}/8 Trend Template rules passing. Price is resting above 50, 150, and 200 SMA.\n` +
             `• **Tight Volume & Contraction**: Volume dry-up is ${stock.volumeDryUpPercent}% below 20-day average. This indicates supply exhaustion.\n` +
             `• **Execution**: Enter on breakout above Pivot Price at $${stock.pivotPrice}. Maintain hard stop loss at $${stock.stopLossPrice} (${stock.stopLossPercent}% max risk). First target is $${stock.target1Price} (+${stock.target1Percent}%).\n\n` +
             `*(Tip: Set GEMINI_API_KEY in AI Studio secrets for real-time AI deep analysis).*`
-        });
+        };
+        setCached(cacheKey, fallbackRes);
+        return res.json(fallbackRes);
       }
 
       const prompt = `You are Mark Minervini, US Investing Champion and creator of the SEPA trading strategy and VCP pattern.
@@ -102,34 +149,22 @@ Provide a structured, expert, authoritative analysis in Mark Minervini's signatu
 4. **Invalidation Trigger (When to abort)**`;
 
       const response = await generateContentWithFallback(ai, {
-        model: 'gemini-3.6-flash',
+        model: 'gemini-3.7-flash',
         contents: prompt
       });
 
-      res.json({ analysis: response.text });
+      const result = { analysis: response.text };
+      setCached(cacheKey, result);
+      res.json(result);
     } catch (err: any) {
-      const errStr = String(err?.message || err);
-      const isExpectedQuotaOrTransient =
-        err?.status === 429 ||
-        err?.status === 503 ||
-        errStr.includes('429') ||
-        errStr.includes('503') ||
-        errStr.includes('high demand') ||
-        errStr.includes('UNAVAILABLE') ||
-        errStr.includes('prepayment credits');
-
-      if (isExpectedQuotaOrTransient) {
-        console.log(`Notice: Gemini API temporarily high demand/quota limited for analyze-setup (using robust offline Minervini analysis).`);
-      } else {
-        console.error('Gemini API Error (fallback triggered):', errStr);
-      }
-      res.json({
+      const fallbackResult = {
         analysis: `**Mark Minervini SEPA Analysis (Offline / Fallback Mode)** for ${stock?.ticker || 'Stock'}:\n\n` +
           `• **Stage 2 Confirmation**: ${stock?.trendScore || 6}/8 Trend Template rules passing. Price action remains stable relative to moving averages.\n` +
           `• **VCP Structure**: ${stock?.patternType || 'Volatility Contraction'} pattern identified with volume drying up by ${stock?.volumeDryUpPercent || 45}%.\n` +
           `• **Tactical Execution**: Watch pivot price $${stock?.pivotPrice || 100}. Keep stop loss strict at $${stock?.stopLossPrice || 95}.\n\n` +
           `*(Note: Live Gemini AI API currently experiencing temporary high demand or quota limits. Displaying robust offline Minervini technical analysis).*`
-      });
+      };
+      res.json(fallbackResult);
     }
   });
 
@@ -148,9 +183,15 @@ Provide a structured, expert, authoritative analysis in Mark Minervini's signatu
         return res.status(400).json({ error: 'Missing ticker symbol' });
       }
 
+      const cacheKey = `news_${ticker}`;
+      const cached = getCached(cacheKey);
+      if (cached) {
+        return res.json(cached);
+      }
+
       const ai = getGeminiClient();
       if (!ai) {
-        return res.json({
+        const offlineNews = {
           summary: `Financial headline summary for ${ticker} (${stockName}). Grounded search provides fundamental context for price movements and volatility contraction setups.`,
           headlines: [
             {
@@ -161,7 +202,8 @@ Provide a structured, expert, authoritative analysis in Mark Minervini's signatu
               sentiment: 'CATALYST',
               catalystType: 'Earnings & Guidance',
               isMajorEvent: true,
-              impactLevel: 'CRITICAL'
+              impactLevel: 'CRITICAL',
+              impactScore: 9.6
             },
             {
               title: `Institutional Funds Increase Allocation in ${ticker} Amid Base Formation`,
@@ -171,7 +213,8 @@ Provide a structured, expert, authoritative analysis in Mark Minervini's signatu
               sentiment: 'BULLISH',
               catalystType: 'Institutional Buying',
               isMajorEvent: true,
-              impactLevel: 'HIGH'
+              impactLevel: 'HIGH',
+              impactScore: 8.4
             },
             {
               title: `Analyst Consortium Raises Price Targets on ${ticker} Citing Competitive Advantages`,
@@ -181,7 +224,8 @@ Provide a structured, expert, authoritative analysis in Mark Minervini's signatu
               sentiment: 'BULLISH',
               catalystType: 'Analyst Rating',
               isMajorEvent: false,
-              impactLevel: 'MEDIUM'
+              impactLevel: 'MEDIUM',
+              impactScore: 6.8
             }
           ],
           groundingSources: [
@@ -189,7 +233,9 @@ Provide a structured, expert, authoritative analysis in Mark Minervini's signatu
             { title: `MarketWatch — ${ticker} Stock Overview`, uri: `https://www.marketwatch.com/investing/stock/${ticker.toLowerCase()}` }
           ],
           groundingQueries: [`${ticker} latest stock news financial headlines`, `${stockName} catalysts earnings`]
-        });
+        };
+        setCached(cacheKey, offlineNews);
+        return res.json(offlineNews);
       }
 
       const prompt = `You are a Senior Financial Journalist and Equity Analyst specializing in growth stocks and Mark Minervini SEPA analysis.
@@ -207,7 +253,8 @@ Format your response as a strictly valid JSON object with the following structur
       "sentiment": "BULLISH" | "BEARISH" | "NEUTRAL" | "CATALYST",
       "catalystType": "Category like 'Earnings & Guidance', 'Product Launch', 'Contract Win', 'Analyst Rating', 'Macro/Sector', 'Institutional Accumulation', 'M&A / Acquisition', 'FDA Approval'",
       "isMajorEvent": true | false (set true if this is a high-impact catalyst, earnings beat/guidance, major contract, M&A, FDA, or significant institutional catalyst),
-      "impactLevel": "CRITICAL" | "HIGH" | "MEDIUM"
+      "impactLevel": "CRITICAL" | "HIGH" | "MEDIUM" | "LOW",
+      "impactScore": 1.0 to 10.0 (Numeric score estimating market-moving volatility impact on the stock; e.g. 9.0-10.0 for massive earnings surprises/guidance/M&A/FDA, 7.5-8.9 for heavy institutional moves/big contract wins, 5.0-7.4 for standard analyst revisions/product notes, 1.0-4.9 for low-impact routine news)
     }
   ]
 }
@@ -215,7 +262,7 @@ Format your response as a strictly valid JSON object with the following structur
 Provide 4 to 6 accurate, realistic, high-signal financial headlines. Return ONLY raw valid JSON without markdown code fences or conversational filler.`;
 
       const response = await generateContentWithFallback(ai, {
-        model: 'gemini-3.6-flash',
+        model: 'gemini-3.7-flash',
         contents: prompt,
         config: {
           tools: [{ googleSearch: {} }],
@@ -246,31 +293,18 @@ Provide 4 to 6 accurate, realistic, high-signal financial headlines. Return ONLY
         };
       }
 
-      res.json({
+      const newsResult = {
         summary: parsedData.summary || `Latest financial news and Google Search grounded headlines for ${ticker}.`,
         headlines: parsedData.headlines || [],
         groundingSources,
         groundingQueries
-      });
+      };
+      setCached(cacheKey, newsResult);
+      res.json(newsResult);
 
     } catch (err: any) {
-      const errStr = String(err?.message || err);
-      const isExpectedQuotaOrTransient =
-        err?.status === 429 ||
-        err?.status === 503 ||
-        errStr.includes('429') ||
-        errStr.includes('503') ||
-        errStr.includes('high demand') ||
-        errStr.includes('UNAVAILABLE') ||
-        errStr.includes('prepayment credits');
-
-      if (isExpectedQuotaOrTransient) {
-        console.log(`Notice: Gemini API temporarily high demand/quota limited for ${ticker} news grounding (using curated offline fallback).`);
-      } else {
-        console.error('Ticker News Grounding API Error (fallback triggered):', errStr);
-      }
       // Return robust fallback news response instead of 500 error
-      res.json({
+      const fallbackNews = {
         summary: `Financial headline summary for ${ticker}. (Note: Live AI search quota or model availability temporarily limited; displaying robust curated catalyst headlines).`,
         headlines: [
           {
@@ -279,7 +313,10 @@ Provide 4 to 6 accurate, realistic, high-signal financial headlines. Return ONLY
             date: 'Recent',
             snippet: `${ticker} continues to demonstrate robust operational metrics with rising institutional sponsorship and solid earnings resilience.`,
             sentiment: 'BULLISH',
-            catalystType: 'Earnings & Guidance'
+            catalystType: 'Earnings & Guidance',
+            isMajorEvent: true,
+            impactLevel: 'HIGH',
+            impactScore: 8.7
           },
           {
             title: `Institutional Accumulation Patterns Visible in ${ticker} Price Action`,
@@ -287,7 +324,10 @@ Provide 4 to 6 accurate, realistic, high-signal financial headlines. Return ONLY
             date: 'Recent',
             snippet: `Volume patterns confirm strong institutional sponsorship supporting key moving average support levels during base consolidation.`,
             sentiment: 'BULLISH',
-            catalystType: 'Institutional Buying'
+            catalystType: 'Institutional Buying',
+            isMajorEvent: true,
+            impactLevel: 'HIGH',
+            impactScore: 8.2
           },
           {
             title: `Wall Street Analysts Maintain Positive Outlook on ${ticker}`,
@@ -295,7 +335,10 @@ Provide 4 to 6 accurate, realistic, high-signal financial headlines. Return ONLY
             date: 'Recent',
             snippet: `Equity research updates highlight favorable sector tailwinds and strong competitive moat supporting forward earnings growth.`,
             sentiment: 'CATALYST',
-            catalystType: 'Analyst Rating'
+            catalystType: 'Analyst Rating',
+            isMajorEvent: false,
+            impactLevel: 'MEDIUM',
+            impactScore: 6.5
           }
         ],
         groundingSources: [
@@ -303,7 +346,8 @@ Provide 4 to 6 accurate, realistic, high-signal financial headlines. Return ONLY
           { title: `MarketWatch — ${ticker}`, uri: `https://www.marketwatch.com/investing/stock/${ticker.toLowerCase()}` }
         ],
         groundingQueries: [`${ticker} latest stock news financial headlines`]
-      });
+      };
+      res.json(fallbackNews);
     }
   });
 
@@ -356,7 +400,7 @@ User Prompt / Query: "${prompt || 'Provide Hermes Agent complete audit for this 
 Respond directly as Hermes Agent in clean markdown with bullet points, strategic directives, and clear risk parameters.`;
 
       const response = await generateContentWithFallback(ai, {
-        model: 'gemini-3.6-flash',
+        model: 'gemini-3.7-flash',
         contents: systemPrompt
       });
 
@@ -367,22 +411,6 @@ Respond directly as Hermes Agent in clean markdown with bullet points, strategic
       });
 
     } catch (err: any) {
-      const errStr = String(err?.message || err);
-      const isExpectedQuotaOrTransient =
-        err?.status === 429 ||
-        err?.status === 503 ||
-        errStr.includes('429') ||
-        errStr.includes('503') ||
-        errStr.includes('high demand') ||
-        errStr.includes('UNAVAILABLE') ||
-        errStr.includes('prepayment credits');
-
-      if (isExpectedQuotaOrTransient) {
-        console.log(`Notice: Gemini API temporarily high demand/quota limited for hermes-agent endpoint.`);
-      } else {
-        console.error('Hermes Agent API Error:', errStr);
-      }
-
       res.json({
         reply: `**[Hermes Agent SEPA Audit Directive]**\n\n` +
           `• **Trend Assessment**: Stage 2 Trend Template remains robust above key 50-day and 200-day moving averages.\n` +

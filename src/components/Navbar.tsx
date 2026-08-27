@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { TrendingUp, BarChart3, Calculator, BookOpen, SlidersHorizontal, Briefcase, Calendar, Video, Gem, Moon, Sun, Zap, Target, BookMarked, Layers, BellRing, Download, Sparkles, Bot, Cpu, Bookmark, ShieldCheck } from 'lucide-react';
+import { TrendingUp, BarChart3, Calculator, BookOpen, SlidersHorizontal, Briefcase, Calendar, Video, Gem, Moon, Sun, Zap, Target, BookMarked, Layers, BellRing, Download, Sparkles, Bot, Cpu, Bookmark, ShieldCheck, CheckSquare, Award, Monitor } from 'lucide-react';
+import { DesktopRemixGuideModal } from './DesktopRemixGuideModal';
 
 export type AppNavTab = 
+  | 'daily_review'
   | 'hermes_agent'
   | 'screener' 
   | 'watchlist'
@@ -43,6 +45,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   isObsidian = false,
   onToggleObsidian
 }) => {
+  const [showDesktopModal, setShowDesktopModal] = useState<boolean>(false);
   return (
     <header className="bg-white/80 backdrop-blur-md border-b border-[#e5e4e1] text-[#1a1a1a] sticky top-0 z-40 shadow-xs transition-colors duration-300">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -85,6 +88,23 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span className="text-emerald-700 font-bold">💧 Dry-Up Volume:</span>
               <span className="font-bold text-[#1a1a1a]">{tightVolumeCount} Setups</span>
             </div>
+
+            {/* Connect & Remix Desktop Modal Button */}
+            <motion.button
+              id="desktop-remix-btn"
+              onClick={() => setShowDesktopModal(true)}
+              whileHover={{ scale: 1.04 }}
+              whileTap={{ scale: 0.96 }}
+              className={`px-3 py-1.5 rounded text-[11px] font-bold uppercase tracking-wider font-mono flex items-center space-x-1.5 border shadow-sm cursor-pointer ${
+                isObsidian
+                  ? 'bg-slate-900 hover:bg-slate-800 text-amber-300 border-amber-500/40'
+                  : 'bg-white hover:bg-gray-100 text-gray-800 border-[#d5d4d0]'
+              }`}
+              title="Connect & Remix Minervini SEPA Scanner on Desktop"
+            >
+              <Monitor className="w-3.5 h-3.5 text-amber-500" />
+              <span>Connect Desktop / Remix</span>
+            </motion.button>
 
             {/* OBSIDIAN Theme Toggle Button */}
             {onToggleObsidian && (
@@ -155,6 +175,22 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Editorial Style Navigation Tabs */}
           <nav className="flex items-center space-x-1 sm:space-x-6 text-[11px] uppercase tracking-widest font-semibold overflow-x-auto no-scrollbar py-1">
+            <button
+              id="nav-tab-daily-review"
+              onClick={() => setActiveTab('daily_review')}
+              className={`flex items-center space-x-1.5 py-2 px-2.5 rounded transition-all border-b-2 font-bold cursor-pointer ${
+                activeTab === 'daily_review'
+                  ? 'bg-amber-500/10 border-amber-500 text-amber-500 shadow-xs'
+                  : 'border-transparent text-amber-600/90 hover:text-amber-500 hover:bg-amber-500/5'
+              }`}
+            >
+              <Award className="w-4 h-4 text-amber-500" />
+              <span className="font-mono tracking-wider font-extrabold flex items-center gap-1">
+                DAILY REVIEW
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+              </span>
+            </button>
+
             <button
               id="nav-tab-hermes-agent"
               onClick={() => setActiveTab('hermes_agent')}
@@ -408,6 +444,13 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         </div>
       </div>
+
+      {/* Connect Desktop & Remix Modal */}
+      <DesktopRemixGuideModal
+        isOpen={showDesktopModal}
+        onClose={() => setShowDesktopModal(false)}
+        stocksCount={totalSetupsCount}
+      />
     </header>
   );
 };

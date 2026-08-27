@@ -43,12 +43,15 @@ export const AiMinerviniAnalyst: React.FC<AiMinerviniAnalystProps> = ({ stock })
     }
   };
 
-  // Automatic updation of LLM analysis whenever stock setup or ticker changes
+  // Automatic updation of LLM analysis whenever stock setup or ticker changes with debounce
   useEffect(() => {
     const stockKey = `${stock.ticker}-${stock.currentPrice}-${stock.vcpStage}-${stock.volumeDryUpPercent}-${stock.pivotPrice}`;
     if (autoUpdate && stockKey !== prevStockRef.current) {
       prevStockRef.current = stockKey;
-      handleFetchAiAnalysis(true);
+      const timer = setTimeout(() => {
+        handleFetchAiAnalysis(true);
+      }, 400);
+      return () => clearTimeout(timer);
     }
   }, [stock.ticker, stock.currentPrice, stock.vcpStage, stock.volumeDryUpPercent, stock.pivotPrice, autoUpdate]);
 
@@ -63,7 +66,7 @@ export const AiMinerviniAnalyst: React.FC<AiMinerviniAnalystProps> = ({ stock })
             <div className="flex items-center space-x-2">
               <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-[#b5a68d]">Quantitative Audit</span>
               <span className="bg-[#1a1a1a] text-white text-[9px] uppercase tracking-[0.15em] px-2 py-0.5 font-bold">
-                Gemini 2.5
+                Gemini 3.7
               </span>
               <span className={`text-[9px] font-mono px-2 py-0.5 font-bold uppercase tracking-wider flex items-center space-x-1 ${
                 autoUpdate ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-gray-100 text-gray-600'

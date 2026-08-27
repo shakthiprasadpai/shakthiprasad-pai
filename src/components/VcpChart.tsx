@@ -7,6 +7,7 @@ import { LorentzianClassification } from './LorentzianClassification';
 import { VcpTemplateOverlay } from './VcpTemplateOverlay';
 import { RiskRewardChart } from './RiskRewardChart';
 import { VolatilityTrendChart } from './VolatilityTrendChart';
+import { VolatilityContractionRatioSubchart } from './VolatilityContractionRatioSubchart';
 import { toPng } from 'html-to-image';
 import {
   ComposedChart,
@@ -187,12 +188,13 @@ export function calculateVolumeOscillatorData(
 }
 
 export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
-  const [chartSubTab, setChartSubTab] = useState<'vcp_candlestick' | 'volatility_trend' | 'risk_reward'>('vcp_candlestick');
+  const [chartSubTab, setChartSubTab] = useState<'vcp_candlestick' | 'volatility_trend' | 'volatility_contraction' | 'risk_reward'>('vcp_candlestick');
   const [showSma50, setShowSma50] = useState(true);
   const [showSma150, setShowSma150] = useState(true);
   const [showSma200, setShowSma200] = useState(true);
   const [showLevels, setShowLevels] = useState(true);
   const [showVolatilityOverlay, setShowVolatilityOverlay] = useState(true);
+  const [showVolatilityContractionRatio, setShowVolatilityContractionRatio] = useState(true);
   const [showStage2Bg, setShowStage2Bg] = useState(true);
   const [showLorentzianDots, setShowLorentzianDots] = useState(true);
   const [isPineModalOpen, setIsPineModalOpen] = useState(false);
@@ -1152,6 +1154,19 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
             <Layers className="w-3.5 h-3.5 text-amber-400" />
             <span>Base Area {showBaseFormationArea ? 'ON' : 'OFF'}</span>
           </button>
+
+          <button
+            onClick={() => setShowVolatilityContractionRatio(!showVolatilityContractionRatio)}
+            className={`px-3 py-1 border text-xs font-semibold uppercase tracking-wider font-mono transition-all flex items-center space-x-1 cursor-pointer ${
+              showVolatilityContractionRatio
+                ? 'bg-amber-600 text-white border-amber-700 shadow-xs font-bold'
+                : 'bg-[#f9f8f5] text-gray-400 border-[#e5e4e1]'
+            }`}
+            title="Toggle Volatility Contraction Ratio (VCR) Sub-Chart & Tightening Bands"
+          >
+            <Activity className="w-3.5 h-3.5 text-amber-200" />
+            <span>VCR Ratio {showVolatilityContractionRatio ? 'ON' : 'OFF'}</span>
+          </button>
         </div>
       </div>
 
@@ -1168,6 +1183,18 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
           >
             <TrendingUp className="w-3.5 h-3.5" />
             <span>Interactive VCP Candlestick</span>
+          </button>
+
+          <button
+            onClick={() => setChartSubTab('volatility_contraction')}
+            className={`px-3.5 py-1.5 font-bold uppercase tracking-wider flex items-center space-x-1.5 transition cursor-pointer ${
+              chartSubTab === 'volatility_contraction'
+                ? 'bg-[#1a1a1a] text-amber-300 shadow-xs'
+                : 'bg-white text-gray-700 hover:bg-gray-100 border border-[#e5e4e1]'
+            }`}
+          >
+            <Zap className="w-3.5 h-3.5 text-amber-500" />
+            <span>Volatility Contraction Ratio (VCR)</span>
           </button>
 
           <button
@@ -1197,12 +1224,20 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
 
         <div className="text-[11px] text-gray-500 font-sans italic px-2">
           {chartSubTab === 'vcp_candlestick' && 'Price, SMAs & Volume Oscillator'}
+          {chartSubTab === 'volatility_contraction' && 'Rolling Swing Amplitude vs Base Anchor Ratio'}
           {chartSubTab === 'volatility_trend' && 'ATR 14-day Volatility Squeeze Index'}
           {chartSubTab === 'risk_reward' && 'Scale-Out Targets (T1, T2, T3) Visualizer'}
         </div>
       </div>
 
       {/* Render Selected View */}
+      {chartSubTab === 'volatility_contraction' && (
+        <div className="space-y-6">
+          <VolatilityContractionRatioSubchart stock={stock} />
+          <VolatilityTrendChart stock={stock} />
+        </div>
+      )}
+
       {chartSubTab === 'volatility_trend' && (
         <VolatilityTrendChart stock={stock} />
       )}
@@ -1820,6 +1855,30 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
                 />
               </React.Fragment>
             ))}
+
+            {/* Terminal Volatility Contraction Coil Tightening Highlight Area */}
+            {showVolatilityContractionRatio && stock.contractions.length > 0 && (
+              <ReferenceArea
+                {...({
+                  x1: stock.contractions[stock.contractions.length - 1].startDate,
+                  x2: stock.contractions[stock.contractions.length - 1].endDate || displayedPriceHistory[displayedPriceHistory.length - 1]?.date,
+                  y1: minPrice,
+                  y2: maxPrice,
+                  fill: '#10b981',
+                  fillOpacity: 0.08,
+                  stroke: '#059669',
+                  strokeOpacity: 0.45,
+                  strokeDasharray: '3 3',
+                  label: {
+                    value: `VCP TERMINAL COIL (T${stock.contractions.length}: -${finalDepth}%)`,
+                    fill: '#047857',
+                    fontSize: 9,
+                    fontWeight: 'bold',
+                    position: 'insideBottomRight'
+                  }
+                } as any)}
+              />
+            )}
 
             {/* Interactive VCP Formation Reference Dots on Nodes */}
             {vcpNodes.map((node) => {
@@ -2581,6 +2640,11 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
           </div>
 
         </div>
+      )}
+
+      {/* Volatility Contraction Ratio (VCR) Sub-Chart */}
+      {showVolatilityContractionRatio && (
+        <VolatilityContractionRatioSubchart stock={stock} />
       )}
 
       {/* Historical Pivot Buy Points & Stop Loss Level Audit Matrix */}

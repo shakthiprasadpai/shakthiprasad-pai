@@ -11,6 +11,7 @@ import {
   TrendingUp,
   TrendingDown,
   AlertCircle,
+  AlertTriangle,
   Search,
   ShieldCheck,
   Tag,
@@ -31,6 +32,9 @@ import {
   ArrowUpRight,
   Maximize2,
   Minimize2,
+  Activity,
+  Gauge,
+  Info,
 } from 'lucide-react';
 
 interface TickerNewsGroundingProps {
@@ -46,7 +50,139 @@ export interface HeadlineItem {
   catalystType: string;
   isMajorEvent?: boolean;
   impactLevel?: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  impactScore?: number;
   sepaContext?: string;
+}
+
+/**
+ * Calculates a standardized 1.0 to 10.0 impact score for a headline
+ * to quantify anticipated market volatility and catalyst magnitude.
+ */
+export function getHeadlineImpactScore(headline: HeadlineItem): number {
+  if (typeof headline.impactScore === 'number' && headline.impactScore > 0) {
+    return headline.impactScore > 10
+      ? Number((headline.impactScore / 10).toFixed(1))
+      : Number(headline.impactScore.toFixed(1));
+  }
+
+  let baseScore = 5.0;
+  if (headline.impactLevel === 'CRITICAL') baseScore = 9.4;
+  else if (headline.impactLevel === 'HIGH') baseScore = 8.1;
+  else if (headline.impactLevel === 'MEDIUM') baseScore = 5.8;
+  else if (headline.impactLevel === 'LOW') baseScore = 3.4;
+
+  if (headline.isMajorEvent) {
+    baseScore = Math.min(9.8, baseScore + 1.0);
+  }
+
+  const cat = (headline.catalystType || '').toLowerCase();
+  if (
+    cat.includes('earnings') ||
+    cat.includes('guidance') ||
+    cat.includes('fda') ||
+    cat.includes('m&a') ||
+    cat.includes('acquisition') ||
+    cat.includes('revenue')
+  ) {
+    baseScore = Math.min(9.9, baseScore + 0.6);
+  } else if (
+    cat.includes('institutional') ||
+    cat.includes('contract') ||
+    cat.includes('breakout') ||
+    cat.includes('patent')
+  ) {
+    baseScore = Math.min(9.5, baseScore + 0.4);
+  }
+
+  return Number(baseScore.toFixed(1));
+}
+
+/**
+ * Returns color tokens, labels, and icons according to the Impact Score magnitude.
+ */
+export function getImpactScoreConfig(score: number) {
+  if (score >= 8.5) {
+    return {
+      tier: 'CRITICAL',
+      tierLabel: 'Critical Volatility',
+      label: 'Critical Volatility',
+      shortLabel: 'Critical',
+      description: 'High-velocity catalyst (earnings beat, FDA clearance, major M&A) triggering immediate institutional volume and breakout continuation.',
+      bgColor: 'bg-rose-50',
+      textColor: 'text-rose-950',
+      borderColor: 'border-rose-300',
+      iconColor: 'text-rose-600',
+      badgeBg: 'bg-rose-50 border-rose-300 text-rose-950 shadow-xs',
+      badgeHover: 'hover:bg-rose-100/90 hover:border-rose-400',
+      pillBg: 'bg-rose-600 text-white',
+      accentColor: 'text-rose-600',
+      barColor: 'bg-rose-600',
+      pulseDot: 'bg-rose-500',
+      icon: Flame,
+      tooltip: 'Critical Volatility Catalyst: High probability of explosive volume expansion and directional price movement.',
+    };
+  }
+  if (score >= 7.0) {
+    return {
+      tier: 'HIGH',
+      tierLabel: 'High Volatility',
+      label: 'High Impact',
+      shortLabel: 'High Impact',
+      description: 'Strong fundamental driver (major commercial contract, patent grant, analyst upgrade) supporting accumulation.',
+      bgColor: 'bg-amber-50',
+      textColor: 'text-amber-950',
+      borderColor: 'border-amber-300',
+      iconColor: 'text-amber-600',
+      badgeBg: 'bg-amber-50 border-amber-300 text-amber-950 shadow-xs',
+      badgeHover: 'hover:bg-amber-100/90 hover:border-amber-400',
+      pillBg: 'bg-amber-600 text-white',
+      accentColor: 'text-amber-600',
+      barColor: 'bg-amber-500',
+      pulseDot: 'bg-amber-500',
+      icon: Zap,
+      tooltip: 'High Volatility Catalyst: Strong fundamental driver supporting institutional accumulation or base breakout continuation.',
+    };
+  }
+  if (score >= 5.0) {
+    return {
+      tier: 'MODERATE',
+      tierLabel: 'Moderate Impact',
+      label: 'Moderate Impact',
+      shortLabel: 'Moderate',
+      description: 'Standard operational or industry updates providing baseline context during consolidation.',
+      bgColor: 'bg-sky-50',
+      textColor: 'text-sky-950',
+      borderColor: 'border-sky-200',
+      iconColor: 'text-sky-600',
+      badgeBg: 'bg-sky-50 border-sky-200 text-sky-950 shadow-xs',
+      badgeHover: 'hover:bg-sky-100/90 hover:border-sky-300',
+      pillBg: 'bg-sky-600 text-white',
+      accentColor: 'text-sky-700',
+      barColor: 'bg-sky-500',
+      pulseDot: 'bg-sky-500',
+      icon: TrendingUp,
+      tooltip: 'Moderate Catalyst: Routine business developments, product updates, or standard analyst notes.',
+    };
+  }
+  return {
+    tier: 'LOW',
+    tierLabel: 'Low Impact',
+    label: 'Low Impact',
+    shortLabel: 'Low',
+    description: 'Routine informational notice or low-impact news with minimal effect on VCP technical pattern.',
+    bgColor: 'bg-gray-100',
+    textColor: 'text-gray-800',
+    borderColor: 'border-gray-300',
+    iconColor: 'text-gray-500',
+    badgeBg: 'bg-gray-100 border-gray-300 text-gray-800 shadow-xs',
+    badgeHover: 'hover:bg-gray-200 hover:border-gray-400',
+    pillBg: 'bg-gray-500 text-white',
+    accentColor: 'text-gray-500',
+    barColor: 'bg-gray-400',
+    pulseDot: 'bg-gray-400',
+    icon: Activity,
+    tooltip: 'Low Volatility: Minor informational update with minimal immediate impact on price action.',
+  };
 }
 
 export interface GroundingSource {
@@ -75,10 +211,12 @@ export const TickerNewsGrounding: React.FC<TickerNewsGroundingProps> = ({ stock 
   // Filtering states
   const [activeSentiment, setActiveSentiment] = useState<'ALL' | 'BULLISH' | 'CATALYST' | 'BEARISH' | 'NEUTRAL'>('ALL');
   const [selectedCatalystType, setSelectedCatalystType] = useState<string>('ALL');
+  const [selectedImpactTier, setSelectedImpactTier] = useState<'ALL' | 'CRITICAL' | 'HIGH_PLUS' | 'MODERATE_PLUS'>('ALL');
   const [majorOnly, setMajorOnly] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [sortBy, setSortBy] = useState<'impact' | 'recent'>('impact');
   const [showAdvancedFilters, setShowAdvancedFilters] = useState<boolean>(false);
+  const [showImpactLegend, setShowImpactLegend] = useState<boolean>(false);
 
   // Animated expansion states
   const [expandedHeadlines, setExpandedHeadlines] = useState<Record<number, boolean>>({});
@@ -151,6 +289,7 @@ export const TickerNewsGrounding: React.FC<TickerNewsGroundingProps> = ({ stock 
     setSearchQuery('');
     setActiveSentiment('ALL');
     setSelectedCatalystType('ALL');
+    setSelectedImpactTier('ALL');
     setMajorOnly(false);
     fetchTickerHeadlines(false);
   }, [stock.ticker]);
@@ -217,12 +356,20 @@ export const TickerNewsGrounding: React.FC<TickerNewsGroundingProps> = ({ stock 
         return false;
       }
 
-      // 3. Major / High Impact Only filter
-      if (majorOnly && !item.isMajorEvent && item.impactLevel !== 'CRITICAL' && item.impactLevel !== 'HIGH') {
+      // 3. Impact Tier filter
+      if (selectedImpactTier !== 'ALL') {
+        const score = getHeadlineImpactScore(item);
+        if (selectedImpactTier === 'CRITICAL' && score < 8.5) return false;
+        if (selectedImpactTier === 'HIGH_PLUS' && score < 7.0) return false;
+        if (selectedImpactTier === 'MODERATE_PLUS' && score < 5.0) return false;
+      }
+
+      // 4. Major / High Impact Only filter
+      if (majorOnly && !item.isMajorEvent && item.impactLevel !== 'CRITICAL' && item.impactLevel !== 'HIGH' && getHeadlineImpactScore(item) < 7.0) {
         return false;
       }
 
-      // 4. Keyword search filter
+      // 5. Keyword search filter
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase().trim();
         const matchTitle = item.title?.toLowerCase().includes(query);
@@ -239,16 +386,15 @@ export const TickerNewsGrounding: React.FC<TickerNewsGroundingProps> = ({ stock 
 
     // Sort headlines
     if (sortBy === 'impact') {
-      const impactWeight = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1, undefined: 0 };
       list.sort((a, b) => {
-        const weightA = impactWeight[a.impactLevel || 'MEDIUM'] + (a.isMajorEvent ? 2 : 0);
-        const weightB = impactWeight[b.impactLevel || 'MEDIUM'] + (b.isMajorEvent ? 2 : 0);
-        return weightB - weightA;
+        const scoreA = getHeadlineImpactScore(a);
+        const scoreB = getHeadlineImpactScore(b);
+        return scoreB - scoreA;
       });
     }
 
     return list;
-  }, [newsData, activeSentiment, selectedCatalystType, majorOnly, searchQuery, sortBy]);
+  }, [newsData, activeSentiment, selectedCatalystType, selectedImpactTier, majorOnly, searchQuery, sortBy]);
 
   // Toggle single card expansion
   const toggleHeadlineExpand = (index: number) => {
@@ -292,7 +438,9 @@ export const TickerNewsGrounding: React.FC<TickerNewsGroundingProps> = ({ stock 
 
     report += `🎯 Key Grounded Headlines (${filteredHeadlines.length}):\n`;
     filteredHeadlines.forEach((h, i) => {
-      report += `${i + 1}. [${h.sentiment}] ${h.title}\n`;
+      const score = getHeadlineImpactScore(h);
+      const config = getImpactScoreConfig(score);
+      report += `${i + 1}. [Impact: ${score}/10 ${config.shortLabel} | ${h.sentiment}] ${h.title}\n`;
       report += `   Source: ${h.source} (${h.date}) | Type: ${h.catalystType}\n`;
       report += `   Takeaway: "${h.snippet}"\n\n`;
     });
@@ -342,7 +490,9 @@ export const TickerNewsGrounding: React.FC<TickerNewsGroundingProps> = ({ stock 
   // Copy single headline
   const handleCopySingleHeadline = async (headline: HeadlineItem, idx: number, e: React.MouseEvent) => {
     e.stopPropagation();
-    const text = `[${headline.sentiment} - ${headline.catalystType}] ${headline.title}\nSource: ${headline.source} (${headline.date})\n"${headline.snippet}"\n(Ticker: ${stock.ticker})`;
+    const score = getHeadlineImpactScore(headline);
+    const config = getImpactScoreConfig(score);
+    const text = `[Impact: ${score}/10 (${config.shortLabel}) | ${headline.sentiment} - ${headline.catalystType}] ${headline.title}\nSource: ${headline.source} (${headline.date})\n"${headline.snippet}"\n(Ticker: ${stock.ticker})`;
     try {
       await navigator.clipboard.writeText(text);
       setCopiedHeadlineIdx(idx);
@@ -372,12 +522,14 @@ export const TickerNewsGrounding: React.FC<TickerNewsGroundingProps> = ({ stock 
   const isFiltersActive =
     activeSentiment !== 'ALL' ||
     selectedCatalystType !== 'ALL' ||
+    selectedImpactTier !== 'ALL' ||
     majorOnly ||
     searchQuery.trim().length > 0;
 
   const resetAllFilters = () => {
     setActiveSentiment('ALL');
     setSelectedCatalystType('ALL');
+    setSelectedImpactTier('ALL');
     setMajorOnly(false);
     setSearchQuery('');
   };
@@ -577,7 +729,8 @@ export const TickerNewsGrounding: React.FC<TickerNewsGroundingProps> = ({ stock 
                 className="overflow-hidden"
               >
                 <div className="bg-[#f2efe9] border border-[#e5e4e1] p-3.5 space-y-3 font-mono text-xs">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
+                  {/* Row 1: Catalyst Category & Impact Tier */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pb-2 border-b border-[#e5e4e1]">
                     
                     {/* Catalyst Category Pill Filter */}
                     <div className="space-y-1.5">
@@ -611,9 +764,93 @@ export const TickerNewsGrounding: React.FC<TickerNewsGroundingProps> = ({ stock 
                       </div>
                     </div>
 
-                    {/* Major Only Switch & Sort & Auto-refresh */}
-                    <div className="flex flex-wrap items-center gap-4 pt-1">
-                      
+                    {/* Impact Score Tier Filter */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold uppercase text-gray-600 flex items-center space-x-1">
+                          <Activity className="w-3 h-3 text-amber-600" />
+                          <span>Impact Score Tier:</span>
+                        </span>
+                        <button
+                          onClick={() => setShowImpactLegend(!showImpactLegend)}
+                          className="text-[9px] text-amber-800 hover:text-black font-bold uppercase underline cursor-pointer"
+                        >
+                          {showImpactLegend ? 'Hide Legend' : 'Score Legend'}
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {[
+                          { id: 'ALL', label: 'All Scores' },
+                          { id: 'CRITICAL', label: 'Critical (8.5+)', color: 'text-rose-700' },
+                          { id: 'HIGH_PLUS', label: 'High (7.0+)', color: 'text-amber-700' },
+                          { id: 'MODERATE_PLUS', label: 'Moderate (5.0+)', color: 'text-blue-700' },
+                        ].map((tier) => (
+                          <button
+                            key={tier.id}
+                            onClick={() => setSelectedImpactTier(tier.id as any)}
+                            className={`px-2 py-0.5 text-[10px] font-bold uppercase border cursor-pointer flex items-center space-x-1 ${
+                              selectedImpactTier === tier.id
+                                ? 'bg-[#1a1a1a] text-white border-black'
+                                : 'bg-white text-gray-700 border-[#d5d4d0] hover:bg-gray-100'
+                            }`}
+                          >
+                            <span>{tier.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Impact Legend Accordion */}
+                  {showImpactLegend && (
+                    <div className="bg-white p-3 border border-[#e5e4e1] space-y-2 text-[10px] font-sans">
+                      <div className="font-mono font-bold text-gray-800 uppercase tracking-wider text-[10px]">
+                        Mark Minervini SEPA Volatility Impact Score Methodology (1 - 10)
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 font-mono">
+                        <div className="p-2 bg-rose-50 border border-rose-200">
+                          <div className="font-black text-rose-800 flex items-center space-x-1">
+                            <AlertTriangle className="w-3 h-3 text-rose-600" />
+                            <span>8.5 – 10.0: CRITICAL</span>
+                          </div>
+                          <p className="font-sans text-gray-600 text-[11px] mt-0.5">
+                            High-velocity catalysts (earnings beats/guidance, FDA approval, M&A) that trigger immediate institutional accumulation or multi-week breakouts.
+                          </p>
+                        </div>
+                        <div className="p-2 bg-amber-50 border border-amber-200">
+                          <div className="font-black text-amber-800 flex items-center space-x-1">
+                            <Zap className="w-3 h-3 text-amber-600" />
+                            <span>7.0 – 8.4: HIGH IMPACT</span>
+                          </div>
+                          <p className="font-sans text-gray-600 text-[11px] mt-0.5">
+                            Major contract wins, product launches, analyst upgrades, or sector leadership shifts with strong volume expansion potential.
+                          </p>
+                        </div>
+                        <div className="p-2 bg-blue-50 border border-blue-200">
+                          <div className="font-black text-blue-800 flex items-center space-x-1">
+                            <TrendingUp className="w-3 h-3 text-blue-600" />
+                            <span>5.0 – 6.9: MODERATE</span>
+                          </div>
+                          <p className="font-sans text-gray-600 text-[11px] mt-0.5">
+                            Industry updates, macro commentary, or regular quarterly presentations supporting background consolidation.
+                          </p>
+                        </div>
+                        <div className="p-2 bg-gray-50 border border-gray-200">
+                          <div className="font-black text-gray-700 flex items-center space-x-1">
+                            <Activity className="w-3 h-3 text-gray-500" />
+                            <span>1.0 – 4.9: MINOR</span>
+                          </div>
+                          <p className="font-sans text-gray-600 text-[11px] mt-0.5">
+                            Routine PR, standard filing notices, or low-significance trading noise with minimal impact on VCP pattern formation.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Row 2: Major Only Switch & Sort & Auto-refresh */}
+                  <div className="flex flex-wrap items-center justify-between gap-4 pt-1">
+                    <div className="flex flex-wrap items-center gap-4">
                       {/* High-Impact / Major Only Toggle */}
                       <label className="flex items-center space-x-2 cursor-pointer select-none bg-white px-2.5 py-1 border border-[#d5d4d0]">
                         <input
@@ -624,7 +861,7 @@ export const TickerNewsGrounding: React.FC<TickerNewsGroundingProps> = ({ stock 
                         />
                         <span className="text-[10px] font-bold uppercase text-amber-900 flex items-center space-x-1">
                           <Flame className="w-3 h-3 text-amber-600" />
-                          <span>High-Impact Only</span>
+                          <span>High-Impact Only (7.0+)</span>
                         </span>
                       </label>
 
@@ -636,7 +873,7 @@ export const TickerNewsGrounding: React.FC<TickerNewsGroundingProps> = ({ stock 
                           onChange={(e) => setSortBy(e.target.value as any)}
                           className="bg-white border border-[#d5d4d0] px-2 py-1 text-[10px] font-mono font-bold uppercase focus:outline-none"
                         >
-                          <option value="impact">Highest SEPA Impact</option>
+                          <option value="impact">Highest SEPA Impact Score</option>
                           <option value="recent">Most Recent Date</option>
                         </select>
                       </div>
@@ -654,17 +891,17 @@ export const TickerNewsGrounding: React.FC<TickerNewsGroundingProps> = ({ stock 
                           <option value="300s">Every 5m</option>
                         </select>
                       </div>
-
-                      {/* Clear All Filters Button */}
-                      {isFiltersActive && (
-                        <button
-                          onClick={resetAllFilters}
-                          className="text-[10px] text-rose-700 hover:text-rose-900 font-bold uppercase underline cursor-pointer"
-                        >
-                          Reset Filters
-                        </button>
-                      )}
                     </div>
+
+                    {/* Clear All Filters Button */}
+                    {isFiltersActive && (
+                      <button
+                        onClick={resetAllFilters}
+                        className="text-[10px] text-rose-700 hover:text-rose-900 font-bold uppercase underline cursor-pointer"
+                      >
+                        Reset All Filters
+                      </button>
+                    )}
                   </div>
                 </div>
               </motion.div>
@@ -794,7 +1031,9 @@ export const TickerNewsGrounding: React.FC<TickerNewsGroundingProps> = ({ stock 
                 const isExpanded = !!expandedHeadlines[idx] || isAllExpanded;
                 const isCopied = copiedHeadlineIdx === idx;
 
-                const impact = headline.impactLevel || (headline.isMajorEvent ? 'HIGH' : 'MEDIUM');
+                const impactScore = getHeadlineImpactScore(headline);
+                const impactConfig = getImpactScoreConfig(impactScore);
+                const impactPercentage = Math.min(100, Math.max(10, (impactScore / 10) * 100));
 
                 return (
                   <motion.div
@@ -825,8 +1064,8 @@ export const TickerNewsGrounding: React.FC<TickerNewsGroundingProps> = ({ stock 
                           {/* Copy single button */}
                           <button
                             onClick={(e) => handleCopySingleHeadline(headline, idx, e)}
-                            title="Copy headline takeaway"
-                            className="text-gray-400 hover:text-black transition-colors p-0.5"
+                            title="Copy headline takeaway and impact score"
+                            className="text-gray-400 hover:text-black transition-colors p-0.5 cursor-pointer"
                           >
                             {isCopied ? (
                               <Check className="w-3.5 h-3.5 text-emerald-600" />
@@ -837,13 +1076,37 @@ export const TickerNewsGrounding: React.FC<TickerNewsGroundingProps> = ({ stock 
                         </div>
                       </div>
 
-                      {/* Headline Title */}
-                      <h4
-                        onClick={() => toggleHeadlineExpand(idx)}
-                        className="text-sm font-serif font-black text-[#1a1a1a] leading-tight cursor-pointer hover:text-amber-800 transition-colors flex items-start justify-between gap-2"
-                      >
-                        <span>{headline.title}</span>
-                      </h4>
+                      {/* Headline Title and Color-Coded Impact Score Badge */}
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {/* Prominent Color-Coded Impact Score Badge */}
+                          <span
+                            className={`inline-flex items-center space-x-1.5 px-2 py-0.5 text-[10px] font-mono font-bold uppercase tracking-wider border shadow-2xs ${impactConfig.bgColor} ${impactConfig.textColor} ${impactConfig.borderColor}`}
+                            title={`Volatility Impact: ${impactScore.toFixed(1)}/10 (${impactConfig.label}) - ${impactConfig.description}`}
+                          >
+                            <impactConfig.icon className={`w-3 h-3 ${impactConfig.iconColor} ${impactScore >= 8.5 ? 'animate-pulse' : ''}`} />
+                            <span className="font-black">Impact {impactScore.toFixed(1)}</span>
+                            <span className="opacity-60 text-[9px]">/10</span>
+                            <span className="font-extrabold border-l pl-1.5 ml-0.5 border-current/25 text-[9px]">
+                              {impactConfig.shortLabel}
+                            </span>
+                          </span>
+
+                          {headline.isMajorEvent && (
+                            <span className="inline-flex items-center space-x-1 px-1.5 py-0.5 text-[9px] font-mono font-extrabold uppercase tracking-wider bg-rose-100 text-rose-900 border border-rose-300">
+                              <Flame className="w-2.5 h-2.5 text-rose-600 animate-pulse" />
+                              <span>High Volatility Event</span>
+                            </span>
+                          )}
+                        </div>
+
+                        <h4
+                          onClick={() => toggleHeadlineExpand(idx)}
+                          className="text-sm font-serif font-black text-[#1a1a1a] leading-tight cursor-pointer hover:text-amber-800 transition-colors"
+                        >
+                          <span>{headline.title}</span>
+                        </h4>
+                      </div>
 
                       {/* Snippet preview / full text */}
                       <p className="text-xs font-sans text-gray-600 leading-normal">
@@ -858,8 +1121,40 @@ export const TickerNewsGrounding: React.FC<TickerNewsGroundingProps> = ({ stock 
                             animate={{ opacity: 1, height: 'auto' }}
                             exit={{ opacity: 0, height: 0 }}
                             transition={{ duration: 0.25 }}
-                            className="overflow-hidden pt-2.5 border-t border-dashed border-[#e5e4e1] space-y-2 font-mono text-xs"
+                            className="overflow-hidden pt-2.5 border-t border-dashed border-[#e5e4e1] space-y-2.5 font-mono text-xs"
                           >
+                            {/* Volatility & Impact Meter */}
+                            <div className="p-2.5 bg-white border border-[#e5e4e1] space-y-1.5">
+                              <div className="flex items-center justify-between text-[10px] font-bold">
+                                <span className="text-gray-600 uppercase flex items-center space-x-1">
+                                  <Activity className="w-3 h-3 text-amber-600" />
+                                  <span>Volatility Impact Rating:</span>
+                                </span>
+                                <span className={`font-extrabold ${impactConfig.textColor}`}>
+                                  {impactScore.toFixed(1)} / 10 ({impactConfig.label})
+                                </span>
+                              </div>
+
+                              {/* Visual Progress Bar */}
+                              <div className="w-full h-1.5 bg-gray-200 overflow-hidden relative">
+                                <div
+                                  className={`h-full transition-all duration-500 ${
+                                    impactScore >= 8.5
+                                      ? 'bg-rose-600'
+                                      : impactScore >= 7.0
+                                      ? 'bg-amber-600'
+                                      : impactScore >= 5.0
+                                      ? 'bg-blue-600'
+                                      : 'bg-gray-500'
+                                  }`}
+                                  style={{ width: `${impactPercentage}%` }}
+                                />
+                              </div>
+                              <p className="text-[10px] font-sans text-gray-500 leading-tight">
+                                {impactConfig.description}
+                              </p>
+                            </div>
+
                             {/* SEPA Impact Alignment */}
                             <div className="bg-[#f4f2ec] p-2.5 space-y-1">
                               <div className="flex items-center justify-between text-[10px] font-bold uppercase">
@@ -868,15 +1163,9 @@ export const TickerNewsGrounding: React.FC<TickerNewsGroundingProps> = ({ stock 
                                   <span>SEPA Setup Significance</span>
                                 </span>
                                 <span
-                                  className={`px-1.5 py-0.2 text-[9px] font-extrabold ${
-                                    impact === 'CRITICAL'
-                                      ? 'bg-rose-600 text-white'
-                                      : impact === 'HIGH'
-                                      ? 'bg-amber-600 text-white'
-                                      : 'bg-gray-300 text-gray-800'
-                                  }`}
+                                  className={`px-1.5 py-0.2 text-[9px] font-extrabold border ${impactConfig.bgColor} ${impactConfig.textColor} ${impactConfig.borderColor}`}
                                 >
-                                  {impact} IMPACT
+                                  {impactConfig.shortLabel} IMPACT
                                 </span>
                               </div>
                               <p className="text-[11px] font-sans text-gray-700 leading-relaxed">
