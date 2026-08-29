@@ -5,6 +5,7 @@ import { exportTradePlansToCsv } from '../utils/csvExport';
 import { SectorStrengthView } from './SectorStrengthView';
 import { SectorPerformanceWidget } from './SectorPerformanceWidget';
 import { RefinedSepaScreenerModal } from './RefinedSepaScreenerModal';
+import { RiskAdjustedTableView } from './RiskAdjustedTableView';
 import { evaluateRefinedSepaScreener } from '../utils/refinedSepaScreener';
 import {
   Search,
@@ -32,7 +33,9 @@ import {
   Zap,
   RefreshCw,
   Plus,
-  Info
+  Info,
+  ShieldCheck,
+  FileText
 } from 'lucide-react';
 
 interface ScreenerTableProps {
@@ -220,7 +223,7 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
 }) => {
   const [search, setSearch] = useState<string>('');
   const [filterCategory, setFilterCategory] = useState<string>('ALL');
-  const [viewMode, setViewMode] = useState<'table' | 'heatmap' | 'sector_strength'>('table');
+  const [viewMode, setViewMode] = useState<'table' | 'risk_adjusted' | 'heatmap' | 'sector_strength'>('table');
   const [highlightRows, setHighlightRows] = useState<boolean>(true);
   const [sortCriteria, setSortCriteria] = useState<SortCriterion[]>([...DEFAULT_MULTI_SORT]);
   const [isMultiSortMode, setIsMultiSortMode] = useState<boolean>(true);
@@ -459,6 +462,17 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
               >
                 <List className="w-3.5 h-3.5" />
                 <span>Table View</span>
+              </button>
+              <button
+                onClick={() => setViewMode('risk_adjusted')}
+                className={`px-3 py-1 text-xs font-bold uppercase tracking-wider flex items-center space-x-1.5 transition-all ${
+                  viewMode === 'risk_adjusted' ? 'bg-purple-950 text-amber-300 border border-purple-800' : 'text-purple-900 bg-purple-50 hover:bg-purple-100'
+                }`}
+                title="Open Risk-Adjusted Asymmetric Expectancy Matrix with Sizing and PDF Export"
+              >
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Risk Adjusted</span>
+                <span className="bg-amber-400 text-black text-[9px] font-black px-1 rounded-2xs">R:R</span>
               </button>
               <button
                 onClick={() => setViewMode('heatmap')}
@@ -725,6 +739,13 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
             setSearch(sec);
             setViewMode('table');
           }}
+        />
+      ) : viewMode === 'risk_adjusted' ? (
+        <RiskAdjustedTableView
+          stocks={filteredStocks}
+          selectedTicker={selectedTicker}
+          onSelectStock={onSelectStock}
+          onViewChart={onViewChart}
         />
       ) : viewMode === 'table' ? (
         <div className="overflow-x-auto">

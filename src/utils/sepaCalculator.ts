@@ -804,3 +804,140 @@ export function determineStageAnalysis(setup: {
   };
 }
 
+export interface RiskAdjustedMetrics {
+  ticker: string;
+  stockName: string;
+  currentPrice: number;
+  pivotPrice: number;
+  stopLossPrice: number;
+  target1Price: number;
+  target2Price: number;
+  riskAmountPerShare: number;
+  rewardAmountPerShare: number;
+  riskPct: number;
+  rewardPct: number;
+  riskRewardRatio: number;
+  target2RiskRewardRatio: number;
+  breakoutScore: number;
+  breakoutRating: string;
+  winRateEst: number;
+  lossRateEst: number;
+  expectancyR: number; // Mathematical expectation in units of Risk (R)
+  halfKellyAllocationPct: number;
+  riskTier: 'CHAMPION_ASYMMETRIC' | 'SEPA_STANDARD' | 'ACCEPTABLE' | 'SUBPAR_RISK';
+  riskTierLabel: string;
+  riskTierBadgeBg: string;
+  riskTierBadgeText: string;
+  riskQualityScore: number; // 0 - 100
+  dailyAtrPct: number;
+  volatilityTier: 'LOW' | 'MODERATE' | 'ELEVATED';
+  maxLossDollarsAt1PctRisk: (accountCapital: number) => number;
+  recommendedPosition: (accountCapital: number, riskPct?: number) => PositionSizeResult;
+}
+
+export function calculateRiskAdjustedMetrics(stock: MinerviniTradeSetup): RiskAdjustedMetrics {
+  const pivot = stock.pivotPrice || stock.currentPrice;
+  const stop = stock.stopLossPrice || stock.currentPrice * 0.93;
+  const t1 = stock.target1Price || pivot * 1.20;
+  const t2 = stock.target2Price || pivot * 1.35;
+
+  const riskPerShare = Math.max(0.01, pivot - stop);
+  const rewardPerShare = Math.max(0.01, t1 - pivot);
+  const reward2PerShare = Math.max(0.01, t2 - pivot);
+
+  const riskPct = pivot > 0 ? (riskPerShare / pivot) * 100 : 7.0;
+  const rewardPct = pivot > 0 ? (rewardPerShare / pivot) * 100 : 20.0;
+
+  const rrRatio = Number((rewardPerShare / riskPerShare).toFixed(2));
+  const t2RrRatio = Number((reward2PerShare / riskPerShare).toFixed(2));
+
+  const breakout = calculateBreakoutProbability(stock);
+  const winRate = breakout.score / 100;
+  const lossRate = 1 - winRate;
+
+  // Expected Value in Multiples of Risk: EV = (P_win * R:R) - (P_loss * 1.0)
+  const rawEv = (winRate * rrRatio) - (lossRate * 1.0);
+  const expectancyR = Number(rawEv.toFixed(2));
+
+  // Half-Kelly Criterion for safe sizing
+  const fullKelly = rrRatio > 0 ? (winRate - (lossRate / rrRatio)) : 0;
+  const halfKellyPct = Math.max(5, Math.min(25, Math.round(fullKelly * 50 * 10) / 10));
+
+  let riskTier: RiskAdjustedMetrics['riskTier'] = 'SUBPAR_RISK';
+  let riskTierLabel = 'SUBPAR R:R (<2:1)';
+  let riskTierBadgeBg = 'bg-rose-100 border-rose-300';
+  let riskTierBadgeText = 'text-rose-900';
+
+  if (rrRatio >= 5.0) {
+    riskTier = 'CHAMPION_ASYMMETRIC';
+    riskTierLabel = 'CHAMPION ASYMMETRIC (5:1+)';
+    riskTierBadgeBg = 'bg-purple-100 border-purple-300';
+    riskTierBadgeText = 'text-purple-900';
+  } else if (rrRatio >= 3.0) {
+    riskTier = 'SEPA_STANDARD';
+    riskTierLabel = 'MINERVINI SEPA STANDARD (3:1+)';
+    riskTierBadgeBg = 'bg-emerald-100 border-emerald-300';
+    riskTierBadgeText = 'text-emerald-900';
+  } else if (rrRatio >= 2.0) {
+    riskTier = 'ACCEPTABLE';
+    riskTierLabel = 'ACCEPTABLE MINIMUM (2:1)';
+    riskTierBadgeBg = 'bg-amber-100 border-amber-300';
+    riskTierBadgeText = 'text-amber-900';
+  }
+
+  // Composite Risk-Adjusted Quality Score (0 - 100)
+  let quality = 0;
+  // 1. R:R Ratio Contribution (up to 30 pts)
+  quality += Math.min(30, Math.round((rrRatio / 5.0) * 30));
+  // 2. Breakout Win Probability (up to 30 pts)
+  quality += Math.min(30, Math.round((breakout.score / 100) * 30));
+  // 3. Stop Tightness (up to 20 pts): lower riskPct = higher score
+  if (riskPct <= 4.0) quality += 20;
+  else if (riskPct <= 6.0) quality += 15;
+  else if (riskPct <= 8.0) quality += 10;
+  else quality += 4;
+  // 4. Trend score & RS Rating (up to 20 pts)
+  quality += Math.round((stock.trendScore / 8) * 10);
+  quality += Math.round((stock.rsRating / 99) * 10);
+  const riskQualityScore = Math.min(100, Math.max(10, quality));
+
+  // ATR & Volatility tier
+  const volMetrics = calculateDailyVolatilityMetrics(stock);
+  const dailyAtrPct = volMetrics.atrPercent;
+  let volatilityTier: RiskAdjustedMetrics['volatilityTier'] = 'MODERATE';
+  if (dailyAtrPct <= 2.5) volatilityTier = 'LOW';
+  else if (dailyAtrPct > 4.5) volatilityTier = 'ELEVATED';
+
+  return {
+    ticker: stock.ticker,
+    stockName: stock.name,
+    currentPrice: stock.currentPrice,
+    pivotPrice: pivot,
+    stopLossPrice: stop,
+    target1Price: t1,
+    target2Price: t2,
+    riskAmountPerShare: Number(riskPerShare.toFixed(2)),
+    rewardAmountPerShare: Number(rewardPerShare.toFixed(2)),
+    riskPct: Number(riskPct.toFixed(2)),
+    rewardPct: Number(rewardPct.toFixed(2)),
+    riskRewardRatio: rrRatio,
+    target2RiskRewardRatio: t2RrRatio,
+    breakoutScore: breakout.score,
+    breakoutRating: breakout.rating,
+    winRateEst: Number(winRate.toFixed(2)),
+    lossRateEst: Number(lossRate.toFixed(2)),
+    expectancyR,
+    halfKellyAllocationPct: halfKellyPct,
+    riskTier,
+    riskTierLabel,
+    riskTierBadgeBg,
+    riskTierBadgeText,
+    riskQualityScore,
+    dailyAtrPct,
+    volatilityTier,
+    maxLossDollarsAt1PctRisk: (accountCapital: number) => accountCapital * 0.01,
+    recommendedPosition: (accountCapital: number, riskPct = 1.0) =>
+      calculatePositionSize(accountCapital, riskPct, pivot, stop)
+  };
+}
+
