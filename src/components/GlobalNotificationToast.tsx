@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { PriceAlert, MinerviniTradeSetup, PortfolioHolding, MajorNewsEventPayload } from '../types';
+import { PriceAlert, MinerviniTradeSetup, PortfolioHolding, MajorNewsEventPayload, SmartMoneyDivergenceAlertPayload } from '../types';
 import {
   getStoredAlerts,
   saveStoredAlerts,
@@ -13,10 +13,14 @@ import {
   simulateWatchlistMajorNewsAlert,
 } from '../utils/watchlistNewsListener';
 import {
+  simulateSmartMoneyDivergenceAlert,
+} from '../utils/sentimentDivergenceService';
+import {
   getAudioSettings,
   saveAudioSettings,
   playVolumeSpikeChime,
   playHighConvictionBreakoutChime,
+  playSmartMoneyDivergenceChime,
   triggerWatchlistAudioAlert,
   VolumeBreakoutAlertPayload,
   AudioSettings,
@@ -69,12 +73,14 @@ export interface ActiveToastNotification {
     | 'VCP_BASE_FORMED'
     | 'MAJOR_NEWS_CATALYST'
     | 'VOLUME_SPIKE'
-    | 'HIGH_CONVICTION_BREAKOUT';
+    | 'HIGH_CONVICTION_BREAKOUT'
+    | 'SMART_MONEY_DIVERGENCE';
   triggeredAt: string;
   isPortfolioHolding?: boolean;
   portfolioHolding?: PortfolioHolding;
   majorNewsPayload?: MajorNewsEventPayload;
   volumeBreakoutPayload?: VolumeBreakoutAlertPayload;
+  divergencePayload?: SmartMoneyDivergenceAlertPayload;
 }
 
 export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = ({
@@ -168,16 +174,50 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
       });
     };
 
+    const handleDivergenceEvent = (e: Event) => {
+      const customEvt = e as CustomEvent<SmartMoneyDivergenceAlertPayload>;
+      const payload = customEvt.detail;
+      if (!payload) return;
+
+      const match = stocksRef.current.find((s) => s.ticker === payload.ticker);
+      const alertItem: PriceAlert = {
+        id: `divergence-${payload.ticker}-${Date.now()}`,
+        ticker: payload.ticker,
+        stockName: payload.stockName,
+        targetType: 'SMART_MONEY_DIVERGENCE',
+        targetPrice: match ? match.pivotPrice : payload.priceEnd,
+        triggerProximityPercent: 0,
+        currentPrice: payload.priceEnd,
+        status: 'TRIGGERED',
+        createdAt: new Date().toLocaleDateString(),
+        exchange: (payload.exchange as any) || 'NASDAQ',
+        notes: payload.description,
+        divergenceType: payload.divergenceType,
+        divergenceConviction: payload.convictionScore,
+      };
+
+      setActiveToast({
+        alert: alertItem,
+        previousPrice: payload.priceStart,
+        currentPrice: payload.priceEnd,
+        crossoverType: 'SMART_MONEY_DIVERGENCE',
+        triggeredAt: payload.triggeredAt || new Date().toLocaleTimeString(),
+        divergencePayload: payload,
+      });
+    };
+
     window.addEventListener('minervini_portfolio_updated', handleSync);
     window.addEventListener('minervini_alerts_updated', handleSync);
     window.addEventListener('minervini_major_news_detected', handleMajorNewsEvent);
     window.addEventListener('minervini_volume_breakout_alert', handleVolumeBreakoutEvent);
+    window.addEventListener('minervini_sentiment_divergence_alert', handleDivergenceEvent);
     window.addEventListener('minervini_audio_settings_updated', handleAudioSettingsUpdate);
     return () => {
       window.removeEventListener('minervini_portfolio_updated', handleSync);
       window.removeEventListener('minervini_alerts_updated', handleSync);
       window.removeEventListener('minervini_major_news_detected', handleMajorNewsEvent);
       window.removeEventListener('minervini_volume_breakout_alert', handleVolumeBreakoutEvent);
+      window.removeEventListener('minervini_sentiment_divergence_alert', handleDivergenceEvent);
       window.removeEventListener('minervini_audio_settings_updated', handleAudioSettingsUpdate);
     };
   }, []);
@@ -731,6 +771,17 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
                 <Newspaper className="w-3 h-3" />
                 <span>Test Watchlist Major News Toast</span>
               </button>
+
+              <button
+                onClick={() => {
+                  const stock = stocks[0];
+                  simulateSmartMoneyDivergenceAlert(stock, 'BULLISH_ACCUMULATION');
+                }}
+                className="bg-cyan-700 hover:bg-cyan-600 text-white px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center space-x-1.5 shadow-sm transition-all cursor-pointer"
+              >
+                <Flame className="w-3 h-3 text-cyan-200" />
+                <span>Test Smart Money Accumulation Alert 💎</span>
+              </button>
             </div>
           </div>
         )}
@@ -908,6 +959,168 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
             >
               <Sparkles className="w-3.5 h-3.5" />
               <span>Inspect Grounded News</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Render Specialized Smart Money Sentiment vs Price Divergence Toast Card
+  const divergencePayload = activeToast.divergencePayload;
+  const isDivergence = activeToast.crossoverType === 'SMART_MONEY_DIVERGENCE' && Boolean(divergencePayload);
+
+  if (isDivergence && divergencePayload) {
+    const isBullish =
+      divergencePayload.divergenceType === 'BULLISH_ACCUMULATION' ||
+      divergencePayload.divergenceType === 'HIDDEN_ACCUMULATION';
+
+    return (
+      <div className="fixed top-5 right-5 z-50 max-w-xl w-full animate-slide-down shadow-2xl">
+        <div
+          className={`p-5 border-2 ${
+            isBullish
+              ? 'bg-[#0a1618] text-white border-cyan-400 shadow-cyan-500/30'
+              : 'bg-[#220a0f] text-white border-rose-500 shadow-rose-500/30'
+          }`}
+        >
+          {/* Top Header */}
+          <div className="flex items-start justify-between border-b border-white/15 pb-2.5 mb-3">
+            <div className="flex items-center space-x-2.5">
+              <div
+                className={`w-8 h-8 flex items-center justify-center font-bold ${
+                  isBullish ? 'bg-cyan-400 text-slate-950 animate-pulse' : 'bg-rose-500 text-white'
+                }`}
+              >
+                <Flame className="w-5 h-5" />
+              </div>
+
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className={`text-[10px] uppercase font-mono tracking-[0.2em] font-extrabold block ${
+                      isBullish ? 'text-cyan-300' : 'text-rose-300'
+                    }`}
+                  >
+                    {isBullish ? '🔥 SMART MONEY ACCUMULATION DIVERGENCE' : '⚠️ SMART MONEY DISTRIBUTION DETECTED'}
+                  </span>
+                  <span
+                    className={`text-[9px] font-black uppercase px-2 py-0.5 font-mono ${
+                      isBullish ? 'bg-cyan-400 text-slate-950' : 'bg-rose-500 text-white'
+                    }`}
+                  >
+                    {divergencePayload.institutionalPhase} PHASE
+                  </span>
+                  <span className="bg-white/10 text-gray-200 border border-white/20 text-[9px] font-black uppercase px-1.5 py-0.5 font-mono">
+                    Conviction: {divergencePayload.convictionScore}/10
+                  </span>
+                </div>
+
+                <h4 className="text-lg font-mono font-black text-white leading-tight mt-0.5">
+                  {divergencePayload.ticker} ({divergencePayload.exchange || 'NASDAQ'}) — {divergencePayload.stockName}
+                </h4>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setActiveToast(null)}
+              className="text-gray-400 hover:text-white p-1 transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Divergence Metrics & Comparison Grid */}
+          <div className="bg-white/5 border border-white/10 p-3.5 mb-3 font-mono text-xs space-y-2.5">
+            <div className="grid grid-cols-2 gap-2 pb-2 border-b border-white/10">
+              <div className="bg-black/30 p-2 border border-white/10">
+                <span className="text-gray-400 text-[10px] uppercase font-bold block">
+                  Price Action ({divergencePayload.lookbackDays}D):
+                </span>
+                <div className="flex items-center space-x-1.5 mt-0.5">
+                  <span
+                    className={`text-sm font-extrabold ${
+                      divergencePayload.priceSlope <= 0 ? 'text-amber-400' : 'text-emerald-400'
+                    }`}
+                  >
+                    {divergencePayload.priceSlope > 0 ? '+' : ''}
+                    {divergencePayload.priceSlope}%
+                  </span>
+                  <span className="text-[10px] text-gray-400">
+                    ({currencySymbol}{divergencePayload.priceStart} &rarr; {currencySymbol}{divergencePayload.priceEnd})
+                  </span>
+                </div>
+              </div>
+
+              <div className="bg-black/30 p-2 border border-white/10">
+                <span className="text-gray-400 text-[10px] uppercase font-bold block">
+                  News Sentiment MA:
+                </span>
+                <div className="flex items-center space-x-1.5 mt-0.5">
+                  <span
+                    className={`text-sm font-extrabold ${
+                      divergencePayload.sentimentSlope >= 0 ? 'text-cyan-400' : 'text-rose-400'
+                    }`}
+                  >
+                    {divergencePayload.sentimentSlope > 0 ? '+' : ''}
+                    {divergencePayload.sentimentSlope} pts
+                  </span>
+                  <span className="text-[10px] text-gray-400">
+                    ({divergencePayload.sentimentStart} &rarr; {divergencePayload.sentimentEnd}/100)
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <p className="text-xs font-sans text-gray-200 leading-relaxed">
+              {divergencePayload.description}
+            </p>
+
+            <div className="bg-black/40 p-2.5 border-l-2 border-cyan-400 text-[11px] font-sans text-gray-200">
+              <strong className="text-cyan-300 font-serif">Mark Minervini SEPA Playbook: </strong>
+              {divergencePayload.sepaPlaybook}
+            </div>
+
+            <div className="text-[10px] text-gray-400 border-t border-white/10 pt-1.5 flex justify-between">
+              <span>Divergence Detected At:</span>
+              <span className="text-gray-200 font-bold">{divergencePayload.triggeredAt}</span>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex items-center justify-end space-x-2 text-xs font-mono">
+            <button
+              onClick={() => playSmartMoneyDivergenceChime(isBullish ? 'BULLISH' : 'BEARISH')}
+              title="Replay smart money chime"
+              className="bg-white/10 hover:bg-white/20 text-cyan-300 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider flex items-center space-x-1 transition-colors border border-cyan-400/40 cursor-pointer"
+            >
+              <Volume2 className="w-3.5 h-3.5" />
+              <span>Chime</span>
+            </button>
+
+            <button
+              onClick={() => setActiveToast(null)}
+              className="bg-white/10 hover:bg-white/20 text-gray-200 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider transition-colors border border-white/20 cursor-pointer"
+            >
+              Dismiss
+            </button>
+
+            <button
+              onClick={handleViewNews}
+              className="bg-white/10 hover:bg-white/20 text-cyan-300 px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wider flex items-center space-x-1.5 transition-all border border-cyan-400/40 cursor-pointer"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>D3 Sentiment Grounding</span>
+            </button>
+
+            <button
+              onClick={handleViewChart}
+              className={`px-4 py-1.5 text-[11px] font-black uppercase tracking-wider flex items-center space-x-1.5 transition-all shadow-md cursor-pointer ${
+                isBullish ? 'bg-cyan-400 hover:bg-cyan-300 text-slate-950' : 'bg-rose-500 hover:bg-rose-400 text-white'
+              }`}
+            >
+              <BarChart3 className="w-3.5 h-3.5" />
+              <span>View Chart</span>
             </button>
           </div>
         </div>

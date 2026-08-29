@@ -7,6 +7,7 @@ export interface AudioSettings {
   volume: number; // 0.0 to 1.0
   volumeSpikeSound: boolean;
   highConvictionBreakoutSound: boolean;
+  smartMoneyDivergenceSound: boolean;
 }
 
 const AUDIO_SETTINGS_KEY = 'minervini_audio_alert_settings';
@@ -16,6 +17,7 @@ export const DEFAULT_AUDIO_SETTINGS: AudioSettings = {
   volume: 0.35,
   volumeSpikeSound: true,
   highConvictionBreakoutSound: true,
+  smartMoneyDivergenceSound: true,
 };
 
 export function getAudioSettings(): AudioSettings {
@@ -156,6 +158,62 @@ export function playHighConvictionBreakoutChime(): void {
     });
   } catch (e) {
     // Suppress Web Audio interaction policy warnings
+  }
+}
+
+/**
+ * Plays a rich, multi-harmonic synth chime for Smart Money Accumulation/Distribution Divergences.
+ * Uses a deep resonant arpeggio (F#4 -> C#5 -> F5 -> A#5) representing institutional capital flow.
+ */
+export function playSmartMoneyDivergenceChime(type: 'BULLISH' | 'BEARISH' = 'BULLISH'): void {
+  const settings = getAudioSettings();
+  if (!settings.enabled || !settings.smartMoneyDivergenceSound) return;
+
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+
+    const now = ctx.currentTime;
+    const masterGain = ctx.createGain();
+    masterGain.gain.setValueAtTime(settings.volume * 0.85, now);
+    masterGain.connect(ctx.destination);
+
+    const isBullish = type === 'BULLISH';
+    // Bullish tones: Ascending harmonic flow (370Hz -> 554Hz -> 698Hz -> 932Hz)
+    // Bearish tones: Descending cautionary flow (880Hz -> 698Hz -> 554Hz -> 370Hz)
+    const tones = isBullish
+      ? [
+          { freq: 369.99, start: 0, dur: 0.38, type: 'sine' as OscillatorType },
+          { freq: 554.37, start: 0.08, dur: 0.42, type: 'triangle' as OscillatorType },
+          { freq: 698.46, start: 0.16, dur: 0.48, type: 'sine' as OscillatorType },
+          { freq: 932.33, start: 0.24, dur: 0.65, type: 'sine' as OscillatorType },
+        ]
+      : [
+          { freq: 880.0, start: 0, dur: 0.35, type: 'triangle' as OscillatorType },
+          { freq: 698.46, start: 0.08, dur: 0.4, type: 'sine' as OscillatorType },
+          { freq: 554.37, start: 0.16, dur: 0.45, type: 'sine' as OscillatorType },
+          { freq: 369.99, start: 0.24, dur: 0.6, type: 'triangle' as OscillatorType },
+        ];
+
+    tones.forEach((tone) => {
+      const osc = ctx.createOscillator();
+      const toneGain = ctx.createGain();
+
+      osc.type = tone.type;
+      osc.frequency.setValueAtTime(tone.freq, now + tone.start);
+
+      toneGain.gain.setValueAtTime(0.0001, now + tone.start);
+      toneGain.gain.exponentialRampToValueAtTime(0.28, now + tone.start + 0.02);
+      toneGain.gain.exponentialRampToValueAtTime(0.0001, now + tone.start + tone.dur);
+
+      osc.connect(toneGain);
+      toneGain.connect(masterGain);
+
+      osc.start(now + tone.start);
+      osc.stop(now + tone.start + tone.dur);
+    });
+  } catch (e) {
+    // Suppress Web Audio policy errors
   }
 }
 

@@ -183,7 +183,19 @@ export interface PriceAlert {
   id: string;
   ticker: string;
   stockName: string;
-  targetType: 'PIVOT_ENTRY' | 'STOP_LOSS' | 'CUSTOM_ABOVE' | 'CUSTOM_BELOW' | 'VOLATILITY_DRYUP' | 'RISK_REWARD_RATIO' | 'STAGE_2_COMPLETED' | 'VCP_BASE_FORMED' | 'MAJOR_NEWS_CATALYST' | 'VOLUME_SPIKE' | 'HIGH_CONVICTION_BREAKOUT';
+  targetType:
+    | 'PIVOT_ENTRY'
+    | 'STOP_LOSS'
+    | 'CUSTOM_ABOVE'
+    | 'CUSTOM_BELOW'
+    | 'VOLATILITY_DRYUP'
+    | 'RISK_REWARD_RATIO'
+    | 'STAGE_2_COMPLETED'
+    | 'VCP_BASE_FORMED'
+    | 'MAJOR_NEWS_CATALYST'
+    | 'VOLUME_SPIKE'
+    | 'HIGH_CONVICTION_BREAKOUT'
+    | 'SMART_MONEY_DIVERGENCE';
   targetPrice: number;
   triggerProximityPercent: number; // e.g. within 1.5% of target
   currentPrice: number;
@@ -201,6 +213,31 @@ export interface PriceAlert {
   stage2RuleThreshold?: number; // e.g. 7 or 8 rules passed for Stage 2
   vcpContractionThreshold?: number; // e.g. 3 or 4 contractions
   watchlistId?: string;
+  // Divergence Specific Settings
+  divergenceType?: 'BULLISH_ACCUMULATION' | 'BEARISH_DISTRIBUTION' | 'HIDDEN_ACCUMULATION' | 'HIDDEN_DISTRIBUTION';
+  divergenceConviction?: number;
+}
+
+export interface SmartMoneyDivergenceAlertPayload {
+  ticker: string;
+  stockName: string;
+  exchange: 'NASDAQ' | 'NYSE' | 'NSE' | 'BSE' | string;
+  divergenceType: 'BULLISH_ACCUMULATION' | 'BEARISH_DISTRIBUTION' | 'HIDDEN_ACCUMULATION' | 'HIDDEN_DISTRIBUTION';
+  strength: 'CRITICAL' | 'HIGH' | 'MODERATE' | 'LOW';
+  convictionScore: number; // 1 to 10
+  priceSlope: number; // % change over lookback
+  sentimentSlope: number; // change in sentiment MA score
+  priceStart: number;
+  priceEnd: number;
+  sentimentStart: number;
+  sentimentEnd: number;
+  lookbackDays: number;
+  title: string;
+  description: string;
+  sepaPlaybook: string;
+  institutionalPhase: 'ACCUMULATION' | 'DISTRIBUTION' | 'ABSORPTION' | 'NEUTRAL';
+  triggeredAt: string;
+  topHeadlines?: { title: string; sentiment: string; impactScore?: number; date?: string }[];
 }
 
 export interface MajorNewsEventPayload {
