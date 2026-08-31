@@ -12,6 +12,7 @@ import {
 interface ExportPdfParams {
   stock: MinerviniTradeSetup;
   summary: string;
+  sentimentSummaryBullets?: Array<{ bullet: string; category?: string; sentiment?: string } | string>;
   headlines: HeadlineItem[];
   priceZonePlan: HeadlinePriceZonePlan;
   groundingSources?: { title: string; uri: string }[];
@@ -29,6 +30,7 @@ interface ExportPdfParams {
 export function exportNewsSentimentToPdf({
   stock,
   summary,
+  sentimentSummaryBullets,
   headlines,
   priceZonePlan,
   groundingSources = [],
@@ -153,6 +155,34 @@ export function exportNewsSentimentToPdf({
     doc.text(splitSummary.slice(0, 14), margin + 6, yPos + 6);
 
     yPos += boxHeight + 6;
+  }
+
+  // 2b. AI-Generated Sentiment Summary Bullets
+  if (sentimentSummaryBullets && sentimentSummaryBullets.length > 0) {
+    checkNewPage(45);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor(primaryDark[0], primaryDark[1], primaryDark[2]);
+    doc.text('AI SENTIMENT SUMMARY BULLETS', margin, yPos);
+    yPos += 4;
+
+    sentimentSummaryBullets.slice(0, 5).forEach((b) => {
+      const category = typeof b === 'object' && b.category ? `[${b.category}] ` : '';
+      const text = typeof b === 'object' ? b.bullet : String(b);
+      const sentiment = typeof b === 'object' && b.sentiment ? ` (${b.sentiment})` : '';
+      const fullBullet = `• ${category}${text}${sentiment}`;
+      
+      const splitBullet = doc.splitTextToSize(fullBullet, pageWidth - margin * 2 - 8);
+      checkNewPage(splitBullet.length * 4.5 + 4);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(50, 50, 50);
+      doc.text(splitBullet, margin + 4, yPos + 3);
+      yPos += splitBullet.length * 4.2 + 3;
+    });
+
+    yPos += 4;
   }
 
   // 3. Trade Plan & Target Zones Table

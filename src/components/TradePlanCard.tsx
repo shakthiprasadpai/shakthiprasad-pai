@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { MinerviniTradeSetup } from '../types';
+import { MinerviniTradeSetup, TradeJournalNote } from '../types';
 import { calculatePositionSize, calculateBreakoutProbability, formatCurrency, formatVolume, getCurrencySymbol, calculateDailyVolatilityMetrics } from '../utils/sepaCalculator';
 import { exportTradePlansToCsv, exportDetailedTradeParametersToCsv } from '../utils/csvExport';
 import { generateSepaPdfReport } from '../utils/pdfExporter';
+import { getStoredJournalNotes, saveStoredJournalNotes } from '../utils/tradeJournalStorage';
 import { ExitSignals } from './ExitSignals';
 import { BreakoutProbabilityEngine } from './BreakoutProbabilityEngine';
 import { RuleBasedEntryExitPanel } from './RuleBasedEntryExitPanel';
@@ -11,7 +12,8 @@ import { DailyPivotAndVolatilityPanel } from './DailyPivotAndVolatilityPanel';
 import { StageIdentifierPanel } from './StageIdentifierPanel';
 import { TrailingStopCalculatorPanel } from './TrailingStopCalculatorPanel';
 import { VolatilitySlippageAlert } from './VolatilitySlippageAlert';
-import { Target, ShieldAlert, ArrowUpRight, Droplets, DollarSign, Calculator, Layers, Flame, Zap, Sparkles, TrendingUp, BarChart3, ShieldCheck, FileText, Save, Check, Trash2, Clock, StickyNote, FileSpreadsheet, LogOut, AlertTriangle, ArrowRightCircle, Sliders, CheckCircle2, RefreshCw, Bell, BellRing, BellOff, ChevronDown, ChevronUp, Printer } from 'lucide-react';
+import { SimplePositionSizingCalculator } from './SimplePositionSizingCalculator';
+import { Target, ShieldAlert, ArrowUpRight, Droplets, DollarSign, Calculator, Layers, Flame, Zap, Sparkles, TrendingUp, BarChart3, ShieldCheck, FileText, Save, Check, Trash2, Clock, StickyNote, FileSpreadsheet, LogOut, AlertTriangle, ArrowRightCircle, Sliders, CheckCircle2, RefreshCw, Bell, BellRing, BellOff, ChevronDown, ChevronUp, Printer, BookMarked, BookmarkCheck } from 'lucide-react';
 
 function getArcPath(cx: number, cy: number, r: number, startAngleDeg: number, endAngleDeg: number) {
   const rad1 = (startAngleDeg * Math.PI) / 180;
@@ -3418,9 +3420,10 @@ export const InteractiveRMultipleCalculatorTool: React.FC<InteractiveRMultipleCa
 
 interface TradePlanCardProps {
   stock: MinerviniTradeSetup;
+  onNavigateToJournal?: () => void;
 }
 
-export const TradePlanCard: React.FC<TradePlanCardProps> = ({ stock }) => {
+export const TradePlanCard: React.FC<TradePlanCardProps> = ({ stock, onNavigateToJournal }) => {
   const [accountCapital, setAccountCapital] = useState<number>(50000);
   const [riskPercent, setRiskPercent] = useState<number>(1.0); // 1% account risk default
   const [desiredRRR, setDesiredRRR] = useState<number>(3.0); // User-defined RRR target (e.g. 1:2, 1:3)
@@ -3430,6 +3433,14 @@ export const TradePlanCard: React.FC<TradePlanCardProps> = ({ stock }) => {
   // Persistent Trade Size State (Shares or Dollar Amount)
   const [tradeSizeMode, setTradeSizeMode] = useState<'SHARES' | 'DOLLAR'>('SHARES');
   const [tradeSizeValue, setTradeSizeValue] = useState<number>(0);
+
+  // One-click Save to Trade Journal status feedback
+  const [journalSaveStatus, setJournalSaveStatus] = useState<{
+    saved: boolean;
+    timestamp: string;
+    entryPrice: number;
+    stopLossPrice: number;
+  } | null>(null);
 
   // Sync custom inputs and load persisted trade size when stock changes
   useEffect(() => {
@@ -3602,6 +3613,55 @@ export const TradePlanCard: React.FC<TradePlanCardProps> = ({ stock }) => {
     portfolioAllocationPercent: accountCapital > 0 ? ((Math.max(1, activeTradeSizeShares) * pivotEntry) / accountCapital) * 100 : 0,
   };
 
+  const handleSaveToTradeJournal = () => {
+    const pEntry = customEntryPrice > 0 ? customEntryPrice : stock.pivotPrice;
+    const pStop = customStopPrice > 0 ? customStopPrice : stock.stopLossPrice;
+    const todayStr = new Date().toISOString().split('T')[0];
+    const riskDiff = Math.max(0.01, pEntry - pStop);
+    const riskPct = ((pEntry - pStop) / pEntry) * 100;
+    const target1 = stock.target1Price || Number((pEntry + 3 * riskDiff).toFixed(2));
+    
+    const existingNotes = getStoredJournalNotes();
+
+    const planNote = notes.trim()
+      ? notes.trim()
+      : `SEPA Trade Plan for ${stock.ticker} (${stock.name}). Pivot Entry: ${formatCurrency(pEntry, currencySymbol)}, Stop Loss: ${formatCurrency(pStop, currencySymbol)} (-${riskPct.toFixed(2)}%). Planned Shares: ${posSize.shareQuantity} (${formatCurrency(posSize.totalPositionCost, currencySymbol)}). Target 1: ${formatCurrency(target1, currencySymbol)} (${dynamicRRRatioT1.toFixed(1)}R). RS Rating: ${stock.rsRating}, Vol Dry-Up: ${stock.volumeDryUpPercent}%. Setup Pattern: ${stock.patternType || 'VCP Breakout'}.`;
+
+    const lessonNote = `Strictly enforce stop-loss rule at ${formatCurrency(pStop, currencySymbol)}. Cut loss immediately without hesitation if triggered. Maintain 3:1+ R/R discipline.`;
+
+    const newNote: TradeJournalNote = {
+      id: `journal-${stock.ticker.toLowerCase()}-${Date.now()}`,
+      ticker: stock.ticker.toUpperCase(),
+      stockName: stock.name,
+      exchange: stock.exchange,
+      date: todayStr,
+      setupType: stock.patternType || 'VCP (3 Contractions)',
+      entryPrice: Number(pEntry.toFixed(2)),
+      stopLossPrice: Number(pStop.toFixed(2)),
+      exitPrice: undefined,
+      emotionalState: 'DISCIPLINED',
+      notes: planNote,
+      keyLesson: lessonNote,
+      tradeStatus: 'PLANNING',
+      rating: 5,
+    };
+
+    const updated = [newNote, ...existingNotes];
+    saveStoredJournalNotes(updated);
+
+    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    setJournalSaveStatus({
+      saved: true,
+      timestamp: timeStr,
+      entryPrice: Number(pEntry.toFixed(2)),
+      stopLossPrice: Number(pStop.toFixed(2)),
+    });
+
+    setTimeout(() => {
+      setJournalSaveStatus((prev) => (prev ? { ...prev, saved: false } : null));
+    }, 4500);
+  };
+
   return (
     <div className="bg-white border border-[#e5e4e1] p-6 shadow-xs space-y-6">
       
@@ -3619,7 +3679,30 @@ export const TradePlanCard: React.FC<TradePlanCardProps> = ({ stock }) => {
           </div>
         </div>
 
-        <div className="flex items-center space-x-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* One-Click Save to Trade Journal Button */}
+          <button
+            onClick={handleSaveToTradeJournal}
+            className={`text-[10px] uppercase tracking-[0.15em] px-3 py-1 font-bold flex items-center space-x-1.5 transition-all shadow-2xs cursor-pointer group ${
+              journalSaveStatus?.saved
+                ? 'bg-emerald-700 text-white border border-emerald-800 ring-2 ring-emerald-400'
+                : 'bg-emerald-600 hover:bg-emerald-700 text-white border border-emerald-700'
+            }`}
+            title="Automatically log this ticker, pivot entry, and stop loss to your Mark Minervini SEPA Trade Journal"
+          >
+            {journalSaveStatus?.saved ? (
+              <>
+                <CheckCircle2 className="w-3.5 h-3.5 text-white" />
+                <span>Saved to Journal!</span>
+              </>
+            ) : (
+              <>
+                <BookMarked className="w-3.5 h-3.5 text-emerald-100 group-hover:text-white" />
+                <span>Save to Journal</span>
+              </>
+            )}
+          </button>
+
           <button
             onClick={() => generateSepaPdfReport(stock, { accountCapital, riskPercent })}
             className="bg-[#1a1a1a] hover:bg-black text-amber-300 border border-black text-[10px] uppercase tracking-[0.15em] px-3 py-1 font-bold flex items-center space-x-1.5 transition-all shadow-2xs cursor-pointer group"
@@ -3709,6 +3792,26 @@ export const TradePlanCard: React.FC<TradePlanCardProps> = ({ stock }) => {
           )}
         </div>
       </div>
+
+      {/* Save to Journal Confirmation Toast Banner */}
+      {journalSaveStatus?.saved && (
+        <div className="bg-emerald-50 border-l-4 border-emerald-600 p-3.5 flex flex-wrap items-center justify-between text-xs font-mono gap-3 shadow-xs">
+          <div className="flex items-center space-x-2.5">
+            <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
+            <span className="text-emerald-950 font-medium font-sans text-xs">
+              <strong>{stock.ticker}</strong> trade setup saved to Journal: Pivot Entry at <strong className="font-mono text-[#1a1a1a]">{formatCurrency(journalSaveStatus.entryPrice, currencySymbol)}</strong>, Stop Loss at <strong className="font-mono text-red-700">{formatCurrency(journalSaveStatus.stopLossPrice, currencySymbol)}</strong>.
+            </span>
+          </div>
+          {onNavigateToJournal && (
+            <button
+              onClick={onNavigateToJournal}
+              className="text-white bg-emerald-700 hover:bg-emerald-800 font-bold px-3 py-1 text-[10px] uppercase tracking-wider flex items-center space-x-1.5 transition-all cursor-pointer shadow-2xs"
+            >
+              <span>Open Trade Journal →</span>
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Grid of Key Execution Levels */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -4194,174 +4297,19 @@ export const TradePlanCard: React.FC<TradePlanCardProps> = ({ stock }) => {
       />
 
       {/* Position Sizing Calculator Module */}
-      <div className="bg-white border border-[#e5e4e1] p-5 space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#e5e4e1] pb-3">
-          <div className="flex items-center space-x-2">
-            <Calculator className="w-4 h-4 text-[#1a1a1a]" />
-            <h4 className="text-xs font-bold uppercase tracking-[0.2em] text-[#1a1a1a]">
-              Minervini Position Sizing Calculator (1% - 2% Account Risk Rule)
-            </h4>
-          </div>
-          <span className="text-[11px] font-mono text-gray-500">
-            Account Risk Cap: <strong className="text-red-600">{formatCurrency(posSize.riskAmount, currencySymbol)}</strong>
-          </span>
-        </div>
-
-        {/* Capital Presets Bar */}
-        <div className="flex flex-wrap items-center gap-2 text-xs font-mono">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-[#b5a68d] mr-1">
-            Quick Capital Presets:
-          </span>
-          {[10000, 25000, 50000, 100000, 250000].map((preset) => (
-            <button
-              key={preset}
-              onClick={() => setAccountCapital(preset)}
-              className={`px-2.5 py-1 text-[11px] font-bold border transition ${
-                accountCapital === preset
-                  ? 'bg-[#1a1a1a] text-white border-black'
-                  : 'bg-[#f9f8f5] text-slate-800 border-[#e5e4e1] hover:bg-gray-200'
-              }`}
-            >
-              {formatCurrency(preset, currencySymbol, 0)}
-            </button>
-          ))}
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 text-xs">
-          
-          {/* Inputs Column */}
-          <div className="space-y-3 bg-[#f9f8f5] p-4 border border-[#e5e4e1]">
-            <div>
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-[#b5a68d] mb-1">
-                Total Portfolio Capital ({currencySymbol})
-              </label>
-              <div className="relative">
-                <span className="absolute inset-y-0 left-0 pl-2.5 flex items-center text-gray-500 font-mono text-xs">
-                  {currencySymbol}
-                </span>
-                <input
-                  type="number"
-                  value={accountCapital}
-                  onChange={(e) => setAccountCapital(Math.max(0, Number(e.target.value) || 0))}
-                  className="w-full bg-white border border-[#e5e4e1] rounded-none pl-7 pr-3 py-1.5 text-[#1a1a1a] font-mono text-xs font-bold focus:border-black focus:outline-none"
-                />
-              </div>
-            </div>
-
-            <div>
-              <div className="flex justify-between items-center mb-1">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-[#b5a68d]">
-                  Risk Per Trade (%)
-                </label>
-                <span className="font-mono text-[#1a1a1a] font-extrabold bg-white px-2 py-0.5 border border-[#e5e4e1] text-[11px]">
-                  {riskPercent.toFixed(2)}%
-                </span>
-              </div>
-              <input
-                type="range"
-                min="0.25"
-                max="2.5"
-                step="0.25"
-                value={riskPercent}
-                onChange={(e) => setRiskPercent(Number(e.target.value))}
-                className="w-full accent-[#1a1a1a] cursor-pointer"
-              />
-              <div className="flex justify-between text-[10px] text-gray-400 font-mono mt-0.5">
-                <span>0.25% (Conservative)</span>
-                <span>1.0% (Standard)</span>
-                <span>2.5% (Max Champion)</span>
-              </div>
-            </div>
-
-            <div className="pt-2 border-t border-[#e5e4e1] text-[11px] font-mono space-y-1 text-gray-600">
-              <div className="flex justify-between">
-                <span>Entry Price:</span>
-                <strong className="text-slate-900">{formatCurrency(pivotEntry, currencySymbol)}</strong>
-              </div>
-              <div className="flex justify-between">
-                <span>Stop Loss Price:</span>
-                <strong className="text-red-600">{formatCurrency(currentStopLoss, currencySymbol)}</strong>
-              </div>
-              <div className="flex justify-between">
-                <span>Distance to Stop:</span>
-                <strong className="text-red-600">-{riskPercentFromPivot.toFixed(2)}%</strong>
-              </div>
-            </div>
-          </div>
-
-          {/* Capital Risk Breakdown */}
-          <div className="bg-[#f9f8f5] p-4 border border-[#e5e4e1] flex flex-col justify-between space-y-3 font-mono">
-            <div>
-              <span className="text-gray-500 block text-[10px] uppercase tracking-wider font-bold">
-                Max Dollar Risk Allowed ({riskPercent}%):
-              </span>
-              <span className="text-2xl font-bold text-red-600 block mt-1">
-                {formatCurrency(posSize.riskAmount, currencySymbol)}
-              </span>
-            </div>
-
-            <div>
-              <span className="text-gray-500 block text-[10px] uppercase tracking-wider font-bold">
-                Risk Per Share:
-              </span>
-              <span className="text-sm font-bold text-[#1a1a1a] block">
-                {formatCurrency(posSize.riskPerShare, currencySymbol)}
-              </span>
-            </div>
-
-            <div className="pt-2 border-t border-[#e5e4e1]">
-              <span className="text-gray-500 block text-[10px] uppercase tracking-wider font-bold">
-                Portfolio Allocation:
-              </span>
-              <span className="text-sm font-bold text-slate-900">
-                {posSize.portfolioAllocationPercent.toFixed(1)}% of Capital
-              </span>
-              {posSize.portfolioAllocationPercent > 25 && (
-                <div className="mt-1 text-[10px] text-amber-900 bg-amber-100 p-1.5 rounded font-sans border border-amber-300">
-                  ⚠️ <strong>Over-allocation Notice:</strong> Minervini rules suggest capping any single position at 20%-25% maximum of total equity.
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Exact Shares & Pyramiding Execution */}
-          <div className="bg-[#1a1a1a] text-white p-4 border border-black flex flex-col justify-between space-y-3 font-mono">
-            <div>
-              <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-[#b5a68d] block">
-                Calculated Share Quantity:
-              </span>
-              <span className="text-3xl font-bold text-emerald-400 mt-1 block">
-                {posSize.shareQuantity.toLocaleString()} <span className="text-xs font-normal text-gray-300">shares</span>
-              </span>
-            </div>
-
-            <div className="space-y-1.5 pt-2 border-t border-gray-800 text-[11px]">
-              <div className="flex justify-between">
-                <span className="text-gray-400">Total Position Capital:</span>
-                <strong className="text-white">{formatCurrency(posSize.totalPositionCost, currencySymbol)}</strong>
-              </div>
-
-              {/* Minervini Pyramid Plan (50% Pilot, 25% Add, 25% Add) */}
-              <div className="bg-gray-900/80 p-2 rounded border border-gray-800 text-[10px] space-y-1 font-sans">
-                <span className="font-bold text-[#b5a68d] block font-mono">Pyramid Sizing Execution:</span>
-                <div className="flex justify-between text-gray-300 font-mono">
-                  <span>• Pilot Entry (50%):</span>
-                  <strong className="text-emerald-400">{Math.floor(posSize.shareQuantity * 0.5).toLocaleString()} sh</strong>
-                </div>
-                <div className="flex justify-between text-gray-300 font-mono">
-                  <span>• Add #1 at +2% (25%):</span>
-                  <strong className="text-white">{Math.floor(posSize.shareQuantity * 0.25).toLocaleString()} sh</strong>
-                </div>
-                <div className="flex justify-between text-gray-300 font-mono">
-                  <span>• Add #2 at +4% (25%):</span>
-                  <strong className="text-white">{Math.floor(posSize.shareQuantity * 0.25).toLocaleString()} sh</strong>
-                </div>
-              </div>
-            </div>
-          </div>
-
-        </div>
-      </div>
+      <SimplePositionSizingCalculator
+        stock={stock}
+        accountCapital={accountCapital}
+        onUpdateAccountCapital={(equity) => setAccountCapital(equity)}
+        entryPrice={pivotEntry}
+        stopLossPrice={currentStopLoss}
+        onUpdateEntryPrice={(price) => setCustomEntryPrice(price)}
+        onUpdateStopLossPrice={(stop) => setCustomStopPrice(stop)}
+        riskPercent={riskPercent}
+        onUpdateRiskPercent={(pct) => setRiskPercent(pct)}
+        currencySymbol={currencySymbol}
+        onSaveToJournal={handleSaveToTradeJournal}
+      />
 
       {/* Estimated Breakout Probability Score Module */}
       <div className="bg-[#f9f8f5] border border-[#e5e4e1] p-5 space-y-4">
@@ -4600,7 +4548,16 @@ export const TradePlanCard: React.FC<TradePlanCardProps> = ({ stock }) => {
             <span className="italic font-sans">
               Notes are automatically persisted in your browser's local storage specifically for <strong className="font-mono text-[#1a1a1a]">{stock.ticker}</strong>.
             </span>
-            <div className="flex items-center space-x-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handleSaveToTradeJournal}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1 text-[10px] font-bold uppercase tracking-wider flex items-center space-x-1 shadow-xs transition-all cursor-pointer"
+                title="Log this setup, pivot entry, and stop loss to your Trade Journal"
+              >
+                <BookMarked className="w-3 h-3 text-emerald-100" />
+                <span>Save to Journal</span>
+              </button>
               {notes && (
                 <button
                   type="button"

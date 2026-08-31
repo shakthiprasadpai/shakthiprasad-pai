@@ -140,6 +140,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({
   const [formExchange, setFormExchange] = useState<'NASDAQ' | 'NYSE' | 'NSE' | 'BSE'>(selectedStock ? selectedStock.exchange : 'NASDAQ');
   const [formSetupType, setFormSetupType] = useState<string>('VCP (3 Contractions)');
   const [formEntryPrice, setFormEntryPrice] = useState<string>(selectedStock ? selectedStock.pivotPrice.toString() : '125.00');
+  const [formStopLossPrice, setFormStopLossPrice] = useState<string>(selectedStock ? selectedStock.stopLossPrice.toString() : '116.00');
   const [formExitPrice, setFormExitPrice] = useState<string>('');
   const [formEmotionalState, setFormEmotionalState] = useState<EmotionalState>('DISCIPLINED');
   const [formNotes, setFormNotes] = useState<string>('');
@@ -263,6 +264,8 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({
     setEditingNoteId(null);
     setFormNotes('');
     setFormKeyLesson('');
+    setFormEntryPrice(selectedStock ? selectedStock.pivotPrice.toString() : '125.00');
+    setFormStopLossPrice(selectedStock ? selectedStock.stopLossPrice.toString() : '116.00');
     setFormExitPrice('');
     setFormRating(5);
     setFormChartSnapshotUrl('');
@@ -276,6 +279,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({
     setFormExchange(note.exchange);
     setFormSetupType(note.setupType);
     setFormEntryPrice(note.entryPrice?.toString() || '');
+    setFormStopLossPrice(note.stopLossPrice?.toString() || '');
     setFormExitPrice(note.exitPrice?.toString() || '');
     setFormEmotionalState(note.emotionalState);
     setFormNotes(note.notes);
@@ -298,6 +302,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({
       date: entryDate,
       setupType: formSetupType,
       entryPrice: formEntryPrice ? parseFloat(formEntryPrice) : undefined,
+      stopLossPrice: formStopLossPrice ? parseFloat(formStopLossPrice) : undefined,
       exitPrice: formExitPrice ? parseFloat(formExitPrice) : undefined,
       emotionalState: formEmotionalState,
       notes: formNotes || 'No notes provided.',
@@ -2268,18 +2273,24 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({
                               </div>
                             </div>
 
-                            {/* Entry / Exit Prices if available */}
-                            {(note.entryPrice !== undefined || note.exitPrice !== undefined) && (
-                              <div className="flex items-center space-x-6 text-xs font-mono pt-1">
+                            {/* Entry / Stop Loss / Exit Prices if available */}
+                            {(note.entryPrice !== undefined || note.stopLossPrice !== undefined || note.exitPrice !== undefined) && (
+                              <div className="flex flex-wrap items-center gap-4 sm:gap-6 text-xs font-mono pt-1">
                                 {note.entryPrice !== undefined && (
                                   <div>
                                     <span className="text-gray-500 uppercase text-[9px] block">Entry Price</span>
                                     <strong className="text-[#1a1a1a] font-bold">{formatCurrency(note.entryPrice, currency)}</strong>
                                   </div>
                                 )}
+                                {note.stopLossPrice !== undefined && (
+                                  <div>
+                                    <span className="text-red-600 uppercase text-[9px] block font-bold">Stop Loss</span>
+                                    <strong className="text-red-700 font-bold">{formatCurrency(note.stopLossPrice, currency)}</strong>
+                                  </div>
+                                )}
                                 {note.exitPrice !== undefined && (
                                   <div>
-                                    <span className="text-gray-500 uppercase text-[9px] block">Exit Price</span>
+                                    <span className="text-emerald-700 uppercase text-[9px] block">Exit Price</span>
                                     <strong className="text-emerald-700 font-bold">{formatCurrency(note.exitPrice, currency)}</strong>
                                   </div>
                                 )}
@@ -2465,18 +2476,24 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({
                       </div>
                     </div>
 
-                    {/* Entry / Exit Prices if available */}
-                    {(note.entryPrice !== undefined || note.exitPrice !== undefined) && (
-                      <div className="flex items-center space-x-6 text-xs font-mono pt-1">
+                    {/* Entry / Stop Loss / Exit Prices if available */}
+                    {(note.entryPrice !== undefined || note.stopLossPrice !== undefined || note.exitPrice !== undefined) && (
+                      <div className="flex flex-wrap items-center gap-4 sm:gap-6 text-xs font-mono pt-1">
                         {note.entryPrice !== undefined && (
                           <div>
                             <span className="text-gray-500 uppercase text-[9px] block">Entry Price</span>
                             <strong className="text-[#1a1a1a] font-bold">{formatCurrency(note.entryPrice, currency)}</strong>
                           </div>
                         )}
+                        {note.stopLossPrice !== undefined && (
+                          <div>
+                            <span className="text-red-600 uppercase text-[9px] block font-bold">Stop Loss</span>
+                            <strong className="text-red-700 font-bold">{formatCurrency(note.stopLossPrice, currency)}</strong>
+                          </div>
+                        )}
                         {note.exitPrice !== undefined && (
                           <div>
-                            <span className="text-gray-500 uppercase text-[9px] block">Exit Price</span>
+                            <span className="text-emerald-700 uppercase text-[9px] block">Exit Price</span>
                             <strong className="text-emerald-700 font-bold">{formatCurrency(note.exitPrice, currency)}</strong>
                           </div>
                         )}
@@ -2673,7 +2690,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 {/* Trade Status */}
                 <div>
                   <label className="block text-[10px] uppercase tracking-wider text-gray-600 font-bold mb-1">
@@ -2704,6 +2721,21 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({
                     value={formEntryPrice}
                     onChange={(e) => setFormEntryPrice(e.target.value)}
                     className="w-full bg-[#f9f8f5] border border-[#e5e4e1] p-2.5 text-xs font-bold text-[#1a1a1a] focus:outline-none"
+                  />
+                </div>
+
+                {/* Stop Loss Price */}
+                <div>
+                  <label className="block text-[10px] uppercase tracking-wider text-red-700 font-bold mb-1">
+                    Stop Loss ({getCurrencySymbol(formExchange)})
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    placeholder="116.00"
+                    value={formStopLossPrice}
+                    onChange={(e) => setFormStopLossPrice(e.target.value)}
+                    className="w-full bg-[#f9f8f5] border border-red-200 p-2.5 text-xs font-bold text-red-700 focus:outline-none"
                   />
                 </div>
 

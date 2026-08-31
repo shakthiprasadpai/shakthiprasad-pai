@@ -903,7 +903,7 @@ export function calculateRiskAdjustedMetrics(stock: MinerviniTradeSetup): RiskAd
 
   // ATR & Volatility tier
   const volMetrics = calculateDailyVolatilityMetrics(stock);
-  const dailyAtrPct = volMetrics.atrPercent;
+  const dailyAtrPct = volMetrics.atr14Percent;
   let volatilityTier: RiskAdjustedMetrics['volatilityTier'] = 'MODERATE';
   if (dailyAtrPct <= 2.5) volatilityTier = 'LOW';
   else if (dailyAtrPct > 4.5) volatilityTier = 'ELEVATED';

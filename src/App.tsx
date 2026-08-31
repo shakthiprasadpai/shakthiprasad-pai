@@ -347,7 +347,10 @@ export default function App() {
                 </div>
 
                 {/* Trade Plan & Position Size Card */}
-                <TradePlanCard stock={selectedStock} />
+                <TradePlanCard
+                  stock={selectedStock}
+                  onNavigateToJournal={() => setActiveTab('journal')}
+                />
 
                 {/* Sector Correlation & Trend Leadership Validator */}
                 <SectorCorrelationLeadershipCard
@@ -408,7 +411,10 @@ export default function App() {
               </div>
 
               {/* Trade Execution Levels Card */}
-              <TradePlanCard stock={selectedStock} />
+              <TradePlanCard
+                stock={selectedStock}
+                onNavigateToJournal={() => setActiveTab('journal')}
+              />
 
               {/* Trend Template Check */}
               <TrendTemplateChecklist stock={selectedStock} />
@@ -426,7 +432,10 @@ export default function App() {
               transition={{ duration: 0.25, ease: 'easeInOut' }}
               className="space-y-8"
             >
-              <TradePlanCard stock={selectedStock} />
+              <TradePlanCard
+                stock={selectedStock}
+                onNavigateToJournal={() => setActiveTab('journal')}
+              />
               <TrendTemplateChecklist stock={selectedStock} />
             </motion.div>
           )}

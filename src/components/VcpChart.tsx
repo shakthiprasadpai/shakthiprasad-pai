@@ -8,6 +8,8 @@ import { VcpTemplateOverlay } from './VcpTemplateOverlay';
 import { RiskRewardChart } from './RiskRewardChart';
 import { VolatilityTrendChart } from './VolatilityTrendChart';
 import { VolatilityContractionRatioSubchart } from './VolatilityContractionRatioSubchart';
+import { VolumeProfileSidebar } from './VolumeProfileSidebar';
+import { calculateVolumeProfile } from '../utils/volumeProfileCalculator';
 import { toPng } from 'html-to-image';
 import {
   ComposedChart,
@@ -211,6 +213,10 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
   // VCP Pattern Base Formation Timeframe Shading State
   const [showBaseFormationArea, setShowBaseFormationArea] = useState(true);
 
+  // Volume Profile & Value Area State
+  const [showVolumeProfileSidebar, setShowVolumeProfileSidebar] = useState(true);
+  const [showVolumeProfileLinesOnChart, setShowVolumeProfileLinesOnChart] = useState(true);
+
   // Historical Pivot Buy Points & Stop Loss Levels plot state
   const [showHistoricalPivots, setShowHistoricalPivots] = useState(true);
   const [showHistoricalStops, setShowHistoricalStops] = useState(true);
@@ -284,6 +290,15 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
       setManualEndDate(endP.date);
       setManualEndPrice(endP.close || stock.pivotPrice);
     }
+  }, [stock]);
+
+  // Volume Profile summary for chart reference lines
+  const volumeProfileSummary = useMemo(() => {
+    return calculateVolumeProfile(stock, {
+      binCount: 26,
+      rangeType: 'ALL',
+      valueAreaRatio: 0.70,
+    });
   }, [stock]);
 
   // Preset Generator 1: Resistance Line (Top Contraction Peaks)
@@ -1167,6 +1182,19 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
             <Activity className="w-3.5 h-3.5 text-amber-200" />
             <span>VCR Ratio {showVolatilityContractionRatio ? 'ON' : 'OFF'}</span>
           </button>
+
+          <button
+            onClick={() => setShowVolumeProfileSidebar(!showVolumeProfileSidebar)}
+            className={`px-3 py-1 border text-xs font-semibold uppercase tracking-wider font-mono transition-all flex items-center space-x-1 cursor-pointer ${
+              showVolumeProfileSidebar
+                ? 'bg-amber-900 text-amber-100 border-amber-950 shadow-xs font-bold'
+                : 'bg-[#f9f8f5] text-gray-400 border-[#e5e4e1]'
+            }`}
+            title="Toggle Volume Profile & Value Area (VAH/VAL/POC) Sidebar Widget"
+          >
+            <BarChart3 className="w-3.5 h-3.5 text-amber-300" />
+            <span>Vol Profile {showVolumeProfileSidebar ? 'ON' : 'OFF'}</span>
+          </button>
         </div>
       </div>
 
@@ -1719,8 +1747,11 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
         </form>
       )}
 
-      {/* Main Chart Container */}
-      <div className="w-full h-[380px] bg-[#f9f8f5] p-3 border border-[#e5e4e1] relative">
+      {/* Main Chart and Volume Profile Layout Container */}
+      <div className="flex flex-col xl:flex-row gap-3 items-stretch">
+        {/* Main Price Chart Column */}
+        <div className="flex-1 min-w-0">
+          <div className="w-full h-[380px] bg-[#f9f8f5] p-3 border border-[#e5e4e1] relative">
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart
             data={chartDataWithTrendlines}
@@ -2028,6 +2059,56 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
               </>
             )}
 
+            {/* Volume Profile Key Levels: VAH, POC, VAL */}
+            {showVolumeProfileLinesOnChart && volumeProfileSummary && (
+              <>
+                {/* VAH Line */}
+                <ReferenceLine
+                  y={volumeProfileSummary.vahPrice}
+                  stroke="#059669"
+                  strokeWidth={2}
+                  strokeDasharray="5 3"
+                  label={{
+                    value: `VAH (Value High): ${currencySymbol}${volumeProfileSummary.vahPrice.toFixed(2)}`,
+                    fill: '#059669',
+                    fontSize: 10,
+                    fontWeight: 'bold',
+                    position: 'top',
+                  }}
+                />
+
+                {/* POC Line */}
+                <ReferenceLine
+                  y={volumeProfileSummary.pocPrice}
+                  stroke="#7c3aed"
+                  strokeWidth={2.5}
+                  strokeDasharray="3 3"
+                  label={{
+                    value: `POC Anchor: ${currencySymbol}${volumeProfileSummary.pocPrice.toFixed(2)}`,
+                    fill: '#7c3aed',
+                    fontSize: 10,
+                    fontWeight: 'bold',
+                    position: 'insideTopLeft',
+                  }}
+                />
+
+                {/* VAL Line */}
+                <ReferenceLine
+                  y={volumeProfileSummary.valPrice}
+                  stroke="#2563eb"
+                  strokeWidth={2}
+                  strokeDasharray="5 3"
+                  label={{
+                    value: `VAL (Value Low): ${currencySymbol}${volumeProfileSummary.valPrice.toFixed(2)}`,
+                    fill: '#2563eb',
+                    fontSize: 10,
+                    fontWeight: 'bold',
+                    position: 'bottom',
+                  }}
+                />
+              </>
+            )}
+
             {/* Historical Pivot Buy Points Overlay */}
             {showHistoricalPivots && historicalTradeLevels.filter(l => l.type === 'PIVOT_BUY').map((lvl) => {
               const isSelected = selectedLevelId === lvl.id;
@@ -2155,6 +2236,19 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
           </ComposedChart>
         </ResponsiveContainer>
       </div>
+    </div>
+
+    {/* Volume Profile Side-Bar Widget */}
+    {showVolumeProfileSidebar && (
+      <div className="w-full xl:w-84 2xl:w-96 xl:shrink-0">
+        <VolumeProfileSidebar
+          stock={stock}
+          showOverlayOnChart={showVolumeProfileLinesOnChart}
+          onToggleOverlayOnChart={setShowVolumeProfileLinesOnChart}
+        />
+      </div>
+    )}
+  </div>
 
       {/* Active Custom Trendlines Metadata Table */}
       {customTrendlines.length > 0 && (

@@ -318,7 +318,7 @@ export function generateSepaPdfReport(stock: MinerviniTradeSetup, options?: PdfE
             </div>
             <div class="metric-row">
               <span class="metric-label">Daily ATR / Volatility Tier:</span>
-              <span class="metric-value">${volMetrics.atrPercent.toFixed(2)}% (${riskMetrics.volatilityTier} Vol)</span>
+              <span class="metric-value">${volMetrics.atr14Percent.toFixed(2)}% (${riskMetrics.volatilityTier} Vol)</span>
             </div>
           </div>
 

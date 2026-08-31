@@ -193,6 +193,28 @@ Provide a structured, expert, authoritative analysis in Mark Minervini's signatu
       if (!ai) {
         const offlineNews = {
           summary: `Financial headline summary for ${ticker} (${stockName}). Grounded search provides fundamental context for price movements and volatility contraction setups.`,
+          sentimentSummaryBullets: [
+            {
+              category: 'Institutional Sponsorship',
+              sentiment: 'BULLISH',
+              bullet: `Institutional accumulation detected across financial wires, providing solid accumulation support near key moving averages for ${ticker}.`
+            },
+            {
+              category: 'Fundamental Catalysts',
+              sentiment: 'CATALYST',
+              bullet: `Strong quarterly execution and margin expansion in ${sectorVal} support forward earnings acceleration and multi-quarter growth.`
+            },
+            {
+              category: 'SEPA Stage 2 Alignment',
+              sentiment: 'BULLISH',
+              bullet: `News sentiment velocity corroborates constructive volatility contraction and supply dry-up ahead of high-volume pivot breakout.`
+            },
+            {
+              category: 'Risk Containment',
+              sentiment: 'NEUTRAL',
+              bullet: `Maintain strict stop discipline in case of macro sector pullbacks or failed pivot follow-through on elevated volume.`
+            }
+          ],
           headlines: [
             {
               title: `${ticker} Reports Acceleration in Core Quarter Revenues and Margin Expansion`,
@@ -244,6 +266,13 @@ Search for the latest real-world financial news, headlines, press releases, earn
 Format your response as a strictly valid JSON object with the following structure:
 {
   "summary": "Concise 2-3 sentence overview explaining how current news catalysts relate to ${ticker}'s recent price action and institutional sentiment.",
+  "sentimentSummaryBullets": [
+    {
+      "category": "Institutional & Media Tone" | "Fundamental Catalyst" | "SEPA Chart Alignment" | "Risk & Overhead Supply",
+      "sentiment": "BULLISH" | "BEARISH" | "NEUTRAL" | "CATALYST",
+      "bullet": "Concise, high-impact bullet takeaway synthesizing news sentiment and price implications for ${ticker}."
+    }
+  ],
   "headlines": [
     {
       "title": "Clear headline title",
@@ -259,7 +288,7 @@ Format your response as a strictly valid JSON object with the following structur
   ]
 }
 
-Provide 4 to 6 accurate, realistic, high-signal financial headlines. Return ONLY raw valid JSON without markdown code fences or conversational filler.`;
+Provide 3 to 5 clear, structured sentiment summary bullets and 4 to 6 accurate, realistic, high-signal financial headlines. Return ONLY raw valid JSON without markdown code fences or conversational filler.`;
 
       const response = await generateContentWithFallback(ai, {
         model: 'gemini-3.7-flash',
@@ -289,12 +318,33 @@ Provide 4 to 6 accurate, realistic, high-signal financial headlines. Return ONLY
       } catch (e) {
         parsedData = {
           summary: responseText,
+          sentimentSummaryBullets: [],
           headlines: []
         };
       }
 
+      // Ensure sentimentSummaryBullets format is standardized
+      let formattedBullets = [];
+      if (Array.isArray(parsedData.sentimentSummaryBullets)) {
+        formattedBullets = parsedData.sentimentSummaryBullets.map((b: any) => {
+          if (typeof b === 'string') {
+            return {
+              category: 'Key Takeaway',
+              sentiment: 'BULLISH',
+              bullet: b
+            };
+          }
+          return {
+            category: b.category || 'Catalyst Intelligence',
+            sentiment: b.sentiment || 'BULLISH',
+            bullet: b.bullet || b.text || ''
+          };
+        }).filter((b: any) => b.bullet && b.bullet.trim().length > 0);
+      }
+
       const newsResult = {
         summary: parsedData.summary || `Latest financial news and Google Search grounded headlines for ${ticker}.`,
+        sentimentSummaryBullets: formattedBullets,
         headlines: parsedData.headlines || [],
         groundingSources,
         groundingQueries
@@ -306,6 +356,28 @@ Provide 4 to 6 accurate, realistic, high-signal financial headlines. Return ONLY
       // Return robust fallback news response instead of 500 error
       const fallbackNews = {
         summary: `Financial headline summary for ${ticker}. (Note: Live AI search quota or model availability temporarily limited; displaying robust curated catalyst headlines).`,
+        sentimentSummaryBullets: [
+          {
+            category: 'Institutional Sponsorship',
+            sentiment: 'BULLISH',
+            bullet: `Institutional sponsorship remains constructive with accumulation volume evident along major moving average support levels.`
+          },
+          {
+            category: 'Operational Momentum',
+            sentiment: 'CATALYST',
+            bullet: `Quarterly execution and fundamental backlog strength validate Stage 2 structural leadership.`
+          },
+          {
+            category: 'Technical Alignment',
+            sentiment: 'BULLISH',
+            bullet: `Price consolidation exhibits classic supply contraction, setting up potential pivot breakout.`
+          },
+          {
+            category: 'Risk Management',
+            sentiment: 'NEUTRAL',
+            bullet: `Respect maximum predefined stop loss containment to shield capital against broad market drawdowns.`
+          }
+        ],
         headlines: [
           {
             title: `${ticker} Expands Market Share with Strong Quarterly Execution`,
