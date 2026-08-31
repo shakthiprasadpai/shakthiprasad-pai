@@ -3663,7 +3663,13 @@ export const TradePlanCard: React.FC<TradePlanCardProps> = ({ stock, onNavigateT
   };
 
   return (
-    <div className="bg-white border border-[#e5e4e1] p-6 shadow-xs space-y-6">
+    <motion.div
+      key={stock.ticker}
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+      className="bg-white border border-[#e5e4e1] p-6 shadow-xs space-y-6"
+    >
       
       {/* Title Header - Editorial Style */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e5e4e1] pb-4">
@@ -4581,7 +4587,7 @@ export const TradePlanCard: React.FC<TradePlanCardProps> = ({ stock, onNavigateT
         </div>
       </div>
 
-    </div>
+    </motion.div>
   );
 };
 
