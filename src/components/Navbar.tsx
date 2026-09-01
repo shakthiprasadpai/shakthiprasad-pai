@@ -354,7 +354,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               }`}
             >
               <Gem className="w-3.5 h-3.5 text-amber-500" />
-              <span className="hidden sm:inline font-bold">Obsidian Sync</span>
+              <span className="hidden sm:inline font-bold">Obsidian &amp; Gemini</span>
             </button>
 
             <button
