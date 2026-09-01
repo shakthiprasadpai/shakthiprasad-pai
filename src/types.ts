@@ -111,6 +111,10 @@ export interface MinerviniTradeSetup {
   npmPrecedingQtr?: number; // NPM preceding quarter e.g. 13.8% (Margin expansion)
   pegRatio?: number; // Price/Earnings to Growth ratio e.g. 0.85
   rsi14?: number; // 14-period Relative Strength Index e.g. 62.4
+  adx14?: number; // 14-period Average Directional Index e.g. 38.5 (Trend Strength)
+  plusDI14?: number; // 14-period Positive Directional Indicator +DI e.g. 34.2
+  minusDI14?: number; // 14-period Negative Directional Indicator -DI e.g. 11.5
+  trendStrengthTier?: 'SUPER_STRONG' | 'STRONG_TREND' | 'MODERATE_TREND' | 'WEAK_CONSOLIDATION';
   volume50dAvg?: number; // 50-day average daily volume
   currentVolume?: number; // Latest volume or breakout volume
 
