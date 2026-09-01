@@ -36,7 +36,7 @@ import { DailyStage2ScannerModal } from './components/DailyStage2ScannerModal';
 import { MOCK_STOCKS } from './data/mockStocks';
 import { MinerviniTradeSetup } from './types';
 import { formatCurrency, formatVolume, getCurrencySymbol, calculateBreakoutProbability } from './utils/sepaCalculator';
-import { TrendingUp, ShieldCheck, Target, Droplets, ArrowUpRight, Flame, BarChart3, Calculator, Sparkles, Gem, Bot, Bell } from 'lucide-react';
+import { TrendingUp, ShieldCheck, Target, Droplets, ArrowUpRight, Flame, BarChart3, Calculator, Sparkles, Gem, Bot, Bell, Keyboard, Command, Search, Zap } from 'lucide-react';
 
 export default function App() {
   const [stocksList, setStocksList] = useState<MinerviniTradeSetup[]>(MOCK_STOCKS);
@@ -758,20 +758,102 @@ export default function App() {
         </motion.main>
       </AnimatePresence>
 
-      {/* Footer - Editorial Style */}
+      {/* Footer - Editorial Style with Persistent Hotkey Helper & Scanner Status Indicator */}
       <footer className="mt-16 bg-white border-t border-[#e5e4e1] py-8 text-xs text-gray-500 font-sans">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4 uppercase tracking-[0.15em] font-semibold text-[10px]">
-          <div>
-            Market Outlook: <span className="text-green-700 font-bold">Confirmed Uptrend</span>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
+          
+          {/* Persistent Scanner Hotkey & Status Bar */}
+          <div className="bg-[#10141d] border border-gray-800 p-4 sm:p-5 flex flex-wrap items-center justify-between gap-4 text-gray-200 shadow-sm">
+            <div className="flex items-center space-x-3">
+              <div className="relative flex items-center justify-center">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-500/30 animate-ping"></span>
+              </div>
+              <div className="space-y-0.5">
+                <div className="flex items-center space-x-2">
+                  <span className="font-mono text-[11px] font-black text-amber-400 uppercase tracking-widest">
+                    STAGE 2 BREAKOUT ENGINE ACTIVE
+                  </span>
+                  <span className="hidden md:inline-block px-2 py-0.2 bg-emerald-950 text-emerald-300 border border-emerald-700 font-mono text-[9px] font-bold">
+                    8 SEPA Criteria Filter
+                  </span>
+                </div>
+                <p className="text-[11px] text-gray-400 font-sans">
+                  Continuous Minervini Trend Template evaluation &amp; volume dry-up monitoring across watchlists.
+                </p>
+              </div>
+            </div>
+
+            {/* Interactive Hotkey Helper Action */}
+            <div className="flex items-center space-x-3">
+              <div className="text-right hidden sm:block">
+                <span className="text-[10px] uppercase font-mono font-bold text-gray-400 block">
+                  Keyboard Shortcut
+                </span>
+                <span className="text-xs text-gray-300 font-sans">
+                  Press anywhere to toggle scanner
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsDailyScanModalOpen(true)}
+                className="group px-3.5 py-2 bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-mono text-xs font-black uppercase tracking-wider flex items-center space-x-2 border border-amber-300 shadow-md cursor-pointer transition-all hover:scale-102 active:scale-98"
+                title="Launch Daily Stage 2 Scanner (Cmd+K / Ctrl+K)"
+              >
+                <Search className="w-3.5 h-3.5 text-slate-950 group-hover:scale-110 transition-transform" />
+                <span>Open Scanner</span>
+                <div className="flex items-center space-x-1 ml-1 bg-black/25 px-1.5 py-0.5 rounded text-[10px] font-extrabold border border-black/20 text-slate-950">
+                  <kbd className="font-mono">⌘K</kbd>
+                  <span className="text-slate-800">/</span>
+                  <kbd className="font-mono">Ctrl+K</kbd>
+                </div>
+              </button>
+            </div>
           </div>
-          <div>
-            Mark Minervini SEPA (Specific Entry Point Analysis) Engine
+
+          {/* Editorial Copyright & Market Outlook Row */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 uppercase tracking-[0.15em] font-semibold text-[10px]">
+            <div>
+              Market Outlook: <span className="text-green-700 font-bold">Confirmed Uptrend</span>
+            </div>
+            <div>
+              Mark Minervini SEPA (Specific Entry Point Analysis) Engine
+            </div>
+            <div className="italic text-gray-400 font-serif normal-case text-xs">
+              &copy; 2026 Growth Stock Alpha — Editorial Intelligence
+            </div>
           </div>
-          <div className="italic text-gray-400 font-serif normal-case text-xs">
-            &copy; 2026 Growth Stock Alpha — Editorial Intelligence
-          </div>
+
         </div>
       </footer>
+
+      {/* Persistent Floating On-Screen Hotkey Helper & Scanner Trigger (Bottom-Left) */}
+      <motion.button
+        id="persistent-stage2-hotkey-indicator"
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+        onClick={() => setIsDailyScanModalOpen(true)}
+        className="fixed bottom-6 left-6 z-40 bg-[#10141d]/95 hover:bg-[#151b27] text-gray-200 hover:text-white border border-amber-500/50 hover:border-amber-400 px-3.5 py-2.5 rounded-full shadow-[0_4px_20px_rgba(0,0,0,0.4)] backdrop-blur-md font-mono text-[11px] font-bold uppercase tracking-wider flex items-center space-x-2.5 cursor-pointer transition-all group"
+        title="Quick Hotkey: Press ⌘K or Ctrl+K anywhere to open Daily Stage 2 Scanner"
+      >
+        <span className="relative flex h-2 w-2">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+        </span>
+
+        <span className="text-gray-300 group-hover:text-amber-300 font-sans normal-case text-xs">
+          Stage 2 Scanner
+        </span>
+
+        <div className="flex items-center space-x-1 bg-black/60 border border-gray-700 px-1.5 py-0.5 rounded text-[10px] text-amber-300 font-extrabold shadow-inner">
+          <kbd className="font-mono">⌘K</kbd>
+          <span className="text-gray-500">/</span>
+          <kbd className="font-mono">Ctrl+K</kbd>
+        </div>
+      </motion.button>
 
       {/* Floating Hermes Agent Quick Launcher with Animated Notification Badge */}
       {activeTab !== 'hermes_agent' && (

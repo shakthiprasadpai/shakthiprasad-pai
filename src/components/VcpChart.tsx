@@ -195,6 +195,7 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
   const [showSma150, setShowSma150] = useState(true);
   const [showSma200, setShowSma200] = useState(true);
   const [showLevels, setShowLevels] = useState(true);
+  const [showContractionStages, setShowContractionStages] = useState(true);
   const [showVolatilityOverlay, setShowVolatilityOverlay] = useState(true);
   const [showVolatilityContractionRatio, setShowVolatilityContractionRatio] = useState(true);
   const [showStage2Bg, setShowStage2Bg] = useState(true);
@@ -1100,12 +1101,26 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
           </button>
 
           <button
-            onClick={() => setShowVolatilityOverlay(!showVolatilityOverlay)}
-            className={`px-3 py-1 border text-xs font-semibold uppercase tracking-wider font-mono transition-all flex items-center space-x-1 ${
-              showVolatilityOverlay
+            onClick={() => setShowContractionStages(!showContractionStages)}
+            className={`px-3 py-1 border text-xs font-semibold uppercase tracking-wider font-mono transition-all flex items-center space-x-1 cursor-pointer ${
+              showContractionStages
                 ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
                 : 'bg-[#f9f8f5] text-gray-400 border-[#e5e4e1]'
             }`}
+            title="Toggle Volatility Contraction (VCP) Stages (Base Consolidation T1, T2, T3... Reference Areas)"
+          >
+            <Layers className="w-3.5 h-3.5 text-amber-200" />
+            <span>Contractions {showContractionStages ? 'ON' : 'OFF'}</span>
+          </button>
+
+          <button
+            onClick={() => setShowVolatilityOverlay(!showVolatilityOverlay)}
+            className={`px-3 py-1 border text-xs font-semibold uppercase tracking-wider font-mono transition-all flex items-center space-x-1 ${
+              showVolatilityOverlay
+                ? 'bg-amber-700 text-white border-amber-800 shadow-xs'
+                : 'bg-[#f9f8f5] text-gray-400 border-[#e5e4e1]'
+            }`}
+            title="Toggle Squeeze & ATR Overlay Indicators"
           >
             <Zap className="w-3 h-3 text-amber-200" />
             <span>Squeeze Overlay {showVolatilityOverlay ? 'ON' : 'OFF'}</span>
@@ -1862,7 +1877,7 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
             )}
 
             {/* Volatility Squeeze Contraction Bands (ReferenceAreas) */}
-            {showVolatilityOverlay && stock.contractions.map((c, idx) => (
+            {showContractionStages && stock.contractions.map((c, idx) => (
               <React.Fragment key={`vcp-ref-${idx}`}>
                 <ReferenceArea
                   {...({

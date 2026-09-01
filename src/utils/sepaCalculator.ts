@@ -941,3 +941,273 @@ export function calculateRiskAdjustedMetrics(stock: MinerviniTradeSetup): RiskAd
   };
 }
 
+export interface VolatilityTargetLevel {
+  id: string;
+  name: string;
+  shortLabel: string;
+  tier: 'CONSERVATIVE' | 'MODERATE' | 'AGGRESSIVE' | 'MEASURED_MOVE' | 'EXTENDED_FIB';
+  multiplierLabel: string;
+  atrMultiplier: number;
+  lowTargetPrice: number;
+  midTargetPrice: number;
+  highTargetPrice: number;
+  lowGainPercent: number;
+  midGainPercent: number;
+  highGainPercent: number;
+  riskRewardRatio: number;
+  holdingHorizon: string;
+  strategyDescription: string;
+  suggestedAction: string;
+  colorScheme: {
+    bg: string;
+    border: string;
+    text: string;
+    badgeBg: string;
+    badgeText: string;
+    badgeBorder: string;
+    barColor: string;
+  };
+}
+
+export interface VolatilityTargetRangesResult {
+  pivotPrice: number;
+  stopLossPrice: number;
+  riskPerShare: number;
+  riskPercent: number;
+  atr14: number;
+  atr14Percent: number;
+  baseDepthPercent: number;
+  baseDepthDollars: number;
+  volatilityContractionRatio: number;
+  levels: VolatilityTargetLevel[];
+  recommendedPrimaryTarget: VolatilityTargetLevel;
+  volatilityProfileLabel: string;
+  overallTargetRangeLow: number;
+  overallTargetRangeHigh: number;
+  overallMaxGainPercent: number;
+  customTargetPrice: (multiplier: number) => number;
+}
+
+export function calculateVolatilityPriceTargetRanges(
+  stock: MinerviniTradeSetup,
+  customPivot?: number,
+  customStop?: number
+): VolatilityTargetRangesResult {
+  const pivot = customPivot && customPivot > 0 ? customPivot : stock.pivotPrice;
+  const stop = customStop && customStop > 0 ? customStop : stock.stopLossPrice;
+  const riskPerShare = Math.max(0.01, pivot - stop);
+  const riskPercent = pivot > 0 ? ((pivot - stop) / pivot) * 100 : 0;
+
+  const volData = calculateDailyVolatilityMetrics(stock);
+  const atr14 = volData.atr14 || (pivot * 0.03);
+  const atr14Percent = volData.atr14Percent || (pivot > 0 ? (atr14 / pivot) * 100 : 3.0);
+  const vcr = volData.volatilityContractionRatio || 0.75;
+
+  // Base consolidation depth in percent & dollars
+  const baseDepthPercent = stock.contractions && stock.contractions.length > 0
+    ? stock.contractions[0].depthPercent
+    : Math.max(12, Math.min(35, ((stock.high52w - stock.low52w) / (stock.high52w || pivot)) * 100 * 0.5));
+  
+  const baseDepthDollars = (baseDepthPercent / 100) * pivot;
+
+  // Level 1: Conservative / Quick Squeeze Target (1.5x - 2.0x ATR)
+  const lowT1 = Number((pivot + (1.5 * atr14)).toFixed(2));
+  const midT1 = Number((pivot + (1.75 * atr14)).toFixed(2));
+  const highT1 = Number((pivot + (2.0 * atr14)).toFixed(2));
+  const rrrT1 = riskPerShare > 0 ? Number(((midT1 - pivot) / riskPerShare).toFixed(2)) : 1.5;
+
+  // Level 2: SEPA Core Breakout Target (2.5x - 3.5x ATR)
+  const lowT2 = Number((pivot + (2.5 * atr14)).toFixed(2));
+  const midT2 = Number((pivot + (3.0 * atr14)).toFixed(2));
+  const highT2 = Number((pivot + (3.5 * atr14)).toFixed(2));
+  const rrrT2 = riskPerShare > 0 ? Number(((midT2 - pivot) / riskPerShare).toFixed(2)) : 3.0;
+
+  // Level 3: Aggressive Momentum Target (4.0x - 5.5x ATR)
+  const lowT3 = Number((pivot + (4.0 * atr14)).toFixed(2));
+  const midT3 = Number((pivot + (4.75 * atr14)).toFixed(2));
+  const highT3 = Number((pivot + (5.5 * atr14)).toFixed(2));
+  const rrrT3 = riskPerShare > 0 ? Number(((midT3 - pivot) / riskPerShare).toFixed(2)) : 4.5;
+
+  // Level 4: Measured Move / Full Base Volatility Projection
+  const lowT4 = Number((pivot + (0.85 * baseDepthDollars)).toFixed(2));
+  const midT4 = Number((pivot + (1.0 * baseDepthDollars)).toFixed(2));
+  const highT4 = Number((pivot + (1.25 * baseDepthDollars)).toFixed(2));
+  const rrrT4 = riskPerShare > 0 ? Number(((midT4 - pivot) / riskPerShare).toFixed(2)) : 4.0;
+
+  // Level 5: Fibonacci Volatility Extension (1.618x - 2.618x 1R Risk / Base Expansion)
+  const lowT5 = Number((pivot + (1.618 * riskPerShare * (3.0 / Math.max(1, riskPercent / atr14Percent)))).toFixed(2));
+  const midT5 = Number((pivot + (2.0 * riskPerShare * (3.0 / Math.max(1, riskPercent / atr14Percent)))).toFixed(2));
+  const highT5 = Number((pivot + (2.618 * riskPerShare * (3.0 / Math.max(1, riskPercent / atr14Percent)))).toFixed(2));
+  const rrrT5 = riskPerShare > 0 ? Number(((midT5 - pivot) / riskPerShare).toFixed(2)) : 5.0;
+
+  const levels: VolatilityTargetLevel[] = [
+    {
+      id: 'target-conservative',
+      name: 'Conservative Squeeze Target Range',
+      shortLabel: '1.5x - 2.0x ATR',
+      tier: 'CONSERVATIVE',
+      multiplierLabel: '1.5x – 2.0x ATR Squeeze Thrust',
+      atrMultiplier: 1.75,
+      lowTargetPrice: lowT1,
+      midTargetPrice: midT1,
+      highTargetPrice: highT1,
+      lowGainPercent: Number((((lowT1 - pivot) / pivot) * 100).toFixed(2)),
+      midGainPercent: Number((((midT1 - pivot) / pivot) * 100).toFixed(2)),
+      highGainPercent: Number((((highT1 - pivot) / pivot) * 100).toFixed(2)),
+      riskRewardRatio: rrrT1,
+      holdingHorizon: '3 – 5 Trading Days',
+      strategyDescription: 'High-probability initial volatility expansion post-breakout. Ideal for locking quick partial gains.',
+      suggestedAction: 'Take 30–50% partial profit off table and immediately raise stop to breakeven.',
+      colorScheme: {
+        bg: 'bg-emerald-50/70',
+        border: 'border-emerald-200',
+        text: 'text-emerald-950',
+        badgeBg: 'bg-emerald-100',
+        badgeText: 'text-emerald-900',
+        badgeBorder: 'border-emerald-300',
+        barColor: 'bg-emerald-500'
+      }
+    },
+    {
+      id: 'target-moderate',
+      name: 'SEPA Core Breakout Target Range',
+      shortLabel: '2.5x - 3.5x ATR',
+      tier: 'MODERATE',
+      multiplierLabel: '2.5x – 3.5x ATR Core Swing',
+      atrMultiplier: 3.0,
+      lowTargetPrice: lowT2,
+      midTargetPrice: midT2,
+      highTargetPrice: highT2,
+      lowGainPercent: Number((((lowT2 - pivot) / pivot) * 100).toFixed(2)),
+      midGainPercent: Number((((midT2 - pivot) / pivot) * 100).toFixed(2)),
+      highGainPercent: Number((((highT2 - pivot) / pivot) * 100).toFixed(2)),
+      riskRewardRatio: rrrT2,
+      holdingHorizon: '1 – 3 Weeks',
+      strategyDescription: 'Standard Stage 2 institutional breakout follow-through achieving optimal 3:1+ R-Multiple.',
+      suggestedAction: 'Core profit objective. Scale out secondary tranche and trail remainder with 10-day EMA.',
+      colorScheme: {
+        bg: 'bg-teal-50/70',
+        border: 'border-teal-300',
+        text: 'text-teal-950',
+        badgeBg: 'bg-teal-100',
+        badgeText: 'text-teal-900',
+        badgeBorder: 'border-teal-400',
+        barColor: 'bg-teal-600'
+      }
+    },
+    {
+      id: 'target-aggressive',
+      name: 'Aggressive Momentum Leader Target Range',
+      shortLabel: '4.0x - 5.5x ATR',
+      tier: 'AGGRESSIVE',
+      multiplierLabel: '4.0x – 5.5x ATR Extended Run',
+      atrMultiplier: 4.75,
+      lowTargetPrice: lowT3,
+      midTargetPrice: midT3,
+      highTargetPrice: highT3,
+      lowGainPercent: Number((((lowT3 - pivot) / pivot) * 100).toFixed(2)),
+      midGainPercent: Number((((midT3 - pivot) / pivot) * 100).toFixed(2)),
+      highGainPercent: Number((((highT3 - pivot) / pivot) * 100).toFixed(2)),
+      riskRewardRatio: rrrT3,
+      holdingHorizon: '3 – 6 Weeks',
+      strategyDescription: 'Extended momentum expansion observed in high RS (RS > 85) market-leading compounders.',
+      suggestedAction: 'Ride winning runner shares using a 20-day EMA or 2.5x ATR dynamic trailing stop.',
+      colorScheme: {
+        bg: 'bg-indigo-50/70',
+        border: 'border-indigo-200',
+        text: 'text-indigo-950',
+        badgeBg: 'bg-indigo-100',
+        badgeText: 'text-indigo-900',
+        badgeBorder: 'border-indigo-300',
+        barColor: 'bg-indigo-600'
+      }
+    },
+    {
+      id: 'target-measured-move',
+      name: 'VCP Measured Move Target Range',
+      shortLabel: 'Full Base Depth (1.0x)',
+      tier: 'MEASURED_MOVE',
+      multiplierLabel: `100% Base Depth (${baseDepthPercent.toFixed(1)}% Move)`,
+      atrMultiplier: Number((baseDepthDollars / atr14).toFixed(1)),
+      lowTargetPrice: lowT4,
+      midTargetPrice: midT4,
+      highTargetPrice: highT4,
+      lowGainPercent: Number((((lowT4 - pivot) / pivot) * 100).toFixed(2)),
+      midGainPercent: Number((((midT4 - pivot) / pivot) * 100).toFixed(2)),
+      highGainPercent: Number((((highT4 - pivot) / pivot) * 100).toFixed(2)),
+      riskRewardRatio: rrrT4,
+      holdingHorizon: '4 – 8 Weeks',
+      strategyDescription: 'Classical technical measured move projecting 100% of the initial VCP contraction base depth.',
+      suggestedAction: 'Full pattern objective reached. Prepare for overhead base formation or climax top.',
+      colorScheme: {
+        bg: 'bg-purple-50/70',
+        border: 'border-purple-200',
+        text: 'text-purple-950',
+        badgeBg: 'bg-purple-100',
+        badgeText: 'text-purple-900',
+        badgeBorder: 'border-purple-300',
+        barColor: 'bg-purple-600'
+      }
+    },
+    {
+      id: 'target-fibonacci',
+      name: 'Fibonacci Volatility Extension Range',
+      shortLabel: '1.618x - 2.618x Extension',
+      tier: 'EXTENDED_FIB',
+      multiplierLabel: '1.618x – 2.618x Harmonic Extension',
+      atrMultiplier: Number((((midT5 - pivot)) / atr14).toFixed(1)),
+      lowTargetPrice: lowT5,
+      midTargetPrice: midT5,
+      highTargetPrice: highT5,
+      lowGainPercent: Number((((lowT5 - pivot) / pivot) * 100).toFixed(2)),
+      midGainPercent: Number((((midT5 - pivot) / pivot) * 100).toFixed(2)),
+      highGainPercent: Number((((highT5 - pivot) / pivot) * 100).toFixed(2)),
+      riskRewardRatio: rrrT5,
+      holdingHorizon: '4 – 10 Weeks',
+      strategyDescription: 'Harmonic price expansion levels favored by institutional algorithmic profit-taking desks.',
+      suggestedAction: 'Sell remaining position if heavy distribution / climax volume appears near high bound.',
+      colorScheme: {
+        bg: 'bg-amber-50/70',
+        border: 'border-amber-200',
+        text: 'text-amber-950',
+        badgeBg: 'bg-amber-100',
+        badgeText: 'text-amber-900',
+        badgeBorder: 'border-amber-300',
+        barColor: 'bg-amber-500'
+      }
+    }
+  ];
+
+  let volatilityProfileLabel = 'Normal Volatility Profile';
+  if (atr14Percent <= 2.5 && vcr <= 0.65) {
+    volatilityProfileLabel = 'Ultra-Compressed VCP Squeeze (Fast Breakout Expected)';
+  } else if (atr14Percent <= 4.0) {
+    volatilityProfileLabel = 'Optimal Breakout Compression (Steady Expansion)';
+  } else if (atr14Percent > 6.0) {
+    volatilityProfileLabel = 'High-Beta Volatility (Wider Target Ranges)';
+  }
+
+  const overallTargetRangeLow = lowT1;
+  const overallTargetRangeHigh = Math.max(highT3, highT4, highT5);
+  const overallMaxGainPercent = Number((((overallTargetRangeHigh - pivot) / pivot) * 100).toFixed(1));
+
+  return {
+    pivotPrice: pivot,
+    stopLossPrice: stop,
+    riskPerShare: Number(riskPerShare.toFixed(2)),
+    riskPercent: Number(riskPercent.toFixed(2)),
+    atr14: Number(atr14.toFixed(2)),
+    atr14Percent: Number(atr14Percent.toFixed(2)),
+    baseDepthPercent: Number(baseDepthPercent.toFixed(1)),
+    baseDepthDollars: Number(baseDepthDollars.toFixed(2)),
+    volatilityContractionRatio: Number(vcr.toFixed(2)),
+    levels,
+    recommendedPrimaryTarget: levels[1], // SEPA Core Breakout Target
+    volatilityProfileLabel,
+    overallTargetRangeLow,
+    overallTargetRangeHigh,
+    overallMaxGainPercent,
+    customTargetPrice: (mult: number) => Number((pivot + (mult * atr14)).toFixed(2))
+  };
+}
+

@@ -13,6 +13,7 @@ import { StageIdentifierPanel } from './StageIdentifierPanel';
 import { TrailingStopCalculatorPanel } from './TrailingStopCalculatorPanel';
 import { VolatilitySlippageAlert } from './VolatilitySlippageAlert';
 import { SimplePositionSizingCalculator } from './SimplePositionSizingCalculator';
+import { VolatilityPriceTargetsPanel } from './VolatilityPriceTargetsPanel';
 import { Target, ShieldAlert, ArrowUpRight, Droplets, DollarSign, Calculator, Layers, Flame, Zap, Sparkles, TrendingUp, BarChart3, ShieldCheck, FileText, Save, Check, Trash2, Clock, StickyNote, FileSpreadsheet, LogOut, AlertTriangle, ArrowRightCircle, Sliders, CheckCircle2, RefreshCw, Bell, BellRing, BellOff, ChevronDown, ChevronUp, Printer, BookMarked, BookmarkCheck } from 'lucide-react';
 
 function getArcPath(cx: number, cy: number, r: number, startAngleDeg: number, endAngleDeg: number) {
@@ -4486,6 +4487,18 @@ export const TradePlanCard: React.FC<TradePlanCardProps> = ({ stock, onNavigateT
 
       {/* Stan Weinstein & Mark Minervini 4-Stage Identifier Panel */}
       <StageIdentifierPanel stock={stock} currencySymbol={currencySymbol} />
+
+      {/* Volatility-Based Potential Price Targets & Range Spectrum Section */}
+      <VolatilityPriceTargetsPanel
+        stock={stock}
+        currencySymbol={currencySymbol}
+        pivotPrice={pivotEntry}
+        stopLossPrice={currentStopLoss}
+        activeTargetPrice={customTargetPrice}
+        onSelectTargetPrice={(newTarget) => {
+          setCustomTargetPrice(newTarget);
+        }}
+      />
 
       {/* Interactive Trailing Stop Exit Calculator Panel */}
       <TrailingStopCalculatorPanel
