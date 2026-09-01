@@ -199,7 +199,8 @@ export interface PriceAlert {
     | 'MAJOR_NEWS_CATALYST'
     | 'VOLUME_SPIKE'
     | 'HIGH_CONVICTION_BREAKOUT'
-    | 'SMART_MONEY_DIVERGENCE';
+    | 'SMART_MONEY_DIVERGENCE'
+    | 'STAGE_2_DAILY_SCAN';
   targetPrice: number;
   triggerProximityPercent: number; // e.g. within 1.5% of target
   currentPrice: number;

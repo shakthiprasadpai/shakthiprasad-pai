@@ -33,6 +33,7 @@ interface NavbarProps {
   tightVolumeCount: number;
   isObsidian?: boolean;
   onToggleObsidian?: () => void;
+  onOpenDailyScanner?: () => void;
 }
 
 
@@ -43,7 +44,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   totalSetupsCount,
   tightVolumeCount,
   isObsidian = false,
-  onToggleObsidian
+  onToggleObsidian,
+  onOpenDailyScanner
 }) => {
   const [showDesktopModal, setShowDesktopModal] = useState<boolean>(false);
   return (
@@ -97,7 +99,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               whileTap={{ scale: 0.96 }}
               className={`px-3 py-1.5 rounded text-[11px] font-bold uppercase tracking-wider font-mono flex items-center space-x-1.5 border shadow-sm cursor-pointer ${
                 isObsidian
-                  ? 'bg-slate-900 hover:bg-slate-800 text-amber-300 border-amber-500/40'
+                   ? 'bg-slate-900 hover:bg-slate-800 text-amber-300 border-amber-500/40'
                   : 'bg-white hover:bg-gray-100 text-gray-800 border-[#d5d4d0]'
               }`}
               title="Connect & Remix Minervini SEPA Scanner on Desktop"
@@ -105,6 +107,24 @@ export const Navbar: React.FC<NavbarProps> = ({
               <Monitor className="w-3.5 h-3.5 text-amber-500" />
               <span>Connect Desktop / Remix</span>
             </motion.button>
+
+            {/* Daily Stage 2 Scanner Button */}
+            {onOpenDailyScanner && (
+              <motion.button
+                id="daily-stage-2-scan-btn"
+                onClick={onOpenDailyScanner}
+                whileHover={{ scale: 1.04 }}
+                whileTap={{ scale: 0.96 }}
+                className="px-3 py-1.5 rounded text-[11px] font-black uppercase tracking-wider font-mono flex items-center space-x-1.5 bg-gradient-to-r from-amber-500 to-amber-400 text-slate-950 shadow-md border border-amber-300 hover:brightness-105 cursor-pointer"
+                title="Open Scheduled Daily Stage 2 Breakout Scanner (Cmd+K / Ctrl+K)"
+              >
+                <Sparkles className="w-3.5 h-3.5 fill-current animate-pulse" />
+                <span>Daily Stage 2 Scan</span>
+                <span className="hidden xl:inline-block bg-black/20 text-slate-950 px-1 py-0.2 rounded text-[9px] font-mono font-extrabold border border-black/20 ml-0.5">
+                  ⌘K
+                </span>
+              </motion.button>
+            )}
 
             {/* OBSIDIAN Theme Toggle Button */}
             {onToggleObsidian && (

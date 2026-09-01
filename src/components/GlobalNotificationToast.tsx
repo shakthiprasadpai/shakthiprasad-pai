@@ -16,6 +16,12 @@ import {
   simulateSmartMoneyDivergenceAlert,
 } from '../utils/sentimentDivergenceService';
 import {
+  DailyStage2ScanPayload,
+  checkAndRunScheduledScan,
+  runDailyStage2Scan,
+  dispatchStage2DailyScanNotification,
+} from '../utils/dailyStage2Scanner';
+import {
   getAudioSettings,
   saveAudioSettings,
   playVolumeSpikeChime,
@@ -56,6 +62,7 @@ interface GlobalNotificationToastProps {
   stocks: MinerviniTradeSetup[];
   onSelectStock: (stock: MinerviniTradeSetup) => void;
   onNavigateTab: (tab: 'screener' | 'chart' | 'calculator' | 'portfolio' | 'watchlist') => void;
+  onOpenDailyScanner?: () => void;
 }
 
 export interface ActiveToastNotification {
@@ -74,19 +81,22 @@ export interface ActiveToastNotification {
     | 'MAJOR_NEWS_CATALYST'
     | 'VOLUME_SPIKE'
     | 'HIGH_CONVICTION_BREAKOUT'
-    | 'SMART_MONEY_DIVERGENCE';
+    | 'SMART_MONEY_DIVERGENCE'
+    | 'STAGE_2_DAILY_SCAN';
   triggeredAt: string;
   isPortfolioHolding?: boolean;
   portfolioHolding?: PortfolioHolding;
   majorNewsPayload?: MajorNewsEventPayload;
   volumeBreakoutPayload?: VolumeBreakoutAlertPayload;
   divergencePayload?: SmartMoneyDivergenceAlertPayload;
+  stage2ScanPayload?: DailyStage2ScanPayload;
 }
 
 export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = ({
   stocks,
   onSelectStock,
   onNavigateTab,
+  onOpenDailyScanner,
 }) => {
   const [activeToast, setActiveToast] = useState<ActiveToastNotification | null>(null);
   const [backgroundRunning, setBackgroundRunning] = useState<boolean>(true);
@@ -206,11 +216,46 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
       });
     };
 
+    const handleStage2DailyScanEvent = (e: Event) => {
+      const customEvt = e as CustomEvent<DailyStage2ScanPayload>;
+      const payload = customEvt.detail;
+      if (!payload || !payload.result) return;
+
+      const top = payload.topCandidates[0];
+      const match = top
+        ? stocksRef.current.find((s) => s.ticker === top.ticker) || top.stock
+        : stocksRef.current[0];
+
+      const alertItem: PriceAlert = {
+        id: `daily-scan-${Date.now()}`,
+        ticker: top ? top.ticker : 'STAGE-2',
+        stockName: top ? top.stockName : 'Stage 2 Daily Breakouts',
+        targetType: 'STAGE_2_DAILY_SCAN',
+        targetPrice: top ? top.pivotPrice : 0,
+        triggerProximityPercent: 0,
+        currentPrice: top ? top.currentPrice : 0,
+        status: 'TRIGGERED',
+        createdAt: new Date().toLocaleDateString(),
+        exchange: top ? (top.exchange as any) : 'NASDAQ',
+        notes: payload.summary,
+      };
+
+      setActiveToast({
+        alert: alertItem,
+        previousPrice: top ? top.currentPrice - 1 : 0,
+        currentPrice: top ? top.currentPrice : 0,
+        crossoverType: 'STAGE_2_DAILY_SCAN',
+        triggeredAt: payload.triggeredAt || new Date().toLocaleTimeString(),
+        stage2ScanPayload: payload,
+      });
+    };
+
     window.addEventListener('minervini_portfolio_updated', handleSync);
     window.addEventListener('minervini_alerts_updated', handleSync);
     window.addEventListener('minervini_major_news_detected', handleMajorNewsEvent);
     window.addEventListener('minervini_volume_breakout_alert', handleVolumeBreakoutEvent);
     window.addEventListener('minervini_sentiment_divergence_alert', handleDivergenceEvent);
+    window.addEventListener('minervini_stage2_daily_scan_alert', handleStage2DailyScanEvent);
     window.addEventListener('minervini_audio_settings_updated', handleAudioSettingsUpdate);
     return () => {
       window.removeEventListener('minervini_portfolio_updated', handleSync);
@@ -218,6 +263,7 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
       window.removeEventListener('minervini_major_news_detected', handleMajorNewsEvent);
       window.removeEventListener('minervini_volume_breakout_alert', handleVolumeBreakoutEvent);
       window.removeEventListener('minervini_sentiment_divergence_alert', handleDivergenceEvent);
+      window.removeEventListener('minervini_stage2_daily_scan_alert', handleStage2DailyScanEvent);
       window.removeEventListener('minervini_audio_settings_updated', handleAudioSettingsUpdate);
     };
   }, []);
@@ -232,6 +278,9 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
     const interval = setInterval(() => {
       // Re-sync portfolio holdings to make sure new portfolio positions are tracked
       syncPortfolioAlerts();
+
+      // Check if scheduled daily scan is due
+      checkAndRunScheduledScan(stocksRef.current);
 
       const storedAlerts = getStoredAlerts();
       if (!storedAlerts || storedAlerts.length === 0) return;
@@ -782,6 +831,17 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
                 <Flame className="w-3 h-3 text-cyan-200" />
                 <span>Test Smart Money Accumulation Alert 💎</span>
               </button>
+
+              <button
+                onClick={() => {
+                  const res = runDailyStage2Scan(stocks, { isScheduled: true, force: true });
+                  dispatchStage2DailyScanNotification(res);
+                }}
+                className="bg-emerald-600 hover:bg-emerald-500 text-white px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center space-x-1.5 shadow-sm transition-all cursor-pointer border border-emerald-400/40"
+              >
+                <Sparkles className="w-3 h-3 text-amber-300 animate-pulse" />
+                <span>Test Scheduled Daily Stage 2 Scan 🎯</span>
+              </button>
             </div>
           </div>
         )}
@@ -1121,6 +1181,165 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
             >
               <BarChart3 className="w-3.5 h-3.5" />
               <span>View Chart</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Render Specialized Scheduled Daily Stage 2 Breakout Scan Toast Card
+  const stage2ScanPayload = activeToast.stage2ScanPayload;
+  const isDailyStage2Scan = activeToast.crossoverType === 'STAGE_2_DAILY_SCAN' && Boolean(stage2ScanPayload);
+
+  if (isDailyStage2Scan && stage2ScanPayload) {
+    const { result, topCandidates } = stage2ScanPayload;
+
+    return (
+      <div className="fixed top-5 right-5 z-50 max-w-xl w-full animate-slide-down shadow-2xl">
+        <div className="p-5 border-2 bg-[#09151c] text-white border-amber-400 shadow-amber-500/30">
+          {/* Top Header Tag */}
+          <div className="flex items-start justify-between border-b border-white/15 pb-2.5 mb-3">
+            <div className="flex items-center space-x-2.5">
+              <div className="w-8 h-8 bg-amber-400 text-slate-950 flex items-center justify-center font-black animate-pulse shadow-md">
+                <Sparkles className="w-5 h-5" />
+              </div>
+
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[10px] uppercase font-mono tracking-[0.2em] font-extrabold text-amber-300 block">
+                    🎯 SCHEDULED DAILY SCAN: STAGE 2 BREAKOUTS
+                  </span>
+                  <span className="bg-amber-400 text-slate-950 text-[9px] font-black uppercase px-2 py-0.5 font-mono">
+                    {result.qualifiedCount} Leaders Found
+                  </span>
+                  {result.newBreakoutsCount > 0 && (
+                    <span className="bg-emerald-500 text-slate-950 text-[9px] font-black uppercase px-2 py-0.5 font-mono animate-pulse">
+                      {result.newBreakoutsCount} New Breakouts
+                    </span>
+                  )}
+                </div>
+
+                <h4 className="text-lg font-mono font-black text-white leading-tight mt-0.5">
+                  Minervini Stage 2 Trend Template Scan Complete
+                </h4>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setActiveToast(null)}
+              className="text-gray-400 hover:text-white p-1 transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Qualified Candidates Summary List */}
+          <div className="bg-white/5 border border-white/10 p-3.5 mb-3 font-mono text-xs space-y-2.5">
+            <div className="flex items-center justify-between text-[10px] text-gray-300 border-b border-white/10 pb-1.5">
+              <span>Automated Scan Executed at {stage2ScanPayload.triggeredAt}</span>
+              <span className="text-amber-400 font-bold">Scanned {result.totalStocksScanned} Equities</span>
+            </div>
+
+            <p className="text-xs font-sans text-gray-200 leading-snug">
+              {result.marketSummary}
+            </p>
+
+            {/* Candidates Quick Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+              {topCandidates.map((c) => {
+                const currSym = getCurrencySymbol(c.exchange);
+                return (
+                  <div
+                    key={c.ticker}
+                    onClick={() => {
+                      onSelectStock(c.stock);
+                      onNavigateTab('chart');
+                      setActiveToast(null);
+                    }}
+                    className="bg-black/40 hover:bg-black/70 border border-white/15 hover:border-amber-400 p-2 space-y-1 cursor-pointer transition-all"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-extrabold text-amber-300 font-mono text-xs">
+                        {c.ticker}
+                      </span>
+                      <span className="text-[9px] bg-emerald-950 text-emerald-300 border border-emerald-700 px-1 font-bold">
+                        RS {c.rsRating}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[10px] text-gray-300">
+                      <span>{formatCurrency(c.currentPrice, currSym)}</span>
+                      <span
+                        className={`font-bold ${
+                          c.distanceToPivotPct >= 0 ? 'text-emerald-400' : 'text-amber-400'
+                        }`}
+                      >
+                        {c.distanceToPivotPct >= 0 ? '+' : ''}
+                        {c.distanceToPivotPct}% to Pivot
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[9px] text-gray-400">
+                      <span>Trend: {c.trendScore}/8 Rules</span>
+                      <span className="uppercase text-amber-400 font-semibold">{c.breakoutStatus.replace('_', ' ')}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="bg-black/40 p-2 border-l-2 border-amber-400 text-[11px] font-sans text-gray-200">
+              <strong className="text-amber-300 font-serif">Mark Minervini SEPA Principle: </strong>
+              Stocks in verified Stage 2 uptrends with upward sloping 200-day SMAs and Relative Strength &ge; 70 represent 90%+ of all superperformance market leaders.
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex flex-wrap items-center justify-end gap-2 text-xs font-mono">
+            <button
+              onClick={() => playHighConvictionBreakoutChime()}
+              title="Replay breakout chime"
+              className="bg-white/10 hover:bg-white/20 text-amber-300 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider flex items-center space-x-1 transition-colors border border-amber-400/40 cursor-pointer"
+            >
+              <Volume2 className="w-3.5 h-3.5" />
+              <span>Chime</span>
+            </button>
+
+            <button
+              onClick={() => setActiveToast(null)}
+              className="bg-white/10 hover:bg-white/20 text-gray-200 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider transition-colors border border-white/20 cursor-pointer"
+            >
+              Dismiss
+            </button>
+
+            <button
+              onClick={() => {
+                if (topCandidates.length > 0) {
+                  onSelectStock(topCandidates[0].stock);
+                  onNavigateTab('chart');
+                }
+                setActiveToast(null);
+              }}
+              className="bg-white/10 hover:bg-white/20 text-cyan-300 px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wider flex items-center space-x-1.5 transition-all border border-cyan-400/40 cursor-pointer"
+            >
+              <BarChart3 className="w-3.5 h-3.5" />
+              <span>View Leader Chart</span>
+            </button>
+
+            <button
+              onClick={() => {
+                if (onOpenDailyScanner) {
+                  onOpenDailyScanner();
+                } else {
+                  window.dispatchEvent(new CustomEvent('minervini_open_daily_stage2_scanner'));
+                }
+                setActiveToast(null);
+              }}
+              className="bg-amber-400 hover:bg-amber-300 text-slate-950 px-4 py-1.5 text-[11px] font-black uppercase tracking-wider flex items-center space-x-1.5 transition-all shadow-md cursor-pointer"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Inspect All {result.qualifiedCount} Leaders</span>
             </button>
           </div>
         </div>

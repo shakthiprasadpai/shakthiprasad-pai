@@ -32,6 +32,7 @@ import { WatchlistManager } from './components/WatchlistManager';
 import { DailyReview } from './components/DailyReview';
 import { SectorCorrelationLeadershipCard } from './components/SectorCorrelationLeadershipCard';
 import { PositionRiskCalculator } from './components/PositionRiskCalculator';
+import { DailyStage2ScannerModal } from './components/DailyStage2ScannerModal';
 import { MOCK_STOCKS } from './data/mockStocks';
 import { MinerviniTradeSetup } from './types';
 import { formatCurrency, formatVolume, getCurrencySymbol, calculateBreakoutProbability } from './utils/sepaCalculator';
@@ -42,6 +43,29 @@ export default function App() {
   const [selectedStock, setSelectedStock] = useState<MinerviniTradeSetup>(MOCK_STOCKS[0]);
   const [activeTab, setActiveTab] = useState<AppNavTab>('hermes_agent');
   const [isObsidian, setIsObsidian] = useState<boolean>(true); // Default to Obsidian Dark theme for luxury feel
+  const [isDailyScanModalOpen, setIsDailyScanModalOpen] = useState<boolean>(false);
+
+  useEffect(() => {
+    const handleOpenScanner = () => setIsDailyScanModalOpen(true);
+    window.addEventListener('minervini_open_daily_stage2_scanner', handleOpenScanner);
+
+    // Global keyboard shortcut: Cmd+K / Ctrl+K to toggle Stage 2 Scanner
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Check for Cmd+K (Mac) or Ctrl+K (Windows/Linux)
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDailyScanModalOpen((prev) => !prev);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.removeEventListener('minervini_open_daily_stage2_scanner', handleOpenScanner);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
 
   // Calculate active high-conviction AI insights and alerts count
   const aiInsightsCount = useMemo(() => {
@@ -106,6 +130,7 @@ export default function App() {
         stocks={stocksList}
         onSelectStock={(stock) => setSelectedStock(stock)}
         onNavigateTab={(tab) => setActiveTab(tab)}
+        onOpenDailyScanner={() => setIsDailyScanModalOpen(true)}
       />
 
       {/* Top Navbar */}
@@ -117,6 +142,27 @@ export default function App() {
         tightVolumeCount={tightVolumeCount}
         isObsidian={isObsidian}
         onToggleObsidian={() => setIsObsidian(!isObsidian)}
+        onOpenDailyScanner={() => setIsDailyScanModalOpen(true)}
+      />
+
+      {/* Daily Stage 2 Breakout Scanner Modal */}
+      <DailyStage2ScannerModal
+        isOpen={isDailyScanModalOpen}
+        onClose={() => setIsDailyScanModalOpen(false)}
+        stocks={stocksList}
+        onSelectStock={(stock) => {
+          setSelectedStock(stock);
+          setIsDailyScanModalOpen(false);
+        }}
+        onViewChart={(stock) => {
+          setSelectedStock(stock);
+          setActiveTab('chart');
+          setIsDailyScanModalOpen(false);
+        }}
+        onNavigateToTab={(tab) => {
+          setActiveTab(tab as AppNavTab);
+          setIsDailyScanModalOpen(false);
+        }}
       />
 
       {/* Main Container with Cross-Fade Theme Transition */}
