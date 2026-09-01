@@ -66,11 +66,173 @@ import {
   Star,
   Maximize2,
   Share2,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Flame,
+  Thermometer
 } from 'lucide-react';
 
 interface VcpChartProps {
   stock: MinerviniTradeSetup;
+}
+
+export type VolumeIntensityTier =
+  | 'EXTREME_DRY_UP'            // < 35% of 20D Avg Vol - Ultra-tight liquidity squeeze / supply evaporation
+  | 'HIGH_DRY_UP'               // 35% - 50% of 20D Avg Vol - Minervini SEPA VDU contraction threshold
+  | 'MODERATE_DRY_UP'           // 50% - 75% of 20D Avg Vol - Below-average contraction volume
+  | 'NEUTRAL'                   // 75% - 130% of 20D Avg Vol - Baseline normal volume
+  | 'MODERATE_ACC'              // 130% - 200% on Up-Day - Institutional accumulation volume expansion
+  | 'MODERATE_DIST'             // 130% - 200% on Down-Day - Elevated selling / distribution pressure
+  | 'INSTITUTIONAL_BREAKOUT_ACC'// > 200% on Up-Day - Massive institutional breakout accumulation surge
+  | 'INSTITUTIONAL_CLIMAX_DIST';// > 200% on Down-Day - Heavy institutional distribution / selling climax
+
+export interface VolumeHeatmapPoint {
+  date: string;
+  volume: number;
+  avgVolume20: number;
+  close: number;
+  open: number;
+  high: number;
+  low: number;
+  isUpDay: boolean;
+  volVsAvgPct: number;
+  volRatio: number;
+  tier: VolumeIntensityTier;
+  intensityScore: number;
+  color: string;
+  glowColor?: string;
+  badgeEmoji: string;
+  badgeLabel: string;
+  description: string;
+  isPocketPivot?: boolean;
+}
+
+export function calculateVolumeHeatmap(
+  history: PricePoint[],
+  pocketPivotSet: Set<string>,
+  mode: 'FULL_SPECTRUM' | 'VDU_VS_BREAKOUT' | 'POCKET_PIVOT_OVERLAY' = 'FULL_SPECTRUM',
+  vduThreshold: number = 50,
+  breakoutThreshold: number = 150
+): VolumeHeatmapPoint[] {
+  if (!history || history.length === 0) return [];
+
+  return history.map((point, idx) => {
+    const prev = idx > 0 ? history[idx - 1] : null;
+    const isUpDay = point.close >= point.open || (prev ? point.close >= prev.close : false);
+    const avg = point.avgVolume20 > 0 ? point.avgVolume20 : (point.volume || 1);
+    const volRatio = point.volume / avg;
+    const volVsAvgPct = Number((((point.volume - avg) / avg) * 100).toFixed(1));
+    const isPp = pocketPivotSet.has(point.date);
+
+    let tier: VolumeIntensityTier = 'NEUTRAL';
+    let intensityScore = 50;
+    let color = isUpDay ? '#16a34a' : '#dc2626';
+    let glowColor: string | undefined = undefined;
+    let badgeEmoji = isUpDay ? '🟢' : '🔴';
+    let badgeLabel = isUpDay ? 'Normal Up-Day' : 'Normal Down-Day';
+    let description = `${point.date}: Volume is normal (${formatVolume(point.volume)}, ${volVsAvgPct > 0 ? '+' : ''}${volVsAvgPct}% vs 20D Avg).`;
+
+    // 1. Extreme Dry-Up (<35% of 20-Day Avg Volume)
+    if (point.volume < avg * 0.35) {
+      tier = 'EXTREME_DRY_UP';
+      intensityScore = 8;
+      color = '#0284c7'; // Vivid Cyan-Ice Squeeze
+      glowColor = '#38bdf8';
+      badgeEmoji = '❄️';
+      badgeLabel = 'Extreme Dry-Up (<35%)';
+      description = `Extreme Volume Dry-Up (${(volRatio * 100).toFixed(0)}% of 20D Avg / ${volVsAvgPct}%). Selling has completely evaporated; overhead supply is exhausted in this VCP pocket!`;
+    }
+    // 2. High Dry-Up Squeeze (<50% or custom vduThreshold)
+    else if (point.volume < avg * (vduThreshold / 100)) {
+      tier = 'HIGH_DRY_UP';
+      intensityScore = 22;
+      color = '#0f172a'; // Deep Midnight Charcoal with Ice Cyan Accent
+      glowColor = '#0284c7';
+      badgeEmoji = '💧';
+      badgeLabel = `SEPA VDU (<${vduThreshold}%)`;
+      description = `Minervini SEPA Volume Dry-Up (${(volRatio * 100).toFixed(0)}% of 20D Avg / ${volVsAvgPct}%). Classic contraction dry-up prior to pivot breakout.`;
+    }
+    // 3. Moderate Contraction Volume (50% - 75%)
+    else if (point.volume < avg * 0.75) {
+      tier = 'MODERATE_DRY_UP';
+      intensityScore = 38;
+      color = isUpDay ? '#047857' : '#475569';
+      badgeEmoji = '📉';
+      badgeLabel = 'Contraction Volume';
+      description = `Below-average contraction volume (${(volRatio * 100).toFixed(0)}% of avg). Moderate supply absorption.`;
+    }
+    // 4. Heavy Institutional Breakout / Climax Accumulation (>200% or >breakoutThreshold on Up Day)
+    else if (point.volume >= avg * 2.0 && isUpDay) {
+      tier = 'INSTITUTIONAL_BREAKOUT_ACC';
+      intensityScore = 98;
+      color = '#9333ea'; // Electric Violet/Purple Blaze
+      glowColor = '#c084fc';
+      badgeEmoji = '🚀';
+      badgeLabel = 'Institutional Breakout (>200%)';
+      description = `Massive Institutional Breakout Accumulation! Volume exploded to ${(volRatio * 100).toFixed(0)}% of 20D Avg (+${volVsAvgPct}%). Huge fund buying power.`;
+    }
+    // 5. Moderate / Strong Accumulation (>= breakoutThreshold or >= 130% on Up Day)
+    else if (point.volume >= avg * (breakoutThreshold / 100) && isUpDay) {
+      tier = 'MODERATE_ACC';
+      intensityScore = 80;
+      color = '#16a34a'; // Vibrant Emerald Green
+      glowColor = '#4ade80';
+      badgeEmoji = '🔥';
+      badgeLabel = `Institutional Acc (>+${(breakoutThreshold - 100)}%)`;
+      description = `Above-average institutional accumulation (+${volVsAvgPct}% vs 20D Avg). Constructive volume expansion on price advance.`;
+    }
+    // 6. Heavy Distribution Climax (>200% on Down Day)
+    else if (point.volume >= avg * 2.0 && !isUpDay) {
+      tier = 'INSTITUTIONAL_CLIMAX_DIST';
+      intensityScore = 95;
+      color = '#991b1b'; // Deep Crimson Alarm
+      glowColor = '#f87171';
+      badgeEmoji = '⚠️';
+      badgeLabel = 'Institutional Climax Dist (>200%)';
+      description = `Heavy institutional distribution selling climax (+${volVsAvgPct}% on down session). High risk supply dump.`;
+    }
+    // 7. Moderate Distribution (>= 130% on Down Day)
+    else if (point.volume >= avg * 1.3 && !isUpDay) {
+      tier = 'MODERATE_DIST';
+      intensityScore = 70;
+      color = '#dc2626'; // Red Alert
+      badgeEmoji = '🔴';
+      badgeLabel = 'Distribution Pressure';
+      description = `Elevated selling volume (+${volVsAvgPct}% vs 20D Avg) on a down session. Profit taking or supply distribution.`;
+    }
+
+    // Special Mode Adjustments
+    if (mode === 'VDU_VS_BREAKOUT') {
+      // In binary VDU vs Breakout mode, highlight only the extremes and mute the rest
+      if (tier !== 'EXTREME_DRY_UP' && tier !== 'HIGH_DRY_UP' && tier !== 'INSTITUTIONAL_BREAKOUT_ACC' && tier !== 'MODERATE_ACC') {
+        color = '#cbd5e1'; // Muted grey
+      }
+    } else if (mode === 'POCKET_PIVOT_OVERLAY' && isPp) {
+      color = '#a855f7';
+      badgeEmoji = '⚡';
+      badgeLabel = 'Pocket Pivot Spike';
+    }
+
+    return {
+      date: point.date,
+      volume: point.volume,
+      avgVolume20: avg,
+      close: point.close,
+      open: point.open,
+      high: point.high,
+      low: point.low,
+      isUpDay,
+      volVsAvgPct,
+      volRatio,
+      tier,
+      intensityScore,
+      color,
+      glowColor,
+      badgeLabel,
+      badgeEmoji,
+      description,
+      isPocketPivot: isPp
+    };
+  });
 }
 
 export interface VcpNode {
@@ -222,6 +384,13 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
   const [showHistoricalPivots, setShowHistoricalPivots] = useState(true);
   const [showHistoricalStops, setShowHistoricalStops] = useState(true);
   const [selectedLevelId, setSelectedLevelId] = useState<string | null>(null);
+
+  // Volume Intensity Heatmap Overlay State
+  const [showVolumeHeatmap, setShowVolumeHeatmap] = useState(true);
+  const [volumeHeatmapMode, setVolumeHeatmapMode] = useState<'FULL_SPECTRUM' | 'VDU_VS_BREAKOUT' | 'POCKET_PIVOT_OVERLAY'>('FULL_SPECTRUM');
+  const [vduThresholdPct, setVduThresholdPct] = useState<number>(50); // <50% of 20D Avg Vol for standard SEPA VDU
+  const [breakoutThresholdPct, setBreakoutThresholdPct] = useState<number>(150); // >150% of 20D Avg Vol on Up Day for Breakout Acc
+  const [hoveredHeatmapDate, setHoveredHeatmapDate] = useState<string | null>(null);
 
   // Custom Trendline State & LocalStorage Persistence
   const [showCustomTrendlines, setShowCustomTrendlines] = useState(true);
@@ -892,6 +1061,91 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
     };
   }, [volumeOscillatorFullData]);
 
+  // Calculate Volume Intensity Heatmap points for displayed history
+  const displayedVolumeHeatmapData = useMemo(() => {
+    return calculateVolumeHeatmap(
+      displayedPriceHistory || [],
+      pocketPivotDatesSet,
+      volumeHeatmapMode,
+      vduThresholdPct,
+      breakoutThresholdPct
+    );
+  }, [displayedPriceHistory, pocketPivotDatesSet, volumeHeatmapMode, vduThresholdPct, breakoutThresholdPct]);
+
+  // Map for fast tooltip and hover lookups by date
+  const volumeHeatmapMap = useMemo(() => {
+    const map: Record<string, VolumeHeatmapPoint> = {};
+    displayedVolumeHeatmapData.forEach((point) => {
+      map[point.date] = point;
+    });
+    return map;
+  }, [displayedVolumeHeatmapData]);
+
+  // Quantitative Summary for Volume Intensity Heatmap
+  const volumeHeatmapSummaryStats = useMemo(() => {
+    const points = displayedVolumeHeatmapData || [];
+    if (points.length === 0) {
+      return {
+        extremeVduCount: 0,
+        sepaVduCount: 0,
+        breakoutAccCount: 0,
+        climaxBreakoutCount: 0,
+        distCount: 0,
+        maxMultiplier: 1,
+        minMultiplier: 1,
+        vduRatioInBase: 0,
+        latest: null as VolumeHeatmapPoint | null,
+        dryUpQualityRating: 0
+      };
+    }
+
+    let extremeVduCount = 0;
+    let sepaVduCount = 0;
+    let breakoutAccCount = 0;
+    let climaxBreakoutCount = 0;
+    let distCount = 0;
+    let minMultiplier = 999;
+    let maxMultiplier = 0;
+
+    points.forEach((p) => {
+      if (p.tier === 'EXTREME_DRY_UP') extremeVduCount++;
+      if (p.tier === 'EXTREME_DRY_UP' || p.tier === 'HIGH_DRY_UP') sepaVduCount++;
+      if (p.tier === 'INSTITUTIONAL_BREAKOUT_ACC') {
+        climaxBreakoutCount++;
+        breakoutAccCount++;
+      } else if (p.tier === 'MODERATE_ACC') {
+        breakoutAccCount++;
+      }
+      if (p.tier === 'INSTITUTIONAL_CLIMAX_DIST' || p.tier === 'MODERATE_DIST') {
+        distCount++;
+      }
+      if (p.volRatio < minMultiplier) minMultiplier = p.volRatio;
+      if (p.volRatio > maxMultiplier) maxMultiplier = p.volRatio;
+    });
+
+    const vduRatioInBase = points.length > 0 ? Number(((sepaVduCount / points.length) * 100).toFixed(0)) : 0;
+    const latest = points[points.length - 1] || null;
+
+    // Quality Score (0-100) reflecting classic Minervini dry-up vs accumulation balance
+    const baseVduScore = Math.min(60, sepaVduCount * 12 + extremeVduCount * 15);
+    const accScore = Math.min(30, breakoutAccCount * 10);
+    const distPenalty = Math.min(25, distCount * 8);
+    const dryUpQualityRating = Math.max(10, Math.min(99, Math.round(baseVduScore + accScore - distPenalty + 15)));
+
+    return {
+      extremeVduCount,
+      sepaVduCount,
+      breakoutAccCount,
+      climaxBreakoutCount,
+      distCount,
+      maxMultiplier: Number(maxMultiplier.toFixed(2)),
+      minMultiplier: Number(minMultiplier.toFixed(2)),
+      vduRatioInBase,
+      latest,
+      dryUpQualityRating
+    };
+  }, [displayedVolumeHeatmapData]);
+
   // Calculate min/max Y axis bounds for price
   const priceValues = stock.priceHistory.map((p) => p.close);
   const minPrice = Math.floor(Math.min(...priceValues) * 0.95);
@@ -1150,6 +1404,19 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
           >
             <Sparkles className="w-3.5 h-3.5 text-purple-200" />
             <span>Pocket Pivot {showPocketPivots ? 'ON' : 'OFF'}</span>
+          </button>
+
+          <button
+            onClick={() => setShowVolumeHeatmap(!showVolumeHeatmap)}
+            className={`px-3 py-1 border text-xs font-semibold uppercase tracking-wider font-mono transition-all flex items-center space-x-1 cursor-pointer ${
+              showVolumeHeatmap
+                ? 'bg-orange-700 text-white border-orange-800 shadow-xs font-bold'
+                : 'bg-[#f9f8f5] text-gray-400 border-[#e5e4e1]'
+            }`}
+            title="Toggle Volume Intensity Heatmap Overlay (Highlights Extreme Dry-Up vs Institutional Breakout Accumulation)"
+          >
+            <Flame className="w-3.5 h-3.5 text-orange-200" />
+            <span>Vol Heatmap {showVolumeHeatmap ? 'ON' : 'OFF'}</span>
           </button>
 
           <button
@@ -2450,41 +2717,260 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
         </div>
       )}
 
-      {/* Volume Subchart */}
+      {/* Volume Subchart & Intensity Heatmap Overlay */}
       <div className="pt-3 border-t border-[#e5e4e1]">
-        <div className="flex items-center justify-between text-xs text-gray-500 mb-2 font-sans">
-          <span className="font-bold uppercase tracking-wider text-[#1a1a1a] flex items-center space-x-1.5">
-            <Droplets className="w-3.5 h-3.5 text-[#1a1a1a]" />
-            <span>Volume & Contraction Volume Dry-Up</span>
-          </span>
-          <div className="flex flex-wrap items-center gap-3 text-[10px] font-mono">
-            {showPocketPivots && (
-              <span className="flex items-center space-x-1 font-bold text-purple-900 bg-purple-50 border border-purple-200 px-1.5 py-0.5">
-                <span className="w-2.5 h-2.5 bg-purple-600"></span>
-                <span>Purple = Pocket Pivot Volume ({pocketPivotCount} Detected)</span>
-              </span>
+        {/* Header with Heatmap Controls & Legend */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 text-xs text-gray-500 mb-2 font-sans">
+          <div className="flex items-center flex-wrap gap-2">
+            <span className="font-bold uppercase tracking-wider text-[#1a1a1a] flex items-center space-x-1.5">
+              <Droplets className="w-3.5 h-3.5 text-[#1a1a1a]" />
+              <span>Volume & Intensity Heatmap</span>
+            </span>
+
+            {showVolumeHeatmap && (
+              <div className="flex items-center space-x-1 bg-orange-50 border border-orange-200 px-2 py-0.5 rounded text-[10px] font-mono text-orange-950">
+                <Flame className="w-3 h-3 text-orange-600" />
+                <span className="font-bold">HEATMAP ACTIVE:</span>
+                <button
+                  onClick={() => setVolumeHeatmapMode('FULL_SPECTRUM')}
+                  className={`px-1.5 py-0.2 rounded transition-colors ${
+                    volumeHeatmapMode === 'FULL_SPECTRUM' ? 'bg-orange-600 text-white font-bold' : 'hover:bg-orange-100 text-orange-900'
+                  }`}
+                  title="Full intensity scale from extreme dry-up to climax accumulation"
+                >
+                  Full Spectrum
+                </button>
+                <button
+                  onClick={() => setVolumeHeatmapMode('VDU_VS_BREAKOUT')}
+                  className={`px-1.5 py-0.2 rounded transition-colors ${
+                    volumeHeatmapMode === 'VDU_VS_BREAKOUT' ? 'bg-orange-600 text-white font-bold' : 'hover:bg-orange-100 text-orange-900'
+                  }`}
+                  title="Contrast extreme dry-ups (<50%) strictly against institutional breakouts (>150%)"
+                >
+                  VDU vs Breakout
+                </button>
+                <button
+                  onClick={() => setVolumeHeatmapMode('POCKET_PIVOT_OVERLAY')}
+                  className={`px-1.5 py-0.2 rounded transition-colors ${
+                    volumeHeatmapMode === 'POCKET_PIVOT_OVERLAY' ? 'bg-orange-600 text-white font-bold' : 'hover:bg-orange-100 text-orange-900'
+                  }`}
+                  title="Spotlight Pocket Pivot volume signatures alongside dry-ups"
+                >
+                  Pocket Pivot Heat
+                </button>
+              </div>
             )}
-            <span className="flex items-center space-x-1">
-              <span className="w-2.5 h-2.5 bg-black"></span>
-              <span className="text-[#1a1a1a] font-bold">Black = Dry-Up (&lt;50% Avg)</span>
-            </span>
-            <span className="flex items-center space-x-1">
-              <span className="w-2.5 h-2.5 bg-green-700"></span>
-              <span>Green = Up Day</span>
-            </span>
-            <span className="flex items-center space-x-1">
-              <span className="w-2.5 h-2.5 bg-red-600"></span>
-              <span>Red = Down Day</span>
-            </span>
+          </div>
+
+          {/* Heatmap Legend */}
+          <div className="flex flex-wrap items-center gap-2 text-[10px] font-mono">
+            {showVolumeHeatmap ? (
+              <>
+                <span className="flex items-center space-x-1 font-bold text-sky-900 bg-sky-50 border border-sky-200 px-1.5 py-0.5 rounded shadow-2xs">
+                  <span className="w-2.5 h-2.5 bg-[#0284c7] rounded-2xs"></span>
+                  <span>❄️ Extreme Dry-Up (&lt;35%)</span>
+                </span>
+                <span className="flex items-center space-x-1 font-bold text-slate-900 bg-slate-100 border border-slate-300 px-1.5 py-0.5 rounded">
+                  <span className="w-2.5 h-2.5 bg-[#0f172a] rounded-2xs"></span>
+                  <span>💧 SEPA VDU (&lt;50%)</span>
+                </span>
+                <span className="flex items-center space-x-1 text-purple-900 bg-purple-50 border border-purple-200 px-1.5 py-0.5 rounded font-bold">
+                  <span className="w-2.5 h-2.5 bg-[#9333ea] rounded-2xs"></span>
+                  <span>🚀 Breakout Acc (&gt;200%)</span>
+                </span>
+                <span className="flex items-center space-x-1 text-emerald-900 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
+                  <span className="w-2.5 h-2.5 bg-[#16a34a] rounded-2xs"></span>
+                  <span>🔥 Acc (&gt;150%)</span>
+                </span>
+                <span className="flex items-center space-x-1 text-rose-900 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded">
+                  <span className="w-2.5 h-2.5 bg-[#dc2626] rounded-2xs"></span>
+                  <span>🔴 Down Day</span>
+                </span>
+              </>
+            ) : (
+              <>
+                {showPocketPivots && (
+                  <span className="flex items-center space-x-1 font-bold text-purple-900 bg-purple-50 border border-purple-200 px-1.5 py-0.5">
+                    <span className="w-2.5 h-2.5 bg-purple-600"></span>
+                    <span>Purple = Pocket Pivot Volume ({pocketPivotCount} Detected)</span>
+                  </span>
+                )}
+                <span className="flex items-center space-x-1">
+                  <span className="w-2.5 h-2.5 bg-black"></span>
+                  <span className="text-[#1a1a1a] font-bold">Black = Dry-Up (&lt;50% Avg)</span>
+                </span>
+                <span className="flex items-center space-x-1">
+                  <span className="w-2.5 h-2.5 bg-green-700"></span>
+                  <span>Green = Up Day</span>
+                </span>
+                <span className="flex items-center space-x-1">
+                  <span className="w-2.5 h-2.5 bg-red-600"></span>
+                  <span>Red = Down Day</span>
+                </span>
+              </>
+            )}
           </div>
         </div>
 
-        <div className="w-full h-[120px] bg-[#f9f8f5] p-2 border border-[#e5e4e1]">
+        {/* Volume Intensity Diagnostics Bar */}
+        {showVolumeHeatmap && (
+          <div className="mb-2 bg-[#f4f2ee] p-2 border border-[#e5e4e1] rounded text-xs">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 font-mono">
+              <div className="bg-white p-2 border border-[#e5e4e1] rounded shadow-2xs">
+                <div className="text-[10px] text-gray-500 uppercase tracking-wider flex items-center justify-between">
+                  <span>❄️ Extreme Dry-Up (&lt;35%)</span>
+                  <span className="text-sky-600 font-bold">{volumeHeatmapSummaryStats.extremeVduCount} days</span>
+                </div>
+                <div className="text-sm font-black text-sky-900 mt-0.5">
+                  Min Supply: {volumeHeatmapSummaryStats.minMultiplier}x 20D Avg
+                </div>
+                <div className="text-[9px] text-gray-500 font-sans mt-0.5">
+                  Complete seller exhaustion
+                </div>
+              </div>
+
+              <div className="bg-white p-2 border border-[#e5e4e1] rounded shadow-2xs">
+                <div className="text-[10px] text-gray-500 uppercase tracking-wider flex items-center justify-between">
+                  <span>💧 SEPA VDU (&lt;50%)</span>
+                  <span className="text-slate-800 font-bold">{volumeHeatmapSummaryStats.sepaVduCount} sessions</span>
+                </div>
+                <div className="text-sm font-black text-slate-900 mt-0.5">
+                  {volumeHeatmapSummaryStats.vduRatioInBase}% Base Ratio
+                </div>
+                <div className="text-[9px] text-gray-500 font-sans mt-0.5">
+                  Minervini supply drying benchmark
+                </div>
+              </div>
+
+              <div className="bg-white p-2 border border-[#e5e4e1] rounded shadow-2xs">
+                <div className="text-[10px] text-gray-500 uppercase tracking-wider flex items-center justify-between">
+                  <span>🚀 Breakout Accumulation</span>
+                  <span className="text-purple-700 font-bold">{volumeHeatmapSummaryStats.breakoutAccCount} spikes</span>
+                </div>
+                <div className="text-sm font-black text-purple-900 mt-0.5">
+                  Max Surge: {volumeHeatmapSummaryStats.maxMultiplier}x 20D Avg
+                </div>
+                <div className="text-[9px] text-gray-500 font-sans mt-0.5">
+                  Institutional footprint confirmation
+                </div>
+              </div>
+
+              <div className="bg-white p-2 border border-[#e5e4e1] rounded shadow-2xs">
+                <div className="text-[10px] text-gray-500 uppercase tracking-wider flex items-center justify-between">
+                  <span>⚡ Latest Bar Footprint</span>
+                  <span className="text-emerald-700 font-bold">
+                    {volumeHeatmapSummaryStats.latest?.badgeEmoji || '📊'} {volumeHeatmapSummaryStats.latest?.volRatio || 1}x
+                  </span>
+                </div>
+                <div className="text-sm font-black text-[#1a1a1a] mt-0.5 truncate" title={volumeHeatmapSummaryStats.latest?.badgeLabel}>
+                  {volumeHeatmapSummaryStats.latest?.badgeLabel || 'Normal'}
+                </div>
+                <div className="text-[9px] text-gray-500 font-sans mt-0.5">
+                  {volumeHeatmapSummaryStats.latest?.volVsAvgPct && volumeHeatmapSummaryStats.latest.volVsAvgPct > 0 ? '+' : ''}
+                  {volumeHeatmapSummaryStats.latest?.volVsAvgPct}% vs 20D Avg
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Volume Intensity Heatmap Ribbon / Strip */}
+        {showVolumeHeatmap && displayedVolumeHeatmapData.length > 0 && (
+          <div className="mb-2 bg-white p-2 border border-[#e5e4e1] rounded shadow-2xs">
+            <div className="flex items-center justify-between text-[10px] font-mono text-gray-500 mb-1">
+              <span className="font-bold flex items-center space-x-1 text-[#1a1a1a]">
+                <Thermometer className="w-3 h-3 text-orange-600" />
+                <span>Volume Intensity Chronology Ribbon</span>
+              </span>
+              <span className="text-[9px] text-gray-400">
+                Hover or click segments to inspect extreme dry-ups vs institutional volume
+              </span>
+            </div>
+
+            {/* Heatmap Continuous Strip */}
+            <div className="w-full flex items-stretch h-5 bg-gray-100 rounded-xs overflow-hidden border border-gray-200">
+              {displayedVolumeHeatmapData.map((item, idx) => {
+                const isHovered = hoveredHeatmapDate === item.date;
+                return (
+                  <div
+                    key={`ribbon-${item.date}-${idx}`}
+                    onMouseEnter={() => setHoveredHeatmapDate(item.date)}
+                    onMouseLeave={() => setHoveredHeatmapDate(null)}
+                    className={`flex-1 relative cursor-pointer transition-all ${
+                      isHovered ? 'z-20 scale-y-125 shadow-md brightness-110 ring-1 ring-black' : 'hover:brightness-110'
+                    }`}
+                    style={{
+                      backgroundColor: item.color,
+                      opacity: item.tier === 'NEUTRAL' ? 0.6 : 1
+                    }}
+                    title={`${item.date} | ${item.badgeEmoji} ${item.badgeLabel} | Vol: ${formatVolume(item.volume)} (${(item.volRatio * 100).toFixed(0)}% of 20D Avg)`}
+                  >
+                    {/* Micro icon on extreme events */}
+                    {(item.tier === 'EXTREME_DRY_UP' || item.tier === 'INSTITUTIONAL_BREAKOUT_ACC' || item.isPocketPivot) && (
+                      <span className="absolute inset-0 flex items-center justify-center text-[7px] select-none pointer-events-none">
+                        {item.tier === 'EXTREME_DRY_UP' ? '❄️' : item.tier === 'INSTITUTIONAL_BREAKOUT_ACC' ? '🚀' : '⚡'}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Scale guide bar */}
+            <div className="flex items-center justify-between text-[9px] font-mono text-gray-500 mt-1">
+              <div className="flex items-center space-x-1">
+                <span className="text-sky-600 font-bold">❄️ 0% - 35%</span>
+                <span className="text-gray-400">(Extreme Supply Dry-Up)</span>
+              </div>
+              <div className="flex items-center space-x-1">
+                <span className="text-slate-700 font-bold">💧 35% - 50%</span>
+                <span className="text-gray-400">(SEPA Contraction)</span>
+              </div>
+              <div className="flex items-center space-x-1">
+                <span className="text-gray-600">⚖️ 100% (20D Avg)</span>
+              </div>
+              <div className="flex items-center space-x-1">
+                <span className="text-emerald-700 font-bold">🔥 150%</span>
+                <span className="text-gray-400">(Acc)</span>
+              </div>
+              <div className="flex items-center space-x-1">
+                <span className="text-purple-700 font-bold">🚀 &gt;200%</span>
+                <span className="text-gray-400">(Breakout Surge)</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Recharts Volume Chart */}
+        <div className="w-full h-[140px] bg-[#f9f8f5] p-2 border border-[#e5e4e1]">
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart
-              data={stock.priceHistory}
-              margin={{ top: 5, right: 20, left: 10, bottom: 0 }}
+              data={displayedPriceHistory}
+              margin={{ top: 8, right: 20, left: 10, bottom: 0 }}
             >
+              <defs>
+                {/* Gradient for Extreme Dry-Up Volume Bars */}
+                <linearGradient id="extremeDryUpGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#38bdf8" stopOpacity={1} />
+                  <stop offset="100%" stopColor="#0284c7" stopOpacity={0.8} />
+                </linearGradient>
+                {/* Gradient for Institutional Breakout Accumulation */}
+                <linearGradient id="breakoutAccGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#c084fc" stopOpacity={1} />
+                  <stop offset="100%" stopColor="#9333ea" stopOpacity={0.9} />
+                </linearGradient>
+                {/* Gradient for SEPA VDU Bars */}
+                <linearGradient id="sepaVduGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#334155" stopOpacity={1} />
+                  <stop offset="100%" stopColor="#0f172a" stopOpacity={0.9} />
+                </linearGradient>
+                {/* Gradient for Heavy Climax Distribution */}
+                <linearGradient id="heavyDistGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#f87171" stopOpacity={1} />
+                  <stop offset="100%" stopColor="#991b1b" stopOpacity={0.9} />
+                </linearGradient>
+              </defs>
+
               <XAxis dataKey="date" hide />
               <YAxis
                 stroke="#888888"
@@ -2492,7 +2978,34 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
                 tick={{ fontSize: 9, fill: '#666666' }}
                 tickFormatter={formatVolume}
               />
-              <Tooltip content={<VolumeTooltip showPocketPivots={showPocketPivots} pocketPivotDatesSet={pocketPivotDatesSet} />} />
+              <Tooltip
+                content={
+                  <VolumeTooltip
+                    showPocketPivots={showPocketPivots}
+                    pocketPivotDatesSet={pocketPivotDatesSet}
+                    showVolumeHeatmap={showVolumeHeatmap}
+                    heatmapMap={volumeHeatmapMap}
+                    currencySymbol={stock.currencySymbol || '$'}
+                  />
+                }
+              />
+
+              {/* 50% SEPA VDU Limit Threshold Reference Line */}
+              {showVolumeHeatmap && (
+                <ReferenceLine
+                  y={displayedPriceHistory.length > 0 ? (displayedPriceHistory[displayedPriceHistory.length - 1]?.avgVolume20 || 1) * 0.5 : undefined}
+                  stroke="#0284c7"
+                  strokeDasharray="3 3"
+                  strokeWidth={1}
+                  label={{
+                    value: '50% VDU Limit',
+                    position: 'insideTopLeft',
+                    fill: '#0284c7',
+                    fontSize: 9,
+                    fontWeight: 'bold'
+                  }}
+                />
+              )}
 
               {/* 20D Avg Volume Line */}
               <Line
@@ -2501,24 +3014,45 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
                 stroke="#b5a68d"
                 strokeWidth={1.5}
                 dot={false}
+                name="20D Avg Volume"
               />
 
-              {/* Volume Bars */}
+              {/* Volume Bars with Heatmap Color Styling */}
               <Bar dataKey="volume">
-                {stock.priceHistory.map((entry, index) => {
+                {displayedPriceHistory.map((entry, index) => {
+                  const heatmapPoint = volumeHeatmapMap[entry.date];
                   const isUpDay = entry.close >= entry.open;
                   const isTight = entry.isTightVolume || entry.volume < entry.avgVolume20 * 0.5;
                   const isPp = showPocketPivots && pocketPivotDatesSet.has(entry.date);
+                  const isHovered = hoveredHeatmapDate === entry.date;
 
-                  let color = isUpDay ? '#16a34a' : '#dc2626';
-                  if (isTight) {
-                    color = '#1a1a1a'; // Deep Black for tight volume dry-up!
-                  }
-                  if (isPp) {
-                    color = '#9333ea'; // Vibrant Purple for Pocket Pivot Volume Spike!
+                  let cellColor = isUpDay ? '#16a34a' : '#dc2626';
+                  let cellOpacity = 0.65;
+
+                  if (showVolumeHeatmap && heatmapPoint) {
+                    cellColor = heatmapPoint.color;
+                    cellOpacity = heatmapPoint.tier === 'NEUTRAL' ? 0.6 : 1;
+                    if (isHovered) cellOpacity = 1;
+                  } else {
+                    if (isTight) {
+                      cellColor = '#1a1a1a'; // Deep Black for tight volume dry-up!
+                      cellOpacity = 1;
+                    }
+                    if (isPp) {
+                      cellColor = '#9333ea'; // Vibrant Purple for Pocket Pivot Volume Spike!
+                      cellOpacity = 1;
+                    }
                   }
 
-                  return <Cell key={`cell-${index}`} fill={color} opacity={isPp ? 1 : isTight ? 1 : 0.65} />;
+                  return (
+                    <Cell
+                      key={`cell-${entry.date}-${index}`}
+                      fill={cellColor}
+                      opacity={cellOpacity}
+                      stroke={isHovered ? '#000000' : undefined}
+                      strokeWidth={isHovered ? 1.5 : 0}
+                    />
+                  );
                 })}
               </Bar>
             </ComposedChart>
@@ -3201,31 +3735,83 @@ const CustomChartTooltip = ({ active, payload, currencySymbol, stock, vcpNodes, 
   return null;
 };
 
-// Custom Tooltip for Volume - Editorial
-const VolumeTooltip = ({ active, payload, showPocketPivots, pocketPivotDatesSet }: any) => {
+// Custom Tooltip for Volume - Editorial & Heatmap Enhanced
+const VolumeTooltip = ({ active, payload, showPocketPivots, pocketPivotDatesSet, showVolumeHeatmap, heatmapMap }: any) => {
   if (active && payload && payload.length) {
     const data: PricePoint = payload[0].payload;
     const diffPct = (((data.volume - data.avgVolume20) / data.avgVolume20) * 100).toFixed(1);
     const isDryUp = Number(diffPct) < -40;
     const isPp = showPocketPivots && pocketPivotDatesSet?.has(data.date);
+    const heatmapPoint: VolumeHeatmapPoint | undefined = heatmapMap?.[data.date];
+    const isUpDay = data.close >= data.open;
 
     return (
-      <div className="bg-[#1a1a1a] text-white p-2.5 text-[11px] font-mono space-y-1 border border-black shadow-xl min-w-[190px]">
+      <div className="bg-[#1a1a1a] text-white p-3 text-xs font-mono space-y-2 border border-black shadow-2xl min-w-[240px]">
+        {/* Header with Date and Heatmap Status Badge */}
+        <div className="flex justify-between items-center border-b border-gray-800 pb-1.5">
+          <span className="font-bold text-gray-300">{data.date}</span>
+          {showVolumeHeatmap && heatmapPoint ? (
+            <span
+              className="px-1.5 py-0.5 text-[9px] font-extrabold uppercase rounded-2xs text-white"
+              style={{ backgroundColor: heatmapPoint.color }}
+            >
+              {heatmapPoint.badgeEmoji} {heatmapPoint.badgeLabel}
+            </span>
+          ) : (
+            <span className={`px-1.5 py-0.5 text-[9px] font-bold uppercase ${
+              isUpDay ? 'bg-emerald-800 text-emerald-100' : 'bg-rose-900 text-rose-100'
+            }`}>
+              {isUpDay ? 'Up Session' : 'Down Session'}
+            </span>
+          )}
+        </div>
+
+        {/* Pocket Pivot Spike Banner */}
         {isPp && (
-          <div className="text-purple-300 font-extrabold flex items-center space-x-1 text-[10px] uppercase border-b border-purple-900 pb-1">
+          <div className="text-purple-300 font-extrabold flex items-center space-x-1 text-[10px] uppercase bg-purple-950/80 border border-purple-800 px-2 py-0.5 rounded-2xs">
             <Sparkles className="w-3 h-3 text-purple-400" />
             <span>Pocket Pivot Volume Spike</span>
           </div>
         )}
-        <div>
-          Volume: <strong className={isPp ? "text-purple-300 font-bold" : "text-white"}>{formatVolume(data.volume)}</strong>
+
+        {/* Volume Quantitative Metrics */}
+        <div className="space-y-1 text-[11px]">
+          <div className="flex justify-between items-center">
+            <span className="text-gray-400">Volume:</span>
+            <strong className={isPp ? "text-purple-300 font-bold" : "text-white"}>{formatVolume(data.volume)}</strong>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-gray-400">20D Avg Vol:</span>
+            <span className="text-gray-300">{formatVolume(data.avgVolume20)}</span>
+          </div>
+          <div className="flex justify-between items-center border-t border-gray-800/80 pt-1">
+            <span className="text-gray-400">Vs 20D Average:</span>
+            <strong className={`font-black ${
+              Number(diffPct) > 100
+                ? 'text-purple-400'
+                : Number(diffPct) > 30
+                ? 'text-emerald-400'
+                : Number(diffPct) < -50
+                ? 'text-sky-400'
+                : 'text-amber-300'
+            }`}>
+              {Number(diffPct) >= 0 ? '+' : ''}{diffPct}% ({((data.volume / (data.avgVolume20 || 1))).toFixed(2)}x)
+            </strong>
+          </div>
         </div>
-        <div>
-          20D Avg: <span className="text-gray-400">{formatVolume(data.avgVolume20)}</span>
+
+        {/* Price Action Context */}
+        <div className="text-[10px] text-gray-400 border-t border-gray-800 pt-1 flex justify-between">
+          <span>Close: <strong className="text-white">${data.close.toFixed(2)}</strong></span>
+          <span>Spread: <strong className={isUpDay ? 'text-emerald-400' : 'text-rose-400'}>{isUpDay ? '+' : ''}{((data.close - data.open) / (data.open || 1) * 100).toFixed(2)}%</strong></span>
         </div>
-        <div className={isPp ? 'text-purple-400 font-bold' : isDryUp ? 'text-[#b5a68d] font-bold' : 'text-gray-400'}>
-          Vs Avg: {diffPct}% {isPp ? '(Pocket Pivot Volume)' : isDryUp ? '(Dry-Up)' : ''}
-        </div>
+
+        {/* SEPA Footprint Commentary */}
+        {showVolumeHeatmap && heatmapPoint && (
+          <div className="text-[10px] text-gray-300 font-sans italic pt-1 border-t border-gray-800 leading-tight">
+            {heatmapPoint.description}
+          </div>
+        )}
       </div>
     );
   }
