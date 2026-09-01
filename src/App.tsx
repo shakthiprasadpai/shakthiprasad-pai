@@ -31,6 +31,7 @@ import { HermesAgent } from './components/HermesAgent';
 import { WatchlistManager } from './components/WatchlistManager';
 import { DailyReview } from './components/DailyReview';
 import { SectorCorrelationLeadershipCard } from './components/SectorCorrelationLeadershipCard';
+import { PositionRiskCalculator } from './components/PositionRiskCalculator';
 import { MOCK_STOCKS } from './data/mockStocks';
 import { MinerviniTradeSetup } from './types';
 import { formatCurrency, formatVolume, getCurrencySymbol, calculateBreakoutProbability } from './utils/sepaCalculator';
@@ -432,6 +433,16 @@ export default function App() {
               transition={{ duration: 0.25, ease: 'easeInOut' }}
               className="space-y-8"
             >
+              <PositionRiskCalculator
+                stock={selectedStock}
+                allStocks={stocksList}
+                onSelectStock={(stock) => setSelectedStock(stock)}
+                onViewChart={(stock) => {
+                  setSelectedStock(stock);
+                  setActiveTab('chart');
+                }}
+                onNavigateToJournal={() => setActiveTab('journal')}
+              />
               <TradePlanCard
                 stock={selectedStock}
                 onNavigateToJournal={() => setActiveTab('journal')}

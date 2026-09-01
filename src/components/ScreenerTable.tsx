@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { MinerviniTradeSetup } from '../types';
 import { formatCurrency, calculateTrendStrengthMeter, getCurrencySymbol, calculateTrendReadinessScore, calculateDailyPivotPoints, calculateDailyVolatilityMetrics } from '../utils/sepaCalculator';
 import { exportTradePlansToCsv } from '../utils/csvExport';
@@ -6,6 +7,7 @@ import { SectorStrengthView } from './SectorStrengthView';
 import { SectorPerformanceWidget } from './SectorPerformanceWidget';
 import { RefinedSepaScreenerModal } from './RefinedSepaScreenerModal';
 import { RiskAdjustedTableView } from './RiskAdjustedTableView';
+import { PositionRiskCalculator } from './PositionRiskCalculator';
 import { evaluateRefinedSepaScreener } from '../utils/refinedSepaScreener';
 import {
   Search,
@@ -35,7 +37,10 @@ import {
   Plus,
   Info,
   ShieldCheck,
-  FileText
+  FileText,
+  Copy,
+  Check,
+  Calculator
 } from 'lucide-react';
 
 interface ScreenerTableProps {
@@ -228,6 +233,26 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
   const [sortCriteria, setSortCriteria] = useState<SortCriterion[]>([...DEFAULT_MULTI_SORT]);
   const [isMultiSortMode, setIsMultiSortMode] = useState<boolean>(true);
   const [isRefinedModalOpen, setIsRefinedModalOpen] = useState<boolean>(false);
+  const [copiedTicker, setCopiedTicker] = useState<string | null>(null);
+  const [exportToast, setExportToast] = useState<string | null>(null);
+  const [riskCalcModalStock, setRiskCalcModalStock] = useState<MinerviniTradeSetup | null>(null);
+
+  const handleCopyTicker = (ticker: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    navigator.clipboard.writeText(ticker);
+    setCopiedTicker(ticker);
+    setTimeout(() => {
+      setCopiedTicker(null);
+    }, 2000);
+  };
+
+  const handleExportCsvWithFeedback = (stocksToExport: MinerviniTradeSetup[]) => {
+    exportTradePlansToCsv(stocksToExport);
+    setExportToast(`Exported ${stocksToExport.length} candidates to SEPA CSV file!`);
+    setTimeout(() => {
+      setExportToast(null);
+    }, 3500);
+  };
 
   // Helper to compare two stocks by a specific SortCriterion
   const compareByCriterion = (a: MinerviniTradeSetup, b: MinerviniTradeSetup, criterion: SortCriterion): number => {
@@ -504,7 +529,7 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
             </button>
 
             <button
-              onClick={() => exportTradePlansToCsv(filteredStocks)}
+              onClick={() => handleExportCsvWithFeedback(filteredStocks)}
               className="bg-[#1a1a1a] hover:bg-black text-white px-3 py-1.5 text-xs font-bold uppercase tracking-wider flex items-center space-x-1.5 border border-black shadow-xs transition-all cursor-pointer group"
               title="Export currently filtered trade plans to CSV for spreadsheet analysis"
             >
@@ -513,6 +538,24 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
             </button>
           </div>
         </div>
+
+        {/* CSV Export Success Feedback Toast */}
+        <AnimatePresence>
+          {exportToast && (
+            <motion.div
+              initial={{ opacity: 0, y: -8, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -8, scale: 0.98 }}
+              className="bg-emerald-950 text-emerald-200 border border-emerald-500/70 p-3 rounded-none shadow-md flex items-center justify-between text-xs font-mono"
+            >
+              <div className="flex items-center space-x-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span className="font-bold">{exportToast}</span>
+              </div>
+              <span className="text-[10px] text-emerald-300 uppercase tracking-wider">Downloaded</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Multi-Column Ranking Active Chain Control Panel */}
         <div className="bg-[#10141d] text-white p-3.5 border border-black space-y-3 shadow-xs font-mono">
@@ -776,15 +819,20 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
                   </td>
                 </tr>
               ) : (
-                filteredStocks.map((stock) => {
+                filteredStocks.map((stock, rowIdx) => {
                   const currency = getCurrencySymbol(stock.exchange);
                   const isSelected = stock.ticker === selectedTicker;
                   const heatmap = calculateVcpHeatmap(stock);
                   const trendMeter = calculateTrendStrengthMeter(stock);
+                  const isCopied = copiedTicker === stock.ticker;
 
                   return (
-                    <tr
+                    <motion.tr
                       key={stock.ticker}
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.22, delay: Math.min(rowIdx * 0.02, 0.35) }}
+                      whileHover={{ scale: [null, 1.002] }}
                       onClick={() => onSelectStock(stock)}
                       className={`cursor-pointer transition-all ${
                         isSelected
@@ -794,12 +842,27 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
                           : 'hover:bg-gray-50/80'
                       }`}
                     >
-                      {/* Ticker & Exchange */}
+                      {/* Ticker & Exchange + Copy Button */}
                       <td className="py-3.5 px-2.5">
-                        <div className="flex items-center space-x-2">
+                        <div className="flex items-center space-x-1.5">
                           <span className="font-extrabold text-sm text-[#1a1a1a] font-mono">
                             {stock.ticker}
                           </span>
+                          
+                          {/* Quick Ticker Copy Button */}
+                          <button
+                            type="button"
+                            onClick={(e) => handleCopyTicker(stock.ticker, e)}
+                            className="p-1 rounded text-gray-400 hover:text-black hover:bg-gray-200/80 transition-colors cursor-pointer"
+                            title={isCopied ? `Copied ${stock.ticker}!` : `Copy ${stock.ticker} to clipboard`}
+                          >
+                            {isCopied ? (
+                              <Check className="w-3.5 h-3.5 text-emerald-600 font-bold animate-pulse" />
+                            ) : (
+                              <Copy className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+
                           <span className="text-[9px] px-1.5 py-0.5 uppercase tracking-wider bg-[#1a1a1a] text-white font-mono font-semibold">
                             {stock.exchange}
                           </span>
@@ -1025,19 +1088,35 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
 
                       {/* Action */}
                       <td className="py-3.5 px-2.5 text-right">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onViewChart(stock);
-                          }}
-                          className="bg-[#1a1a1a] hover:bg-black text-white font-bold px-3 py-1.5 text-xs uppercase tracking-wider transition-all flex items-center space-x-1 ml-auto border border-black"
-                        >
-                          <span>Scan VCP</span>
-                          <ChevronRight className="w-3.5 h-3.5" />
-                        </button>
+                        <div className="flex items-center justify-end space-x-1.5">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setRiskCalcModalStock(stock);
+                            }}
+                            className="bg-amber-50 hover:bg-amber-100 text-amber-900 font-bold px-2.5 py-1.5 text-xs uppercase tracking-wider transition-all flex items-center space-x-1 border border-amber-300 shadow-2xs cursor-pointer"
+                            title={`Open Position Risk Calculator for ${stock.ticker}`}
+                          >
+                            <Calculator className="w-3.5 h-3.5 text-amber-700" />
+                            <span className="hidden xl:inline">Risk</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onViewChart(stock);
+                            }}
+                            className="bg-[#1a1a1a] hover:bg-black text-white font-bold px-3 py-1.5 text-xs uppercase tracking-wider transition-all flex items-center space-x-1 border border-black shadow-2xs cursor-pointer"
+                          >
+                            <span>Scan VCP</span>
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </td>
 
-                    </tr>
+                    </motion.tr>
                   );
                 })
               )}
@@ -1052,14 +1131,18 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
               No candidates match the heatmap filters.
             </div>
           ) : (
-            filteredStocks.map((stock) => {
+            filteredStocks.map((stock, cardIdx) => {
               const currency = getCurrencySymbol(stock.exchange);
               const isSelected = stock.ticker === selectedTicker;
               const heatmap = calculateVcpHeatmap(stock);
+              const isCopied = copiedTicker === stock.ticker;
 
               return (
-                <div
+                <motion.div
                   key={stock.ticker}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.22, delay: Math.min(cardIdx * 0.02, 0.3) }}
                   onClick={() => onSelectStock(stock)}
                   className={`border p-5 cursor-pointer transition-all space-y-4 relative ${
                     isSelected
@@ -1069,10 +1152,25 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
                 >
                   {/* Top Badge Banner */}
                   <div className="flex items-center justify-between border-b border-[#e5e4e1] pb-2.5">
-                    <div className="flex items-center space-x-2">
+                    <div className="flex items-center space-x-1.5">
                       <span className="font-mono font-extrabold text-base text-[#1a1a1a]">
                         {stock.ticker}
                       </span>
+
+                      {/* Quick Ticker Copy Button */}
+                      <button
+                        type="button"
+                        onClick={(e) => handleCopyTicker(stock.ticker, e)}
+                        className="p-1 rounded text-gray-400 hover:text-black hover:bg-gray-200/80 transition-colors cursor-pointer"
+                        title={isCopied ? `Copied ${stock.ticker}!` : `Copy ${stock.ticker} to clipboard`}
+                      >
+                        {isCopied ? (
+                          <Check className="w-3.5 h-3.5 text-emerald-600 font-bold animate-pulse" />
+                        ) : (
+                          <Copy className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+
                       <span className="text-[9px] px-1.5 py-0.5 uppercase tracking-wider bg-[#1a1a1a] text-white font-mono font-bold">
                         {stock.exchange}
                       </span>
@@ -1192,19 +1290,35 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
                     </div>
                   </div>
 
-                  {/* Action Button */}
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onViewChart(stock);
-                    }}
-                    className="w-full bg-[#1a1a1a] hover:bg-black text-white font-bold py-2 text-xs uppercase tracking-widest flex items-center justify-center space-x-1 border border-black transition-all"
-                  >
-                    <span>Scan VCP Chart</span>
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </button>
+                  {/* Action Buttons */}
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setRiskCalcModalStock(stock);
+                      }}
+                      className="bg-amber-50 hover:bg-amber-100 text-amber-950 font-bold py-2 text-xs uppercase tracking-wider flex items-center justify-center space-x-1 border border-amber-300 transition-all cursor-pointer shadow-2xs"
+                      title={`Open Risk Calculator for ${stock.ticker}`}
+                    >
+                      <Calculator className="w-3.5 h-3.5 text-amber-700" />
+                      <span>Risk Calc</span>
+                    </button>
 
-                </div>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onViewChart(stock);
+                      }}
+                      className="bg-[#1a1a1a] hover:bg-black text-white font-bold py-2 text-xs uppercase tracking-widest flex items-center justify-center space-x-1 border border-black transition-all cursor-pointer shadow-2xs"
+                    >
+                      <span>Scan VCP</span>
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                </motion.div>
               );
             })
           )}
@@ -1221,6 +1335,39 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
         stocks={stocks}
         onSelectStock={onSelectStock}
       />
+
+      {/* Standalone Interactive Position Risk Calculator Modal */}
+      <AnimatePresence>
+        {riskCalcModalStock && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs overflow-y-auto">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              className="bg-white border-2 border-black max-w-5xl w-full my-8 max-h-[92vh] overflow-y-auto shadow-2xl relative"
+            >
+              <button
+                type="button"
+                onClick={() => setRiskCalcModalStock(null)}
+                className="absolute top-4 right-4 z-10 p-2 bg-gray-900 hover:bg-black text-white rounded-full transition-colors cursor-pointer"
+                title="Close Risk Calculator"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <PositionRiskCalculator
+                stock={riskCalcModalStock}
+                allStocks={stocks}
+                onSelectStock={(s) => setRiskCalcModalStock(s)}
+                onViewChart={(s) => {
+                  setRiskCalcModalStock(null);
+                  onViewChart(s);
+                }}
+              />
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </>
   );
 };

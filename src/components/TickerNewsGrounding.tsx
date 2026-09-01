@@ -70,6 +70,7 @@ import {
 import { NewsSentimentD3Chart } from './NewsSentimentD3Chart';
 import { exportNewsSentimentToPdf } from '../utils/exportNewsPdf';
 import { SentimentResearchPanel } from './SentimentResearchPanel';
+import { NewsWordCloud } from './NewsWordCloud';
 
 interface TickerNewsGroundingProps {
   stock: MinerviniTradeSetup;
@@ -2651,6 +2652,22 @@ export const TickerNewsGrounding: React.FC<TickerNewsGroundingProps> = ({ stock 
               </div>
             </div>
           )}
+
+          {/* ========================================================================= */}
+          {/* FEATURE: Grounded Headline Word Cloud & Recurring Corporate Themes */}
+          {/* ========================================================================= */}
+          <NewsWordCloud
+            headlines={newsData.headlines}
+            selectedKeyword={searchQuery}
+            ticker={stock.ticker}
+            onSelectKeyword={(kw) => {
+              setSearchQuery(kw);
+              if (kw) {
+                const el = document.getElementById('headlines-grid-container');
+                if (el) el.scrollIntoView({ behavior: 'smooth' });
+              }
+            }}
+          />
 
           {/* ========================================================================= */}
           {/* FEATURE: D3 30-Day News Sentiment Moving Average vs Price Action Visualization */}
