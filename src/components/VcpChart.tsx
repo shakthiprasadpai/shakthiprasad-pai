@@ -10,6 +10,10 @@ import { VolatilityTrendChart } from './VolatilityTrendChart';
 import { VolatilityContractionRatioSubchart } from './VolatilityContractionRatioSubchart';
 import { VolumeProfileSidebar } from './VolumeProfileSidebar';
 import { calculateVolumeProfile } from '../utils/volumeProfileCalculator';
+import { RsiSubchart } from './RsiSubchart';
+import { PivotPointLevelsCard } from './PivotPointLevelsCard';
+import { TechnicalIndicatorsChart } from './TechnicalIndicatorsChart';
+import { calculateEmaSeries, calculatePivotPoints, PivotPointModel } from '../utils/technicalIndicatorsCalculator';
 import { toPng } from 'html-to-image';
 import {
   ComposedChart,
@@ -68,7 +72,9 @@ import {
   Share2,
   Image as ImageIcon,
   Flame,
-  Thermometer
+  Thermometer,
+  Gauge,
+  Compass
 } from 'lucide-react';
 
 interface VcpChartProps {
@@ -352,10 +358,15 @@ export function calculateVolumeOscillatorData(
 }
 
 export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
-  const [chartSubTab, setChartSubTab] = useState<'vcp_candlestick' | 'volatility_trend' | 'volatility_contraction' | 'risk_reward'>('vcp_candlestick');
+  const [chartSubTab, setChartSubTab] = useState<'vcp_candlestick' | 'technical_pro' | 'volatility_trend' | 'volatility_contraction' | 'risk_reward'>('vcp_candlestick');
+  const [showEma10, setShowEma10] = useState(true);
+  const [showEma21, setShowEma21] = useState(true);
   const [showSma50, setShowSma50] = useState(true);
   const [showSma150, setShowSma150] = useState(true);
   const [showSma200, setShowSma200] = useState(true);
+  const [showRsiSubchart, setShowRsiSubchart] = useState(true);
+  const [showPivotPoints, setShowPivotPoints] = useState(false);
+  const [selectedPivotModel, setSelectedPivotModel] = useState<PivotPointModel>('STANDARD');
   const [showLevels, setShowLevels] = useState(true);
   const [showContractionStages, setShowContractionStages] = useState(true);
   const [showVolatilityOverlay, setShowVolatilityOverlay] = useState(true);
@@ -895,13 +906,56 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
     return full.slice(start, start + windowSize);
   }, [stock.priceHistory, zoomMode, panIndex]);
 
+  // Compute 10 EMA and 21 EMA across full price history
+  const fullCloses = useMemo(() => (stock.priceHistory || []).map((p) => p.close), [stock.priceHistory]);
+  const fullEma10 = useMemo(() => calculateEmaSeries(fullCloses, 10), [fullCloses]);
+  const fullEma21 = useMemo(() => calculateEmaSeries(fullCloses, 21), [fullCloses]);
+
+  const ema10Map = useMemo(() => {
+    const map: Record<string, number> = {};
+    (stock.priceHistory || []).forEach((p, idx) => {
+      map[p.date] = fullEma10[idx];
+    });
+    return map;
+  }, [stock.priceHistory, fullEma10]);
+
+  const ema21Map = useMemo(() => {
+    const map: Record<string, number> = {};
+    (stock.priceHistory || []).forEach((p, idx) => {
+      map[p.date] = fullEma21[idx];
+    });
+    return map;
+  }, [stock.priceHistory, fullEma21]);
+
+  // Pivot Points Calculation for current stock
+  const calculatedPivots = useMemo(() => {
+    const history = stock.priceHistory || [];
+    const currentPrice = stock.currentPrice || (history.length > 0 ? history[history.length - 1].close : stock.pivotPrice);
+    let pHigh = stock.high52w || currentPrice * 1.08;
+    let pLow = stock.low52w || currentPrice * 0.92;
+    let pClose = currentPrice;
+
+    if (history.length >= 5) {
+      const recentSlice = history.slice(Math.max(0, history.length - 20));
+      pHigh = Math.max(...recentSlice.map(p => p.high));
+      pLow = Math.min(...recentSlice.map(p => p.low));
+      pClose = recentSlice[recentSlice.length - 1].close;
+    }
+
+    return calculatePivotPoints(pHigh, pLow, pClose, currentPrice, selectedPivotModel);
+  }, [stock, selectedPivotModel]);
+
   // Merge Custom Trendlines into displayedPriceHistory for Recharts rendering
   const chartDataWithTrendlines = useMemo(() => {
     const history = displayedPriceHistory || [];
     if (history.length === 0) return [];
 
     return history.map((point, idx) => {
-      const pointData: any = { ...point };
+      const pointData: any = {
+        ...point,
+        ema10: ema10Map[point.date] ?? point.close,
+        ema21: ema21Map[point.date] ?? point.close,
+      };
 
       customTrendlines.forEach((line) => {
         if (line.startDate && line.endDate) {
@@ -1285,10 +1339,34 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
           </button>
 
           <button
+            onClick={() => setShowEma10(!showEma10)}
+            className={`px-3 py-1 border text-xs font-semibold uppercase tracking-wider font-mono transition-all cursor-pointer ${
+              showEma10
+                ? 'bg-[#ec4899] text-white border-[#db2777] shadow-xs'
+                : 'bg-[#f9f8f5] text-gray-400 border-[#e5e4e1] line-through'
+            }`}
+            title="Toggle 10-day Exponential Moving Average (Institutional Pullback Line)"
+          >
+            <span>10 EMA</span>
+          </button>
+
+          <button
+            onClick={() => setShowEma21(!showEma21)}
+            className={`px-3 py-1 border text-xs font-semibold uppercase tracking-wider font-mono transition-all cursor-pointer ${
+              showEma21
+                ? 'bg-[#f59e0b] text-black border-[#d97706] font-bold shadow-xs'
+                : 'bg-[#f9f8f5] text-gray-400 border-[#e5e4e1] line-through'
+            }`}
+            title="Toggle 21-day Exponential Moving Average (Swing Trend Guideline)"
+          >
+            <span>21 EMA</span>
+          </button>
+
+          <button
             onClick={() => setShowSma50(!showSma50)}
             className={`px-3 py-1 border text-xs font-semibold uppercase tracking-wider font-mono transition-all ${
               showSma50
-                ? 'bg-[#1a1a1a] text-white border-black'
+                ? 'bg-[#2563eb] text-white border-[#1d4ed8]'
                 : 'bg-[#f9f8f5] text-gray-400 border-[#e5e4e1] line-through'
             }`}
           >
@@ -1299,7 +1377,7 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
             onClick={() => setShowSma150(!showSma150)}
             className={`px-3 py-1 border text-xs font-semibold uppercase tracking-wider font-mono transition-all ${
               showSma150
-                ? 'bg-[#1a1a1a] text-white border-black'
+                ? 'bg-[#d97706] text-white border-[#b45309]'
                 : 'bg-[#f9f8f5] text-gray-400 border-[#e5e4e1] line-through'
             }`}
           >
@@ -1310,11 +1388,37 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
             onClick={() => setShowSma200(!showSma200)}
             className={`px-3 py-1 border text-xs font-semibold uppercase tracking-wider font-mono transition-all ${
               showSma200
-                ? 'bg-[#1a1a1a] text-white border-black'
+                ? 'bg-[#7c3aed] text-white border-[#6d28d9]'
                 : 'bg-[#f9f8f5] text-gray-400 border-[#e5e4e1] line-through'
             }`}
           >
             <span>200 SMA</span>
+          </button>
+
+          <button
+            onClick={() => setShowPivotPoints(!showPivotPoints)}
+            className={`px-3 py-1 border text-xs font-semibold uppercase tracking-wider font-mono transition-all flex items-center space-x-1 cursor-pointer ${
+              showPivotPoints
+                ? 'bg-purple-700 text-white border-purple-800 shadow-xs'
+                : 'bg-[#f9f8f5] text-gray-400 border-[#e5e4e1]'
+            }`}
+            title="Toggle Floor / Fibonacci / Camarilla Pivot Points Overlay (P, R1, R2, S1, S2)"
+          >
+            <Compass className="w-3.5 h-3.5 text-purple-200" />
+            <span>Pivots {showPivotPoints ? 'ON' : 'OFF'}</span>
+          </button>
+
+          <button
+            onClick={() => setShowRsiSubchart(!showRsiSubchart)}
+            className={`px-3 py-1 border text-xs font-semibold uppercase tracking-wider font-mono transition-all flex items-center space-x-1 cursor-pointer ${
+              showRsiSubchart
+                ? 'bg-amber-600 text-white border-amber-700 shadow-xs'
+                : 'bg-[#f9f8f5] text-gray-400 border-[#e5e4e1]'
+            }`}
+            title="Toggle RSI(14) Subchart with 50-70 SEPA Momentum Sweet Spot"
+          >
+            <Gauge className="w-3.5 h-3.5 text-amber-200" />
+            <span>RSI (14) {showRsiSubchart ? 'ON' : 'OFF'}</span>
           </button>
 
           <button
@@ -1496,6 +1600,18 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
           </button>
 
           <button
+            onClick={() => setChartSubTab('technical_pro')}
+            className={`px-3.5 py-1.5 font-bold uppercase tracking-wider flex items-center space-x-1.5 transition cursor-pointer ${
+              chartSubTab === 'technical_pro'
+                ? 'bg-[#1a1a1a] text-amber-300 shadow-xs'
+                : 'bg-white text-gray-700 hover:bg-gray-100 border border-[#e5e4e1]'
+            }`}
+          >
+            <Compass className="w-3.5 h-3.5 text-purple-400" />
+            <span>Pro Technical (RSI, MAs &amp; Pivots)</span>
+          </button>
+
+          <button
             onClick={() => setChartSubTab('volatility_contraction')}
             className={`px-3.5 py-1.5 font-bold uppercase tracking-wider flex items-center space-x-1.5 transition cursor-pointer ${
               chartSubTab === 'volatility_contraction'
@@ -1533,7 +1649,8 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
         </div>
 
         <div className="text-[11px] text-gray-500 font-sans italic px-2">
-          {chartSubTab === 'vcp_candlestick' && 'Price, SMAs & Volume Oscillator'}
+          {chartSubTab === 'vcp_candlestick' && 'Price, SMAs, EMAs & Volume'}
+          {chartSubTab === 'technical_pro' && 'Multi-Indicator Workspace (RSI, 10/21 EMA, SMAs, Standard/Fib/Camarilla Pivots)'}
           {chartSubTab === 'volatility_contraction' && 'Rolling Swing Amplitude vs Base Anchor Ratio'}
           {chartSubTab === 'volatility_trend' && 'ATR 14-day Volatility Squeeze Index'}
           {chartSubTab === 'risk_reward' && 'Scale-Out Targets (T1, T2, T3) Visualizer'}
@@ -1541,6 +1658,9 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
       </div>
 
       {/* Render Selected View */}
+      {chartSubTab === 'technical_pro' && (
+        <TechnicalIndicatorsChart stock={stock} />
+      )}
       {chartSubTab === 'volatility_contraction' && (
         <div className="space-y-6">
           <VolatilityContractionRatioSubchart stock={stock} />
@@ -2258,7 +2378,27 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
               activeDot={{ r: 6, fill: '#1a1a1a' }}
             />
 
-            {/* SMAs */}
+            {/* SMAs & EMAs */}
+            {showEma10 && (
+              <Line
+                type="monotone"
+                dataKey="ema10"
+                name="10 EMA"
+                stroke="#ec4899"
+                strokeWidth={2}
+                dot={false}
+              />
+            )}
+            {showEma21 && (
+              <Line
+                type="monotone"
+                dataKey="ema21"
+                name="21 EMA"
+                stroke="#f59e0b"
+                strokeWidth={2}
+                dot={false}
+              />
+            )}
             {showSma50 && (
               <Line
                 type="monotone"
@@ -2289,6 +2429,73 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
                 strokeWidth={1.5}
                 dot={false}
               />
+            )}
+
+            {/* Pivot Point Reference Lines */}
+            {showPivotPoints && calculatedPivots && (
+              <>
+                <ReferenceLine
+                  y={calculatedPivots.pivot}
+                  stroke="#3b82f6"
+                  strokeWidth={1.5}
+                  strokeDasharray="4 3"
+                  label={{
+                    value: `P: ${currencySymbol}${calculatedPivots.pivot.toFixed(2)}`,
+                    fill: '#3b82f6',
+                    fontSize: 9,
+                    position: 'insideRight',
+                    fontWeight: 'bold'
+                  }}
+                />
+                <ReferenceLine
+                  y={calculatedPivots.r1}
+                  stroke="#f97316"
+                  strokeDasharray="2 2"
+                  strokeWidth={1}
+                  label={{
+                    value: `R1: ${currencySymbol}${calculatedPivots.r1.toFixed(2)}`,
+                    fill: '#f97316',
+                    fontSize: 9,
+                    position: 'insideRight'
+                  }}
+                />
+                <ReferenceLine
+                  y={calculatedPivots.r2}
+                  stroke="#ef4444"
+                  strokeDasharray="2 2"
+                  strokeWidth={1}
+                  label={{
+                    value: `R2: ${currencySymbol}${calculatedPivots.r2.toFixed(2)}`,
+                    fill: '#ef4444',
+                    fontSize: 9,
+                    position: 'insideRight'
+                  }}
+                />
+                <ReferenceLine
+                  y={calculatedPivots.s1}
+                  stroke="#10b981"
+                  strokeDasharray="2 2"
+                  strokeWidth={1}
+                  label={{
+                    value: `S1: ${currencySymbol}${calculatedPivots.s1.toFixed(2)}`,
+                    fill: '#10b981',
+                    fontSize: 9,
+                    position: 'insideRight'
+                  }}
+                />
+                <ReferenceLine
+                  y={calculatedPivots.s2}
+                  stroke="#059669"
+                  strokeDasharray="2 2"
+                  strokeWidth={1}
+                  label={{
+                    value: `S2: ${currencySymbol}${calculatedPivots.s2.toFixed(2)}`,
+                    fill: '#059669',
+                    fontSize: 9,
+                    position: 'insideRight'
+                  }}
+                />
+              </>
             )}
 
             {/* Trade Plan Overlay Lines */}
@@ -3290,6 +3497,28 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
         <VolatilityContractionRatioSubchart stock={stock} />
       )}
 
+      {/* Synchronized RSI (14) Indicator Subchart */}
+      {showRsiSubchart && (
+        <div className="pt-2">
+          <RsiSubchart
+            history={displayedPriceHistory}
+            initialPeriod={14}
+            height={130}
+          />
+        </div>
+      )}
+
+      {/* Optional Pivot Points Levels Grid */}
+      {showPivotPoints && (
+        <div className="pt-2">
+          <PivotPointLevelsCard
+            stock={stock}
+            selectedModel={selectedPivotModel}
+            onModelChange={(m) => setSelectedPivotModel(m)}
+          />
+        </div>
+      )}
+
       {/* Historical Pivot Buy Points & Stop Loss Level Audit Matrix */}
       <div className="bg-[#f9f8f5] border border-[#e5e4e1] p-4 sm:p-5 space-y-4 font-mono">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e5e4e1] pb-3">
@@ -3685,6 +3914,8 @@ const CustomChartTooltip = ({ active, payload, currencySymbol, stock, vcpNodes, 
 
         {/* Moving Averages */}
         <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 pt-1 border-t border-gray-800 text-[10px]">
+          {(data as any).ema10 && <span className="text-pink-400">10 EMA: {currencySymbol}{(data as any).ema10}</span>}
+          {(data as any).ema21 && <span className="text-amber-400 text-right">21 EMA: {currencySymbol}{(data as any).ema21}</span>}
           <span className="text-blue-300">50 SMA: {currencySymbol}{data.sma50}</span>
           <span className="text-amber-300 text-right">150 SMA: {currencySymbol}{data.sma150}</span>
           <span className="text-purple-300">200 SMA: {currencySymbol}{data.sma200}</span>
