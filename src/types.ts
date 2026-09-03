@@ -200,7 +200,9 @@ export interface PriceAlert {
     | 'VOLUME_SPIKE'
     | 'HIGH_CONVICTION_BREAKOUT'
     | 'SMART_MONEY_DIVERGENCE'
-    | 'STAGE_2_DAILY_SCAN';
+    | 'STAGE_2_DAILY_SCAN'
+    | 'RSI_BULLISH_DIVERGENCE'
+    | 'RSI_BEARISH_DIVERGENCE';
   targetPrice: number;
   triggerProximityPercent: number; // e.g. within 1.5% of target
   currentPrice: number;
@@ -284,6 +286,52 @@ export interface SmartMoneyDivergenceAlertPayload {
   institutionalPhase: 'ACCUMULATION' | 'DISTRIBUTION' | 'ABSORPTION' | 'NEUTRAL';
   triggeredAt: string;
   topHeadlines?: { title: string; sentiment: string; impactScore?: number; date?: string }[];
+}
+
+export interface DetectedRsiDivergence {
+  id: string;
+  ticker: string;
+  type: 'BULLISH' | 'BEARISH';
+  kind: 'REGULAR_BULLISH' | 'REGULAR_BEARISH' | 'HIDDEN_BULLISH' | 'HIDDEN_BEARISH';
+  strength: 'STRONG' | 'MODERATE' | 'MILD';
+  convictionScore: number; // 1 to 10
+  startDate: string;
+  endDate: string;
+  startPrice: number;
+  endPrice: number;
+  startRsi: number;
+  endRsi: number;
+  rsiCurrent: number;
+  priceDiffPercent: number;
+  rsiDiff: number;
+  barsAgo: number;
+  isRecent: boolean; // detected in the last 15 bars
+  title: string;
+  description: string;
+  sepaPlaybook: string;
+}
+
+export interface RsiDivergenceAlertPayload {
+  ticker: string;
+  stockName: string;
+  exchange: 'NASDAQ' | 'NYSE' | 'NSE' | 'BSE' | string;
+  divergenceType: 'BULLISH' | 'BEARISH';
+  divergenceKind: 'REGULAR_BULLISH' | 'REGULAR_BEARISH' | 'HIDDEN_BULLISH' | 'HIDDEN_BEARISH';
+  strength: 'STRONG' | 'MODERATE' | 'MILD';
+  convictionScore: number; // 1 to 10
+  startDate: string;
+  endDate: string;
+  startPrice: number;
+  endPrice: number;
+  startRsi: number;
+  endRsi: number;
+  rsiCurrent: number;
+  priceDiffPercent: number;
+  rsiDiff: number;
+  title: string;
+  description: string;
+  sepaPlaybook: string;
+  triggeredAt: string;
 }
 
 export interface MajorNewsEventPayload {

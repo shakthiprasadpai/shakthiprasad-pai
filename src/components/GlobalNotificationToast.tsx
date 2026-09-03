@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { PriceAlert, MinerviniTradeSetup, PortfolioHolding, MajorNewsEventPayload, SmartMoneyDivergenceAlertPayload } from '../types';
+import { PriceAlert, MinerviniTradeSetup, PortfolioHolding, MajorNewsEventPayload, SmartMoneyDivergenceAlertPayload, RsiDivergenceAlertPayload } from '../types';
 import {
   getStoredAlerts,
   saveStoredAlerts,
@@ -15,6 +15,10 @@ import {
 import {
   simulateSmartMoneyDivergenceAlert,
 } from '../utils/sentimentDivergenceService';
+import {
+  simulateRsiDivergence,
+  dispatchRsiDivergenceNotification,
+} from '../utils/technicalIndicatorsCalculator';
 import {
   DailyStage2ScanPayload,
   checkAndRunScheduledScan,
@@ -56,6 +60,8 @@ import {
   VolumeX,
   Volume1,
   Radio,
+  TrendingUp,
+  TrendingDown,
 } from 'lucide-react';
 
 interface GlobalNotificationToastProps {
@@ -82,7 +88,9 @@ export interface ActiveToastNotification {
     | 'VOLUME_SPIKE'
     | 'HIGH_CONVICTION_BREAKOUT'
     | 'SMART_MONEY_DIVERGENCE'
-    | 'STAGE_2_DAILY_SCAN';
+    | 'STAGE_2_DAILY_SCAN'
+    | 'RSI_BULLISH_DIVERGENCE'
+    | 'RSI_BEARISH_DIVERGENCE';
   triggeredAt: string;
   isPortfolioHolding?: boolean;
   portfolioHolding?: PortfolioHolding;
@@ -90,6 +98,7 @@ export interface ActiveToastNotification {
   volumeBreakoutPayload?: VolumeBreakoutAlertPayload;
   divergencePayload?: SmartMoneyDivergenceAlertPayload;
   stage2ScanPayload?: DailyStage2ScanPayload;
+  rsiDivergencePayload?: RsiDivergenceAlertPayload;
 }
 
 export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = ({
@@ -250,12 +259,43 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
       });
     };
 
+    const handleRsiDivergenceEvent = (e: Event) => {
+      const customEvt = e as CustomEvent<RsiDivergenceAlertPayload>;
+      const payload = customEvt.detail;
+      if (!payload) return;
+
+      const match = stocksRef.current.find((s) => s.ticker === payload.ticker);
+      const alertItem: PriceAlert = {
+        id: `rsi-div-${payload.ticker}-${Date.now()}`,
+        ticker: payload.ticker,
+        stockName: payload.stockName,
+        targetType: payload.divergenceType === 'BULLISH' ? 'RSI_BULLISH_DIVERGENCE' : 'RSI_BEARISH_DIVERGENCE',
+        targetPrice: payload.endPrice,
+        triggerProximityPercent: 0,
+        currentPrice: payload.endPrice,
+        status: 'TRIGGERED',
+        createdAt: new Date().toLocaleDateString(),
+        exchange: (payload.exchange as any) || (match?.exchange as any) || 'NASDAQ',
+        notes: payload.description,
+      };
+
+      setActiveToast({
+        alert: alertItem,
+        previousPrice: payload.startPrice,
+        currentPrice: payload.endPrice,
+        crossoverType: payload.divergenceType === 'BULLISH' ? 'RSI_BULLISH_DIVERGENCE' : 'RSI_BEARISH_DIVERGENCE',
+        triggeredAt: payload.triggeredAt || new Date().toLocaleTimeString(),
+        rsiDivergencePayload: payload,
+      });
+    };
+
     window.addEventListener('minervini_portfolio_updated', handleSync);
     window.addEventListener('minervini_alerts_updated', handleSync);
     window.addEventListener('minervini_major_news_detected', handleMajorNewsEvent);
     window.addEventListener('minervini_volume_breakout_alert', handleVolumeBreakoutEvent);
     window.addEventListener('minervini_sentiment_divergence_alert', handleDivergenceEvent);
     window.addEventListener('minervini_stage2_daily_scan_alert', handleStage2DailyScanEvent);
+    window.addEventListener('minervini_rsi_divergence_alert', handleRsiDivergenceEvent);
     window.addEventListener('minervini_audio_settings_updated', handleAudioSettingsUpdate);
     return () => {
       window.removeEventListener('minervini_portfolio_updated', handleSync);
@@ -264,6 +304,7 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
       window.removeEventListener('minervini_volume_breakout_alert', handleVolumeBreakoutEvent);
       window.removeEventListener('minervini_sentiment_divergence_alert', handleDivergenceEvent);
       window.removeEventListener('minervini_stage2_daily_scan_alert', handleStage2DailyScanEvent);
+      window.removeEventListener('minervini_rsi_divergence_alert', handleRsiDivergenceEvent);
       window.removeEventListener('minervini_audio_settings_updated', handleAudioSettingsUpdate);
     };
   }, []);
@@ -667,6 +708,21 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
     setActiveToast(null);
   };
 
+  // View RSI Subchart & Divergence handler
+  const handleViewRsiSubchart = () => {
+    if (!activeToast) return;
+    const match = stocks.find((s) => s.ticker === activeToast.alert.ticker);
+    if (match) onSelectStock(match);
+    onNavigateTab('chart');
+    setActiveToast(null);
+    setTimeout(() => {
+      const el = document.getElementById('rsi-subchart-container') || document.getElementById('rsi-divergence-radar-card');
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 200);
+  };
+
   // Re-arm triggered alert
   const handleRearmAlert = () => {
     if (!activeToast) return;
@@ -830,6 +886,30 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
               >
                 <Flame className="w-3 h-3 text-cyan-200" />
                 <span>Test Smart Money Accumulation Alert 💎</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  const stock = stocks[0];
+                  const div = simulateRsiDivergence(stock, 'BULLISH');
+                  dispatchRsiDivergenceNotification(stock, div);
+                }}
+                className="bg-emerald-600 hover:bg-emerald-500 text-white px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center space-x-1.5 shadow-sm transition-all cursor-pointer border border-emerald-400/40"
+              >
+                <TrendingUp className="w-3 h-3 text-emerald-200 animate-pulse" />
+                <span>Test RSI Bullish Divergence Alert ⚡</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  const stock = stocks[0];
+                  const div = simulateRsiDivergence(stock, 'BEARISH');
+                  dispatchRsiDivergenceNotification(stock, div);
+                }}
+                className="bg-rose-700 hover:bg-rose-600 text-white px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center space-x-1.5 shadow-sm transition-all cursor-pointer border border-rose-400/40"
+              >
+                <TrendingDown className="w-3 h-3 text-rose-200" />
+                <span>Test RSI Bearish Divergence Alert ⚠️</span>
               </button>
 
               <button
@@ -1181,6 +1261,183 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
             >
               <BarChart3 className="w-3.5 h-3.5" />
               <span>View Chart</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Render Specialized RSI Divergence (Bullish / Bearish) Alert Toast Card
+  const rsiDivergencePayload = activeToast.rsiDivergencePayload;
+  const isRsiDivergence =
+    (activeToast.crossoverType === 'RSI_BULLISH_DIVERGENCE' ||
+     activeToast.crossoverType === 'RSI_BEARISH_DIVERGENCE') &&
+    Boolean(rsiDivergencePayload);
+
+  if (isRsiDivergence && rsiDivergencePayload) {
+    const isBullish = rsiDivergencePayload.divergenceType === 'BULLISH';
+
+    return (
+      <div className="fixed top-5 right-5 z-50 max-w-xl w-full animate-slide-down shadow-2xl">
+        <div
+          className={`p-5 border-2 ${
+            isBullish
+              ? 'bg-[#091814] text-white border-emerald-400 shadow-emerald-500/30'
+              : 'bg-[#1f0b12] text-white border-rose-500 shadow-rose-500/30'
+          }`}
+        >
+          {/* Top Header */}
+          <div className="flex items-start justify-between border-b border-white/15 pb-2.5 mb-3">
+            <div className="flex items-center space-x-2.5">
+              <div
+                className={`w-8 h-8 flex items-center justify-center font-bold ${
+                  isBullish ? 'bg-emerald-400 text-slate-950 animate-pulse' : 'bg-rose-500 text-white animate-pulse'
+                }`}
+              >
+                {isBullish ? <TrendingUp className="w-5 h-5" /> : <TrendingDown className="w-5 h-5" />}
+              </div>
+
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className={`text-[10px] uppercase font-mono tracking-[0.2em] font-extrabold block ${
+                      isBullish ? 'text-emerald-300' : 'text-rose-300'
+                    }`}
+                  >
+                    {isBullish ? '⚡ RSI BULLISH DIVERGENCE IDENTIFIED' : '⚠️ RSI BEARISH DIVERGENCE IDENTIFIED'}
+                  </span>
+                  <span
+                    className={`text-[9px] font-black uppercase px-2 py-0.5 font-mono ${
+                      isBullish ? 'bg-emerald-400 text-slate-950' : 'bg-rose-500 text-white'
+                    }`}
+                  >
+                    {rsiDivergencePayload.divergenceKind.replace('_', ' ')}
+                  </span>
+                  <span className="bg-white/10 text-gray-200 border border-white/20 text-[9px] font-black uppercase px-1.5 py-0.5 font-mono">
+                    Conviction: {rsiDivergencePayload.convictionScore}/10 ({rsiDivergencePayload.strength})
+                  </span>
+                </div>
+
+                <h4 className="text-lg font-mono font-black text-white leading-tight mt-0.5">
+                  {rsiDivergencePayload.ticker} ({rsiDivergencePayload.exchange || 'NASDAQ'}) — {rsiDivergencePayload.stockName}
+                </h4>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setActiveToast(null)}
+              className="text-gray-400 hover:text-white p-1 transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Divergence Metrics Comparison Grid */}
+          <div className="bg-white/5 border border-white/10 p-3.5 mb-3 font-mono text-xs space-y-2.5">
+            <div className="grid grid-cols-2 gap-2 pb-2 border-b border-white/10">
+              <div className="bg-black/30 p-2 border border-white/10">
+                <span className="text-gray-400 text-[10px] uppercase font-bold block">
+                  Price Action Swing:
+                </span>
+                <div className="flex items-baseline space-x-1.5 mt-0.5">
+                  <span className="text-white font-bold text-sm">
+                    {currencySymbol}{rsiDivergencePayload.startPrice.toFixed(2)}
+                  </span>
+                  <span className="text-gray-400 text-xs">➔</span>
+                  <span className={`font-black text-sm ${isBullish ? 'text-rose-300' : 'text-emerald-300'}`}>
+                    {currencySymbol}{rsiDivergencePayload.endPrice.toFixed(2)}
+                  </span>
+                </div>
+                <span className={`text-[10px] font-bold block mt-0.5 ${isBullish ? 'text-rose-400' : 'text-emerald-400'}`}>
+                  {rsiDivergencePayload.priceDiffPercent > 0 ? '+' : ''}{rsiDivergencePayload.priceDiffPercent}% ({isBullish ? 'Lower Low formed' : 'Higher High formed'})
+                </span>
+              </div>
+
+              <div className="bg-black/30 p-2 border border-white/10">
+                <span className="text-gray-400 text-[10px] uppercase font-bold block">
+                  RSI Momentum (14-Period):
+                </span>
+                <div className="flex items-baseline space-x-1.5 mt-0.5">
+                  <span className="text-white font-bold text-sm">
+                    {rsiDivergencePayload.startRsi}
+                  </span>
+                  <span className="text-gray-400 text-xs">➔</span>
+                  <span className={`font-black text-sm ${isBullish ? 'text-emerald-300' : 'text-rose-300'}`}>
+                    {rsiDivergencePayload.endRsi}
+                  </span>
+                  <span className="text-gray-400 text-[10px]">
+                    (Now: {rsiDivergencePayload.rsiCurrent})
+                  </span>
+                </div>
+                <span className={`text-[10px] font-bold block mt-0.5 ${isBullish ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  {rsiDivergencePayload.rsiDiff > 0 ? '+' : ''}{rsiDivergencePayload.rsiDiff} pts ({isBullish ? 'Higher Low formed' : 'Lower High formed'})
+                </span>
+              </div>
+            </div>
+
+            {/* Description & Signal Analysis */}
+            <div className="text-[11px] text-gray-200 font-sans leading-relaxed">
+              <span className="text-amber-400 font-mono font-bold uppercase text-[10px] block mb-0.5">
+                TECHNICAL DIVERGENCE DIAGNOSIS:
+              </span>
+              {rsiDivergencePayload.description}
+            </div>
+
+            {/* SEPA Playbook Recommendation */}
+            <div className={`p-2 border text-[11px] font-sans leading-snug ${
+              isBullish ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-100' : 'bg-rose-950/40 border-rose-500/40 text-rose-100'
+            }`}>
+              <div className="flex items-center space-x-1.5 mb-0.5">
+                <Target className="w-3.5 h-3.5 text-amber-400" />
+                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-400">
+                  SEPA ACTION PLAYBOOK:
+                </span>
+              </div>
+              <p className="text-[11px] leading-tight text-gray-100">
+                {rsiDivergencePayload.sepaPlaybook}
+              </p>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex items-center justify-end space-x-2 text-xs font-mono">
+            <button
+              onClick={() => playSmartMoneyDivergenceChime(isBullish ? 'BULLISH' : 'BEARISH')}
+              title="Replay divergence chime"
+              className="bg-white/10 hover:bg-white/20 text-emerald-300 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider flex items-center space-x-1 transition-colors border border-emerald-400/40 cursor-pointer"
+            >
+              <Volume2 className="w-3.5 h-3.5" />
+              <span>Chime</span>
+            </button>
+
+            <button
+              onClick={() => setActiveToast(null)}
+              className="bg-white/10 hover:bg-white/20 text-gray-200 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider transition-colors border border-white/20 cursor-pointer"
+            >
+              Dismiss
+            </button>
+
+            <button
+              onClick={handleViewRsiSubchart}
+              className={`px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wider flex items-center space-x-1.5 transition-all border cursor-pointer ${
+                isBullish
+                  ? 'bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 border-emerald-400/60'
+                  : 'bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 border-rose-400/60'
+              }`}
+            >
+              <Activity className="w-3.5 h-3.5" />
+              <span>Inspect RSI Subchart</span>
+            </button>
+
+            <button
+              onClick={handleViewChart}
+              className={`px-4 py-1.5 text-[11px] font-black uppercase tracking-wider flex items-center space-x-1.5 transition-all shadow-md cursor-pointer ${
+                isBullish ? 'bg-emerald-400 hover:bg-emerald-300 text-slate-950' : 'bg-rose-500 hover:bg-rose-400 text-white'
+              }`}
+            >
+              <BarChart3 className="w-3.5 h-3.5" />
+              <span>View On VCP Chart</span>
             </button>
           </div>
         </div>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { MinerviniTradeSetup, PricePoint, CustomTrendline, TradeJournalNote, EmotionalState, TradeStatus } from '../types';
+import { MinerviniTradeSetup, PricePoint, CustomTrendline, TradeJournalNote, EmotionalState, TradeStatus, DetectedRsiDivergence } from '../types';
 import { formatCurrency, formatVolume, getCurrencySymbol, evaluateTrendTemplate } from '../utils/sepaCalculator';
 import { getStoredJournalNotes, saveStoredJournalNotes } from '../utils/tradeJournalStorage';
 import { PineScriptExporter } from './PineScriptExporter';
@@ -12,8 +12,18 @@ import { VolumeProfileSidebar } from './VolumeProfileSidebar';
 import { calculateVolumeProfile } from '../utils/volumeProfileCalculator';
 import { RsiSubchart } from './RsiSubchart';
 import { PivotPointLevelsCard } from './PivotPointLevelsCard';
+import { RsiDivergenceRadarCard } from './RsiDivergenceRadarCard';
 import { TechnicalIndicatorsChart } from './TechnicalIndicatorsChart';
-import { calculateEmaSeries, calculatePivotPoints, PivotPointModel } from '../utils/technicalIndicatorsCalculator';
+import {
+  calculateEmaSeries,
+  calculatePivotPoints,
+  PivotPointModel,
+  detectRsiDivergences,
+  simulateRsiDivergence,
+  dispatchRsiDivergenceNotification,
+  hasDivergenceBeenAlerted,
+  markDivergenceAsAlerted
+} from '../utils/technicalIndicatorsCalculator';
 import { toPng } from 'html-to-image';
 import {
   ComposedChart,
@@ -402,6 +412,39 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
   const [vduThresholdPct, setVduThresholdPct] = useState<number>(50); // <50% of 20D Avg Vol for standard SEPA VDU
   const [breakoutThresholdPct, setBreakoutThresholdPct] = useState<number>(150); // >150% of 20D Avg Vol on Up Day for Breakout Acc
   const [hoveredHeatmapDate, setHoveredHeatmapDate] = useState<string | null>(null);
+
+  // RSI Divergence Detection & Real-Time Alert State
+  const [showRsiDivergences, setShowRsiDivergences] = useState(true);
+  const [autoToastDivergence, setAutoToastDivergence] = useState(true);
+
+  // Detect RSI Divergences for the selected stock
+  const detectedDivergences = useMemo(() => {
+    return detectRsiDivergences(stock, 14);
+  }, [stock]);
+
+  const activeDivergence = useMemo(() => {
+    if (!detectedDivergences.length) return null;
+    const recent = detectedDivergences.find((d) => d.isRecent);
+    return recent || detectedDivergences[0];
+  }, [detectedDivergences]);
+
+  // Auto-trigger toast notification when a divergence is detected for the selected stock
+  useEffect(() => {
+    if (!activeDivergence || !autoToastDivergence) return;
+
+    if (!hasDivergenceBeenAlerted(stock.ticker, activeDivergence.id)) {
+      markDivergenceAsAlerted(stock.ticker, activeDivergence.id);
+      const timer = setTimeout(() => {
+        dispatchRsiDivergenceNotification(stock, activeDivergence);
+      }, 700);
+      return () => clearTimeout(timer);
+    }
+  }, [stock.ticker, activeDivergence, autoToastDivergence]);
+
+  const handleTriggerDivergenceToast = (div?: DetectedRsiDivergence) => {
+    const target = div || activeDivergence || simulateRsiDivergence(stock, 'BULLISH');
+    dispatchRsiDivergenceNotification(stock, target);
+  };
 
   // Custom Trendline State & LocalStorage Persistence
   const [showCustomTrendlines, setShowCustomTrendlines] = useState(true);
@@ -982,9 +1025,26 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
         }
       });
 
+      // Interpolate RSI Divergence price ray on candlestick chart
+      if (showRsiDivergences && activeDivergence) {
+        const startIdx = history.findIndex((p) => p.date === activeDivergence.startDate);
+        const endIdx = history.findIndex((p) => p.date === activeDivergence.endDate);
+        if (startIdx !== -1 && endIdx !== -1) {
+          const minIdx = Math.min(startIdx, endIdx);
+          const maxIdx = Math.max(startIdx, endIdx);
+          if (idx >= minIdx && idx <= maxIdx) {
+            const totalSteps = Math.max(1, maxIdx - minIdx);
+            const currentStep = idx - minIdx;
+            const sPrice = startIdx <= endIdx ? activeDivergence.startPrice : activeDivergence.endPrice;
+            const ePrice = startIdx <= endIdx ? activeDivergence.endPrice : activeDivergence.startPrice;
+            pointData.rsiDivergenceRay = Number((sPrice + ((ePrice - sPrice) * (currentStep / totalSteps))).toFixed(2));
+          }
+        }
+      }
+
       return pointData;
     });
-  }, [displayedPriceHistory, customTrendlines]);
+  }, [displayedPriceHistory, customTrendlines, showRsiDivergences, activeDivergence]);
 
   // Compute historical Lorentzian Classification signals across price history for backtesting model accuracy
   const historicalLorentzianSignals = useMemo(() => {
@@ -1419,6 +1479,30 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
           >
             <Gauge className="w-3.5 h-3.5 text-amber-200" />
             <span>RSI (14) {showRsiSubchart ? 'ON' : 'OFF'}</span>
+          </button>
+
+          <button
+            onClick={() => setShowRsiDivergences(!showRsiDivergences)}
+            className={`px-3 py-1 border text-xs font-semibold uppercase tracking-wider font-mono transition-all flex items-center space-x-1 cursor-pointer ${
+              showRsiDivergences
+                ? activeDivergence?.type === 'BULLISH'
+                  ? 'bg-emerald-700 text-white border-emerald-800 shadow-xs'
+                  : activeDivergence?.type === 'BEARISH'
+                  ? 'bg-rose-700 text-white border-rose-800 shadow-xs'
+                  : 'bg-cyan-700 text-white border-cyan-800 shadow-xs'
+                : 'bg-[#f9f8f5] text-gray-400 border-[#e5e4e1]'
+            }`}
+            title="Toggle RSI Bullish / Bearish Divergence Scanner and Alert Station"
+          >
+            <Zap className="w-3.5 h-3.5 text-amber-300" />
+            <span>RSI Div {showRsiDivergences ? 'ON' : 'OFF'}</span>
+            {activeDivergence && (
+              <span className={`text-[9px] px-1 py-0.2 font-black ${
+                activeDivergence.type === 'BULLISH' ? 'bg-emerald-300 text-black' : 'bg-rose-300 text-black'
+              }`}>
+                {activeDivergence.type}
+              </span>
+            )}
           </button>
 
           <button
@@ -2498,6 +2582,38 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
               </>
             )}
 
+            {/* RSI Divergence Ray Line & Pivot Dots on Candlestick Chart */}
+            {showRsiDivergences && activeDivergence && (
+              <>
+                <Line
+                  type="linear"
+                  dataKey="rsiDivergenceRay"
+                  name={activeDivergence.type === 'BULLISH' ? 'RSI Bullish Divergence' : 'RSI Bearish Divergence'}
+                  stroke={activeDivergence.type === 'BULLISH' ? '#10b981' : '#f43f5e'}
+                  strokeWidth={2.5}
+                  strokeDasharray="4 3"
+                  dot={false}
+                  isAnimationActive={false}
+                />
+                <ReferenceDot
+                  x={activeDivergence.startDate}
+                  y={activeDivergence.startPrice}
+                  r={5}
+                  fill={activeDivergence.type === 'BULLISH' ? '#10b981' : '#f43f5e'}
+                  stroke="#ffffff"
+                  strokeWidth={2}
+                />
+                <ReferenceDot
+                  x={activeDivergence.endDate}
+                  y={activeDivergence.endPrice}
+                  r={6}
+                  fill={activeDivergence.type === 'BULLISH' ? '#10b981' : '#f43f5e'}
+                  stroke="#ffffff"
+                  strokeWidth={2}
+                />
+              </>
+            )}
+
             {/* Trade Plan Overlay Lines */}
             {showLevels && (
               <>
@@ -3504,6 +3620,22 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
             history={displayedPriceHistory}
             initialPeriod={14}
             height={130}
+            activeDivergence={activeDivergence}
+            onTriggerToast={() => handleTriggerDivergenceToast(activeDivergence || undefined)}
+          />
+        </div>
+      )}
+
+      {/* RSI Divergence Radar & Toast Notification Alert Card */}
+      {showRsiDivergences && (
+        <div className="pt-2">
+          <RsiDivergenceRadarCard
+            stock={stock}
+            divergences={detectedDivergences}
+            activeDivergence={activeDivergence}
+            autoToastEnabled={autoToastDivergence}
+            onToggleAutoToast={() => setAutoToastDivergence(!autoToastDivergence)}
+            onTriggerToast={handleTriggerDivergenceToast}
           />
         </div>
       )}

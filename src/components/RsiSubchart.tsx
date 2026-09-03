@@ -9,9 +9,9 @@ import {
   ReferenceLine,
   ReferenceArea
 } from 'recharts';
-import { PricePoint } from '../types';
+import { PricePoint, DetectedRsiDivergence } from '../types';
 import { calculateRsiSeries, RsiPoint } from '../utils/technicalIndicatorsCalculator';
-import { Gauge, Sparkles, TrendingUp, AlertTriangle, SlidersHorizontal, CheckCircle2 } from 'lucide-react';
+import { Gauge, Sparkles, TrendingUp, TrendingDown, AlertTriangle, SlidersHorizontal, CheckCircle2, Zap, Bell } from 'lucide-react';
 
 interface RsiSubchartProps {
   history: PricePoint[];
@@ -19,6 +19,8 @@ interface RsiSubchartProps {
   isObsidian?: boolean;
   onHoverDate?: (date: string | null) => void;
   height?: number;
+  activeDivergence?: DetectedRsiDivergence | null;
+  onTriggerToast?: () => void;
 }
 
 export const RsiSubchart: React.FC<RsiSubchartProps> = ({
@@ -26,16 +28,46 @@ export const RsiSubchart: React.FC<RsiSubchartProps> = ({
   initialPeriod = 14,
   isObsidian = false,
   onHoverDate,
-  height = 140
+  height = 140,
+  activeDivergence,
+  onTriggerToast
 }) => {
   const [period, setPeriod] = useState<number>(initialPeriod);
   const [overboughtThreshold, setOverboughtThreshold] = useState<number>(70);
   const [oversoldThreshold, setOversoldThreshold] = useState<number>(30);
   const [showSepaZone, setShowSepaZone] = useState<boolean>(true);
 
-  const rsiData = useMemo(() => {
+  const rawRsiData = useMemo(() => {
     return calculateRsiSeries(history || [], period);
   }, [history, period]);
+
+  // Interpolate RSI divergence ray between startDate and endDate
+  const rsiData = useMemo(() => {
+    if (!activeDivergence || !rawRsiData.length) return rawRsiData;
+
+    const startIdx = rawRsiData.findIndex((p) => p.date === activeDivergence.startDate);
+    const endIdx = rawRsiData.findIndex((p) => p.date === activeDivergence.endDate);
+
+    if (startIdx === -1 || endIdx === -1) return rawRsiData;
+
+    const minIdx = Math.min(startIdx, endIdx);
+    const maxIdx = Math.max(startIdx, endIdx);
+    const totalSteps = Math.max(1, maxIdx - minIdx);
+
+    return rawRsiData.map((pt, idx) => {
+      if (idx >= minIdx && idx <= maxIdx) {
+        const currentStep = idx - minIdx;
+        const sRsi = startIdx <= endIdx ? activeDivergence.startRsi : activeDivergence.endRsi;
+        const eRsi = startIdx <= endIdx ? activeDivergence.endRsi : activeDivergence.startRsi;
+        const interpolated = sRsi + ((eRsi - sRsi) * (currentStep / totalSteps));
+        return {
+          ...pt,
+          rsiDivergenceRay: Number(interpolated.toFixed(1))
+        };
+      }
+      return pt;
+    });
+  }, [rawRsiData, activeDivergence]);
 
   const latestPoint: RsiPoint | undefined = rsiData[rsiData.length - 1];
   const currentRsi = latestPoint?.rsi ?? 50;
@@ -61,15 +93,18 @@ export const RsiSubchart: React.FC<RsiSubchartProps> = ({
   }, [currentRsi, overboughtThreshold, oversoldThreshold]);
 
   return (
-    <div className={`border font-mono transition-colors duration-200 ${
-      isObsidian ? 'bg-[#0e1217] border-[#2d333b]' : 'bg-[#f9f8f5] border-[#e5e4e1]'
-    }`}>
+    <div
+      id="rsi-subchart-container"
+      className={`border font-mono transition-colors duration-200 ${
+        isObsidian ? 'bg-[#0e1217] border-[#2d333b]' : 'bg-[#f9f8f5] border-[#e5e4e1]'
+      }`}
+    >
       {/* Indicator Header Bar */}
       <div className={`p-2.5 px-3 flex flex-wrap items-center justify-between gap-2 border-b text-xs ${
         isObsidian ? 'bg-[#161b22] border-[#2d333b]' : 'bg-white border-[#e5e4e1]'
       }`}>
         {/* Title and Current RSI Value */}
-        <div className="flex items-center space-x-2.5">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center space-x-1.5 text-amber-500 font-bold uppercase tracking-wider text-[11px]">
             <Gauge className="w-3.5 h-3.5 text-amber-500" />
             <span>RSI ({period}):</span>
@@ -90,7 +125,28 @@ export const RsiSubchart: React.FC<RsiSubchartProps> = ({
             </span>
           )}
 
-          {recentDivergence && (
+          {activeDivergence ? (
+            <div className="flex items-center space-x-1.5">
+              <span className={`px-2 py-0.5 text-[9px] font-black uppercase rounded-xs border flex items-center space-x-1 ${
+                activeDivergence.type === 'BULLISH'
+                  ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-200 border-emerald-400'
+                  : 'bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-200 border-rose-400'
+              }`}>
+                <Zap className="w-3 h-3 text-amber-400 animate-pulse" />
+                <span>{activeDivergence.type} Divergence ({activeDivergence.kind.replace('_', ' ')})</span>
+              </span>
+              {onTriggerToast && (
+                <button
+                  onClick={onTriggerToast}
+                  className="px-2 py-0.5 bg-gray-900 hover:bg-black text-amber-300 text-[9px] font-extrabold uppercase tracking-wider flex items-center space-x-1 transition-all cursor-pointer"
+                  title="Trigger real-time toast alert for this divergence"
+                >
+                  <Bell className="w-2.5 h-2.5 text-amber-400" />
+                  <span>Toast Alert</span>
+                </button>
+              )}
+            </div>
+          ) : recentDivergence ? (
             <span className={`px-1.5 py-0.5 text-[9px] font-black uppercase rounded-xs border ${
               recentDivergence === 'BULLISH'
                 ? 'bg-purple-900/60 text-purple-200 border-purple-500 animate-pulse'
@@ -98,7 +154,7 @@ export const RsiSubchart: React.FC<RsiSubchartProps> = ({
             }`}>
               ⚡ {recentDivergence} Divergence
             </span>
-          )}
+          ) : null}
         </div>
 
         {/* Quick Config Controls */}
@@ -261,6 +317,19 @@ export const RsiSubchart: React.FC<RsiSubchartProps> = ({
               dot={false}
               activeDot={{ r: 5, fill: '#f59e0b', stroke: '#ffffff', strokeWidth: 1.5 }}
             />
+
+            {/* RSI Divergence Ray Line */}
+            {activeDivergence && (
+              <Line
+                type="linear"
+                dataKey="rsiDivergenceRay"
+                stroke={activeDivergence.type === 'BULLISH' ? '#10b981' : '#f43f5e'}
+                strokeWidth={2.5}
+                strokeDasharray="3 3"
+                dot={{ r: 4, fill: activeDivergence.type === 'BULLISH' ? '#10b981' : '#f43f5e', stroke: '#ffffff', strokeWidth: 1.5 }}
+                isAnimationActive={false}
+              />
+            )}
           </ComposedChart>
         </ResponsiveContainer>
       </div>

@@ -1,6 +1,6 @@
 {
   "name": "Remix Remix Minervini SEPA Trend & VCP Screener",
-  "description": "Mark Minervini SEPA Trend Template & VCP setup analyzer with RSI momentum sweet spot, 10/21 EMA & 50/150/200 SMA moving averages, dynamic Floor/Fibonacci/Camarilla pivot point charts, NSE & BSE Bhavcopy data, and TradingView automated webhook alerts.",
+  "description": "Mark Minervini SEPA Trend Template & VCP setup analyzer with RSI momentum sweet spot & bullish/bearish divergence toast alerts, 10/21 EMA & 50/150/200 SMA moving averages, dynamic Floor/Fibonacci/Camarilla pivot point charts, NSE & BSE Bhavcopy data, and TradingView automated webhook alerts.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
