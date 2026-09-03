@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { TrendingUp, BarChart3, Calculator, BookOpen, SlidersHorizontal, Briefcase, Calendar, Video, Gem, Moon, Sun, Zap, Target, BookMarked, Layers, BellRing, Download, Sparkles, Bot, Cpu, Bookmark, ShieldCheck, CheckSquare, Award, Monitor, FileSpreadsheet, Radio } from 'lucide-react';
+import { TrendingUp, BarChart3, Calculator, BookOpen, SlidersHorizontal, Briefcase, Calendar, Video, Gem, Moon, Sun, Zap, Target, BookMarked, Layers, BellRing, Download, Sparkles, Bot, Cpu, Bookmark, ShieldCheck, CheckSquare, Award, Monitor, FileSpreadsheet, Radio, Menu, X } from 'lucide-react';
 import { DesktopRemixGuideModal } from './DesktopRemixGuideModal';
+import { MobileNavDrawer } from './MobileNavDrawer';
 
 export type AppNavTab = 
   | 'daily_review'
@@ -27,6 +28,31 @@ export type AppNavTab =
   | 'export_data'
   | 'security_shield';
 
+export const TAB_LABELS: Record<AppNavTab, string> = {
+  daily_review: 'Daily Review',
+  hermes_agent: 'Hermes AI',
+  screener: 'Screener',
+  watchlist: 'Watchlist',
+  chart: 'VCP Charts',
+  calculator: 'Trade Plan',
+  bhavcopy: 'Bhavcopy',
+  custom: 'Scanner',
+  playbook: 'Playbook',
+  portfolio: 'Portfolio',
+  earnings: 'Earnings',
+  masterclass: 'Masterclass',
+  obsidian: 'Obsidian AI',
+  pocket_pivot: 'Pocket Pivots',
+  vcp_scanner: 'VCP Scanner',
+  journal: 'Trade Journal',
+  sector_heatmap: 'Sector Heatmap',
+  alert_history: 'Alert History',
+  tradingview_webhook: 'Webhooks',
+  pattern_library: 'Pattern Library',
+  export_data: 'Export Data',
+  security_shield: 'Security Shield',
+};
+
 interface NavbarProps {
   activeTab: AppNavTab;
   setActiveTab: (tab: AppNavTab) => void;
@@ -36,6 +62,8 @@ interface NavbarProps {
   isObsidian?: boolean;
   onToggleObsidian?: () => void;
   onOpenDailyScanner?: () => void;
+  isMobileDrawerOpen?: boolean;
+  setIsMobileDrawerOpen?: (open: boolean) => void;
 }
 
 
@@ -47,9 +75,15 @@ export const Navbar: React.FC<NavbarProps> = ({
   tightVolumeCount,
   isObsidian = false,
   onToggleObsidian,
-  onOpenDailyScanner
+  onOpenDailyScanner,
+  isMobileDrawerOpen,
+  setIsMobileDrawerOpen,
 }) => {
   const [showDesktopModal, setShowDesktopModal] = useState<boolean>(false);
+  const [internalDrawerOpen, setInternalDrawerOpen] = useState<boolean>(false);
+
+  const isDrawerOpen = isMobileDrawerOpen !== undefined ? isMobileDrawerOpen : internalDrawerOpen;
+  const setIsDrawerOpen = setIsMobileDrawerOpen || setInternalDrawerOpen;
   return (
     <header className="bg-white/80 backdrop-blur-md border-b border-[#e5e4e1] text-[#1a1a1a] sticky top-0 z-40 shadow-xs transition-colors duration-300">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -195,8 +229,73 @@ export const Navbar: React.FC<NavbarProps> = ({
             )}
           </div>
 
-          {/* Editorial Style Navigation Tabs */}
-          <nav className="flex items-center space-x-1 sm:space-x-6 text-[11px] uppercase tracking-widest font-semibold overflow-x-auto no-scrollbar py-1">
+          {/* Mobile Action Controls Header Bar (< md) */}
+          <div className="flex md:hidden items-center space-x-2">
+            {/* Active Tab Pill Indicator */}
+            <div className={`px-2.5 py-1 rounded-full text-[10px] font-mono font-bold tracking-tight uppercase border flex items-center space-x-1.5 ${
+              isObsidian
+                ? 'bg-[#161b22] border-[#30363d] text-amber-300'
+                : 'bg-gray-100 border-gray-300 text-gray-800'
+            }`}>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="truncate max-w-[80px]">{TAB_LABELS[activeTab] || activeTab}</span>
+            </div>
+
+            {/* Quick Export 1-Tap Trigger */}
+            <button
+              id="mobile-header-quick-export"
+              type="button"
+              onClick={() => setActiveTab('export_data')}
+              className={`p-2 rounded-lg border text-xs cursor-pointer transition-all ${
+                activeTab === 'export_data'
+                  ? 'bg-emerald-500 text-white border-emerald-400'
+                  : isObsidian
+                  ? 'bg-[#161b22] border-emerald-500/40 text-emerald-400 hover:bg-[#1f2633]'
+                  : 'bg-emerald-50 border-emerald-300 text-emerald-700 hover:bg-emerald-100'
+              }`}
+              title="Quick Export Trade Data"
+            >
+              <Download className="w-4 h-4" />
+            </button>
+
+            {/* Mobile Theme Toggle */}
+            {onToggleObsidian && (
+              <button
+                id="mobile-header-theme-toggle"
+                type="button"
+                onClick={onToggleObsidian}
+                className={`p-2 rounded-lg border text-xs cursor-pointer transition-all ${
+                  isObsidian
+                    ? 'bg-[#161b22] border-amber-500/40 text-amber-400 hover:bg-[#1f2633]'
+                    : 'bg-gray-100 border-gray-300 text-gray-700 hover:bg-gray-200'
+                }`}
+                title="Toggle Dark / Light Theme"
+              >
+                {isObsidian ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+              </button>
+            )}
+
+            {/* Hamburger Drawer Toggle */}
+            <button
+              id="mobile-header-menu-toggle"
+              type="button"
+              onClick={() => setIsDrawerOpen(!isDrawerOpen)}
+              className={`p-2 rounded-lg border text-xs cursor-pointer transition-all relative ${
+                isDrawerOpen
+                  ? 'bg-amber-500 text-slate-950 border-amber-400'
+                  : isObsidian
+                  ? 'bg-[#161b22] border-[#30363d] text-gray-200 hover:text-white'
+                  : 'bg-gray-100 border-gray-300 text-gray-800 hover:text-black'
+              }`}
+              title="Open Menu & All 22 Tools"
+            >
+              {isDrawerOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
+              <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-amber-400" />
+            </button>
+          </div>
+
+          {/* Editorial Style Navigation Tabs (Desktop & Tablets >= md) */}
+          <nav className="hidden md:flex items-center space-x-1 sm:space-x-4 lg:space-x-5 text-[11px] uppercase tracking-widest font-semibold overflow-x-auto no-scrollbar py-1">
             <button
               id="nav-tab-daily-review"
               onClick={() => setActiveTab('daily_review')}
@@ -506,6 +605,20 @@ export const Navbar: React.FC<NavbarProps> = ({
         isOpen={showDesktopModal}
         onClose={() => setShowDesktopModal(false)}
         stocksCount={totalSetupsCount}
+      />
+
+      {/* Mobile Slide-Over Navigation Drawer */}
+      <MobileNavDrawer
+        isOpen={isDrawerOpen}
+        onClose={() => setIsDrawerOpen(false)}
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        totalSetupsCount={totalSetupsCount}
+        tightVolumeCount={tightVolumeCount}
+        isObsidian={isObsidian}
+        onToggleObsidian={onToggleObsidian}
+        onOpenDailyScanner={onOpenDailyScanner}
+        onOpenDesktopModal={() => setShowDesktopModal(true)}
       />
     </header>
   );

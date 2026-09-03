@@ -27,6 +27,7 @@ import { SectorStrengthView } from './components/SectorStrengthView';
 import { PatternVisualsLibrary } from './components/PatternVisualsLibrary';
 import { ExportTradeData } from './components/ExportTradeData';
 import { SecurityShieldPanel } from './components/SecurityShieldPanel';
+import { MobileBottomNav } from './components/MobileBottomNav';
 import { HermesAgent } from './components/HermesAgent';
 import { WatchlistManager } from './components/WatchlistManager';
 import { DailyReview } from './components/DailyReview';
@@ -49,6 +50,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<AppNavTab>('hermes_agent');
   const [isObsidian, setIsObsidian] = useState<boolean>(true); // Default to Obsidian Dark theme for luxury feel
   const [isDailyScanModalOpen, setIsDailyScanModalOpen] = useState<boolean>(false);
+  const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState<boolean>(false);
 
   useEffect(() => {
     // Initialize default price alert history for stocks if not already in localStorage
@@ -237,7 +239,7 @@ export default function App() {
   const currencySymbol = getCurrencySymbol(selectedStock.exchange);
 
   return (
-    <div className={`min-h-screen font-sans antialiased selection:bg-[#1a1a1a] selection:text-white pb-16 transition-colors duration-300 ${
+    <div className={`min-h-screen font-sans antialiased selection:bg-[#1a1a1a] selection:text-white pb-28 md:pb-16 transition-colors duration-300 ${
       isObsidian ? 'bg-[#0b0d11] text-[#f1f5f9]' : 'bg-[#f9f8f5] text-[#1a1a1a]'
     }`}>
       
@@ -259,6 +261,8 @@ export default function App() {
         isObsidian={isObsidian}
         onToggleObsidian={() => setIsObsidian(!isObsidian)}
         onOpenDailyScanner={() => setIsDailyScanModalOpen(true)}
+        isMobileDrawerOpen={isMobileDrawerOpen}
+        setIsMobileDrawerOpen={setIsMobileDrawerOpen}
       />
 
       {/* Daily Stage 2 Breakout Scanner Modal */}
@@ -925,7 +929,7 @@ export default function App() {
               transition={{ duration: 0.25, ease: 'easeInOut' }}
               className="space-y-8"
             >
-              <ExportTradeData stocks={stocksList} />
+              <ExportTradeData stocks={stocksList} isObsidian={isObsidian} />
             </motion.div>
           )}
 
@@ -1025,7 +1029,7 @@ export default function App() {
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
         onClick={() => setIsDailyScanModalOpen(true)}
-        className="fixed bottom-6 left-6 z-40 bg-[#10141d]/95 hover:bg-[#151b27] text-gray-200 hover:text-white border border-amber-500/50 hover:border-amber-400 px-3.5 py-2.5 rounded-full shadow-[0_4px_20px_rgba(0,0,0,0.4)] backdrop-blur-md font-mono text-[11px] font-bold uppercase tracking-wider flex items-center space-x-2.5 cursor-pointer transition-all group"
+        className="hidden sm:flex fixed bottom-20 md:bottom-6 left-4 md:left-6 z-30 bg-[#10141d]/95 hover:bg-[#151b27] text-gray-200 hover:text-white border border-amber-500/50 hover:border-amber-400 px-3.5 py-2.5 rounded-full shadow-[0_4px_20px_rgba(0,0,0,0.4)] backdrop-blur-md font-mono text-[11px] font-bold uppercase tracking-wider items-center space-x-2.5 cursor-pointer transition-all group"
         title="Quick Hotkey: Press ⌘K or Ctrl+K anywhere to open Daily Stage 2 Scanner"
       >
         <span className="relative flex h-2 w-2">
@@ -1044,7 +1048,7 @@ export default function App() {
         </div>
       </motion.button>
 
-      {/* Floating Hermes Agent Quick Launcher with Animated Notification Badge */}
+      {/* Floating Hermes Agent Quick Launcher (Desktop only; on mobile it is in MobileBottomNav) */}
       {activeTab !== 'hermes_agent' && (
         <motion.button
           id="floating-hermes-agent-launcher"
@@ -1053,7 +1057,7 @@ export default function App() {
           whileHover={{ scale: 1.06 }}
           whileTap={{ scale: 0.94 }}
           onClick={() => setActiveTab('hermes_agent')}
-          className="fixed bottom-6 right-6 z-50 bg-slate-950 text-amber-400 border border-amber-500/60 hover:border-amber-400 hover:bg-slate-900 px-4 py-3 rounded-full shadow-[0_0_25px_rgba(245,158,11,0.35)] font-mono text-xs font-bold uppercase tracking-wider flex items-center space-x-2.5 cursor-pointer relative transition-all"
+          className="hidden md:flex fixed bottom-6 right-6 z-40 bg-slate-950 text-amber-400 border border-amber-500/60 hover:border-amber-400 hover:bg-slate-900 px-4 py-3 rounded-full shadow-[0_0_25px_rgba(245,158,11,0.35)] font-mono text-xs font-bold uppercase tracking-wider items-center space-x-2.5 cursor-pointer relative transition-all"
         >
           {/* High-Volume Breakout Alert Floating Banner Tooltip */}
           {volumeSpikeCount > 0 && (
@@ -1099,6 +1103,14 @@ export default function App() {
         </motion.button>
       )}
 
+      {/* Mobile Fixed Bottom Navigation Bar */}
+      <MobileBottomNav
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        onOpenMenu={() => setIsMobileDrawerOpen(true)}
+        isObsidian={isObsidian}
+        aiInsightsCount={aiInsightsCount}
+      />
     </div>
   );
 }

@@ -1,6 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { MinerviniTradeSetup, PortfolioHolding, TradeJournalNote, PriceAlert } from '../types';
 import { getStoredAlerts, getTrackerLogs } from '../utils/backgroundPriceChecker';
+import { getStoredWatchlists } from '../utils/watchlistStorage';
+import { DEFAULT_NSE_BHAVCOPY, DEFAULT_BSE_BHAVCOPY } from '../data/bhavcopyData';
+import { exportRiskAdjustedScreenerPdf, generateSepaPdfReport } from '../utils/pdfExporter';
+import { exportBrokerageWatchlistToCsv } from '../utils/csvExport';
 import {
   Download,
   FileSpreadsheet,
@@ -17,6 +21,14 @@ import {
   BarChart3,
   Bell,
   Sparkles,
+  Search,
+  Filter,
+  Eye,
+  Radio,
+  Bookmark,
+  Check,
+  Printer,
+  ChevronDown
 } from 'lucide-react';
 
 const getStoredPortfolioHoldings = (): PortfolioHolding[] => {
@@ -41,17 +53,35 @@ const getStoredJournalNotes = (): TradeJournalNote[] => {
 
 interface ExportTradeDataProps {
   stocks: MinerviniTradeSetup[];
+  isObsidian?: boolean;
 }
 
-export type ExportDataType = 'SCREENER_SETUPS' | 'PORTFOLIO' | 'TRADE_JOURNAL' | 'PRICE_ALERTS' | 'BACKTEST_DATA';
-export type ExportFormat = 'CSV' | 'JSON' | 'OBSIDIAN_MD' | 'PINESCRIPT';
+export type ExportDataType =
+  | 'SCREENER_SETUPS'
+  | 'BHAVCOPY_DAILY'
+  | 'PORTFOLIO'
+  | 'TRADE_JOURNAL'
+  | 'WATCHLIST'
+  | 'PRICE_ALERTS'
+  | 'BROKERAGE_WATCHLIST'
+  | 'MASTER_BACKUP';
 
-export const ExportTradeData: React.FC<ExportTradeDataProps> = ({ stocks }) => {
+export type ExportFormat =
+  | 'CSV'
+  | 'PDF_REPORT'
+  | 'JSON'
+  | 'TRADINGVIEW'
+  | 'OBSIDIAN_MD'
+  | 'PINESCRIPT';
+
+export const ExportTradeData: React.FC<ExportTradeDataProps> = ({ stocks, isObsidian = true }) => {
   const [exportType, setExportType] = useState<ExportDataType>('SCREENER_SETUPS');
   const [exportFormat, setExportFormat] = useState<ExportFormat>('CSV');
   const [copiedStatus, setCopiedStatus] = useState<boolean>(false);
+  const [previewFilter, setPreviewFilter] = useState<string>('');
+  const [brokerageTarget, setBrokerageTarget] = useState<'zerodha' | 'groww' | 'angelone'>('zerodha');
 
-  // Helper to trigger direct browser file download
+  // Trigger file download in browser
   const downloadFile = (content: string, fileName: string, contentType: string) => {
     const blob = new Blob([content], { type: contentType });
     const url = URL.createObjectURL(blob);
@@ -66,6 +96,8 @@ export const ExportTradeData: React.FC<ExportTradeDataProps> = ({ stocks }) => {
 
   // Generate CSV data based on active export type
   const generateCSV = (): { content: string; filename: string } => {
+    const today = new Date().toISOString().slice(0, 10);
+
     if (exportType === 'SCREENER_SETUPS') {
       const headers = ['Ticker', 'Name', 'Sector', 'Exchange', 'Price', 'Today %', 'RS Rating', 'SEPA Score', 'Pivot Price', 'Stop Loss', 'Vol DryUp %', 'VCP Stage'];
       const rows = stocks.map((s) => [
@@ -83,7 +115,29 @@ export const ExportTradeData: React.FC<ExportTradeDataProps> = ({ stocks }) => {
         `"${s.vcpStage}"`,
       ]);
       const content = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-      return { content, filename: `minervini_screener_setups_${new Date().toISOString().slice(0, 10)}.csv` };
+      return { content, filename: `minervini_screener_setups_${today}.csv` };
+    }
+
+    if (exportType === 'BHAVCOPY_DAILY') {
+      const allBhav = [...DEFAULT_NSE_BHAVCOPY, ...DEFAULT_BSE_BHAVCOPY];
+      const headers = ['Symbol', 'Company Name', 'Exchange', 'Series', 'Close Price', 'Change %', 'Traded Qty', 'Turnover (Cr)', '52W High', '52W Low', 'Delivery %', 'RS Rating', 'SEPA Stage'];
+      const rows = allBhav.map((b) => [
+        b.symbol,
+        `"${b.name.replace(/"/g, '""')}"`,
+        b.exchange,
+        b.series,
+        b.close,
+        b.changePercent,
+        b.totalTradedQty,
+        (b.totalTradedVal / 10000000).toFixed(2),
+        b.high52w,
+        b.low52w,
+        b.deliveryPercent || 'N/A',
+        b.rsRating,
+        `"${b.sepaStage}"`,
+      ]);
+      const content = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+      return { content, filename: `NSE_BSE_Bhavcopy_Settlement_${today}.csv` };
     }
 
     if (exportType === 'PORTFOLIO') {
@@ -104,7 +158,7 @@ export const ExportTradeData: React.FC<ExportTradeDataProps> = ({ stocks }) => {
         ];
       });
       const content = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-      return { content, filename: `minervini_portfolio_holdings_${new Date().toISOString().slice(0, 10)}.csv` };
+      return { content, filename: `minervini_portfolio_holdings_${today}.csv` };
     }
 
     if (exportType === 'TRADE_JOURNAL') {
@@ -125,12 +179,28 @@ export const ExportTradeData: React.FC<ExportTradeDataProps> = ({ stocks }) => {
         `"${(e.notes || '').replace(/"/g, '""')}"`,
       ]);
       const content = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-      return { content, filename: `minervini_trade_journal_${new Date().toISOString().slice(0, 10)}.csv` };
+      return { content, filename: `minervini_trade_journal_${today}.csv` };
+    }
+
+    if (exportType === 'WATCHLIST') {
+      const watchlists = getStoredWatchlists();
+      const allTickers = Array.from(new Set(watchlists.flatMap(w => w.tickers)));
+      const matched = allTickers.map(t => stocks.find(s => s.ticker === t) || { ticker: t, name: t, currentPrice: 0, pivotPrice: 0, stopLossPrice: 0, rsRating: 0 });
+      const headers = ['Ticker', 'Name', 'Current Price', 'Pivot Price', 'Stop Loss', 'RS Rating'];
+      const rows = matched.map(m => [
+        m.ticker,
+        `"${m.name.replace(/"/g, '""')}"`,
+        m.currentPrice,
+        m.pivotPrice,
+        m.stopLossPrice,
+        m.rsRating,
+      ]);
+      const content = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+      return { content, filename: `minervini_watchlist_${today}.csv` };
     }
 
     if (exportType === 'PRICE_ALERTS') {
       const alerts = getStoredAlerts();
-      const logs = getTrackerLogs();
       const headers = ['Ticker', 'Exchange', 'Target Type', 'Target Price', 'Current Price', 'Proximity %', 'Status', 'Triggered At', 'Notes'];
       const rows = alerts.map((a) => [
         a.ticker,
@@ -144,43 +214,95 @@ export const ExportTradeData: React.FC<ExportTradeDataProps> = ({ stocks }) => {
         `"${(a.notes || '').replace(/"/g, '""')}"`,
       ]);
       const content = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-      return { content, filename: `minervini_price_alerts_${new Date().toISOString().slice(0, 10)}.csv` };
+      return { content, filename: `minervini_price_alerts_${today}.csv` };
     }
 
-    // Default Backtest Data CSV
-    const headers = ['Ticker', 'Strategy', 'Win Rate %', 'Total Trades', 'Avg Gain %', 'Avg Loss %', 'Profit Factor', 'Max Drawdown %'];
-    const rows = stocks.map((s) => [
-      s.ticker,
-      'SEPA VCP Breakout',
-      (70 + (s.rsRating % 20)).toFixed(1),
-      (15 + (s.trendScore * 2)).toString(),
-      (18.5 + (s.rsRating * 0.1)).toFixed(1),
-      '-4.2',
-      (2.8 + (s.trendScore * 0.1)).toFixed(2),
-      '-7.5',
-    ]);
+    if (exportType === 'BROKERAGE_WATCHLIST') {
+      if (brokerageTarget === 'zerodha') {
+        const headers = ['tradingsymbol', 'exchange', 'instrument_token', 'name'];
+        const rows = stocks.map((s) => [s.ticker, s.exchange || 'NSE', '', `"${s.name.replace(/"/g, '""')}"`]);
+        const content = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+        return { content, filename: `Zerodha_Kite_Watchlist_${today}.csv` };
+      } else if (brokerageTarget === 'groww') {
+        const headers = ['Symbol', 'Exchange', 'Segment', 'Alert Price'];
+        const rows = stocks.map((s) => [s.ticker, s.exchange || 'NSE', 'EQUITY', s.pivotPrice]);
+        const content = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+        return { content, filename: `Groww_Watchlist_${today}.csv` };
+      } else {
+        const headers = ['Scriptname', 'Exchange', 'Token', 'BuyTriggerPrice', 'StopLossPrice'];
+        const rows = stocks.map((s) => [s.ticker, s.exchange || 'NSE', '', s.pivotPrice, s.stopLossPrice]);
+        const content = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+        return { content, filename: `AngelOne_Watchlist_${today}.csv` };
+      }
+    }
+
+    // Default Master Backup as CSV (Screener)
+    const headers = ['Ticker', 'Name', 'Sector', 'Price', 'RS Rating', 'Trend Score', 'Pivot Price', 'Stop Loss'];
+    const rows = stocks.map((s) => [s.ticker, `"${s.name}"`, `"${s.sector || ''}"`, s.currentPrice, s.rsRating, s.trendScore, s.pivotPrice, s.stopLossPrice]);
     const content = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-    return { content, filename: `minervini_backtest_data_${new Date().toISOString().slice(0, 10)}.csv` };
+    return { content, filename: `minervini_master_data_${today}.csv` };
   };
 
   // Generate JSON content
   const generateJSON = (): { content: string; filename: string } => {
+    const today = new Date().toISOString().slice(0, 10);
     let rawData: any = stocks;
     let filenamePrefix = 'screener';
 
-    if (exportType === 'PORTFOLIO') {
+    if (exportType === 'BHAVCOPY_DAILY') {
+      rawData = { nse: DEFAULT_NSE_BHAVCOPY, bse: DEFAULT_BSE_BHAVCOPY, exportDate: today };
+      filenamePrefix = 'bhavcopy';
+    } else if (exportType === 'PORTFOLIO') {
       rawData = getStoredPortfolioHoldings();
       filenamePrefix = 'portfolio';
     } else if (exportType === 'TRADE_JOURNAL') {
       rawData = getStoredJournalNotes();
       filenamePrefix = 'journal';
+    } else if (exportType === 'WATCHLIST') {
+      rawData = getStoredWatchlists();
+      filenamePrefix = 'watchlist';
     } else if (exportType === 'PRICE_ALERTS') {
       rawData = { alerts: getStoredAlerts(), trackerLogs: getTrackerLogs() };
       filenamePrefix = 'alerts';
+    } else if (exportType === 'MASTER_BACKUP') {
+      rawData = {
+        screenerStocks: stocks,
+        portfolioHoldings: getStoredPortfolioHoldings(),
+        tradeJournal: getStoredJournalNotes(),
+        watchlists: getStoredWatchlists(),
+        priceAlerts: getStoredAlerts(),
+        trackerLogs: getTrackerLogs(),
+        metadata: {
+          exportTimestamp: new Date().toISOString(),
+          version: '2.0.0',
+          appName: 'Growth Stock Alpha — Minervini SEPA Engine',
+        },
+      };
+      filenamePrefix = 'master_full_backup';
     }
 
     const content = JSON.stringify(rawData, null, 2);
-    return { content, filename: `minervini_${filenamePrefix}_export_${new Date().toISOString().slice(0, 10)}.json` };
+    return { content, filename: `minervini_${filenamePrefix}_export_${today}.json` };
+  };
+
+  // Generate TradingView formatted text list
+  const generateTradingViewText = (): { content: string; filename: string } => {
+    const today = new Date().toISOString().slice(0, 10);
+    let tickersList: string[] = [];
+
+    if (exportType === 'BHAVCOPY_DAILY') {
+      const allBhav = [...DEFAULT_NSE_BHAVCOPY, ...DEFAULT_BSE_BHAVCOPY];
+      tickersList = allBhav.map(b => `${b.exchange || 'NSE'}:${b.symbol}`);
+    } else if (exportType === 'WATCHLIST') {
+      const wls = getStoredWatchlists();
+      const set = new Set(wls.flatMap(w => w.tickers));
+      tickersList = Array.from(set).map(t => `NSE:${t}`);
+    } else {
+      tickersList = stocks.map(s => `${s.exchange || 'NSE'}:${s.ticker}`);
+    }
+
+    const content = tickersList.join(',\n');
+    return { content, filename: `TradingView_Watchlist_${today}.txt` };
   };
 
   // Generate Obsidian Markdown content
@@ -208,6 +330,27 @@ date: ${today}
       });
       md += `\n\n> Exported automatically from Growth Stock Alpha (Minervini SEPA Intelligence)`;
       return { content: md, filename: `Minervini_Portfolio_${today}.md` };
+    }
+
+    if (exportType === 'BHAVCOPY_DAILY') {
+      const allBhav = DEFAULT_NSE_BHAVCOPY.slice(0, 25);
+      let md = `---
+tags:
+  - trading/bhavcopy
+  - nse/settlement
+  - minervini/stage2
+date: ${today}
+---
+
+# 📊 NSE Bhavcopy Settlement Leaders — ${today}
+
+| Symbol | Name | Close | Change % | Delivery % | RS Rating | SEPA Stage |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+`;
+      allBhav.forEach(b => {
+        md += `| **[[${b.symbol}]]** | ${b.name} | ₹${b.close} | ${b.changePercent}% | ${b.deliveryPercent || 'N/A'}% | ${b.rsRating} | ${b.sepaStage} |\n`;
+      });
+      return { content: md, filename: `Bhavcopy_Leaders_${today}.md` };
     }
 
     // Default Screener / Setups Obsidian Markdown Note
@@ -286,6 +429,11 @@ alertcondition(vcpPrimed, title="Minervini VCP Primed Alert", message="VCP Volat
 
   // Perform export action
   const handleExport = () => {
+    if (exportFormat === 'PDF_REPORT') {
+      exportRiskAdjustedScreenerPdf(stocks, { filterName: 'Minervini SEPA Qualified Candidates' });
+      return;
+    }
+
     let result = { content: '', filename: '' };
     let mimeType = 'text/plain';
 
@@ -295,6 +443,9 @@ alertcondition(vcpPrimed, title="Minervini VCP Primed Alert", message="VCP Volat
     } else if (exportFormat === 'JSON') {
       result = generateJSON();
       mimeType = 'application/json;charset=utf-8;';
+    } else if (exportFormat === 'TRADINGVIEW') {
+      result = generateTradingViewText();
+      mimeType = 'text/plain;charset=utf-8;';
     } else if (exportFormat === 'OBSIDIAN_MD') {
       result = generateObsidianMD();
       mimeType = 'text/markdown;charset=utf-8;';
@@ -306,224 +457,647 @@ alertcondition(vcpPrimed, title="Minervini VCP Primed Alert", message="VCP Volat
     downloadFile(result.content, result.filename, mimeType);
   };
 
-  // Copy content to clipboard
+  // Copy formatted content to clipboard
   const handleCopyToClipboard = () => {
     let result = { content: '', filename: '' };
     if (exportFormat === 'CSV') result = generateCSV();
     else if (exportFormat === 'JSON') result = generateJSON();
+    else if (exportFormat === 'TRADINGVIEW') result = generateTradingViewText();
     else if (exportFormat === 'OBSIDIAN_MD') result = generateObsidianMD();
     else if (exportFormat === 'PINESCRIPT') result = generatePineScript();
+    else if (exportFormat === 'PDF_REPORT') {
+      // If PDF, copy the markdown or CSV summary
+      result = generateCSV();
+    }
 
     navigator.clipboard.writeText(result.content);
     setCopiedStatus(true);
     setTimeout(() => setCopiedStatus(false), 2500);
   };
 
+  // Preview Data Items
+  const previewRows = useMemo(() => {
+    let rows: Array<{ col1: string; col2: string; col3: string; col4: string; col5: string }> = [];
+
+    if (exportType === 'SCREENER_SETUPS' || exportType === 'BROKERAGE_WATCHLIST') {
+      rows = stocks.map(s => ({
+        col1: s.ticker,
+        col2: s.name,
+        col3: `$${s.currentPrice}`,
+        col4: `RS ${s.rsRating}`,
+        col5: s.vcpStage,
+      }));
+    } else if (exportType === 'BHAVCOPY_DAILY') {
+      const allBhav = [...DEFAULT_NSE_BHAVCOPY, ...DEFAULT_BSE_BHAVCOPY];
+      rows = allBhav.map(b => ({
+        col1: b.symbol,
+        col2: b.name,
+        col3: `₹${b.close}`,
+        col4: `${b.changePercent > 0 ? '+' : ''}${b.changePercent}%`,
+        col5: b.sepaStage,
+      }));
+    } else if (exportType === 'PORTFOLIO') {
+      const holdings = getStoredPortfolioHoldings();
+      rows = holdings.map(h => ({
+        col1: h.ticker,
+        col2: h.stockName,
+        col3: `$${h.currentPrice}`,
+        col4: `${h.shares} Sh`,
+        col5: `Stop: $${h.stopLossPrice}`,
+      }));
+    } else if (exportType === 'TRADE_JOURNAL') {
+      const entries = getStoredJournalNotes();
+      rows = entries.map(e => ({
+        col1: e.ticker,
+        col2: e.date,
+        col3: e.tradeStatus,
+        col4: `${e.rating || 5} ★`,
+        col5: e.emotionalState || 'DISCIPLINED',
+      }));
+    } else if (exportType === 'WATCHLIST') {
+      const wls = getStoredWatchlists();
+      const allTickers = Array.from(new Set(wls.flatMap(w => w.tickers)));
+      rows = allTickers.map(t => ({
+        col1: t,
+        col2: 'Watchlist Candidate',
+        col3: 'Stage 2',
+        col4: 'Active Coiling',
+        col5: 'Ready',
+      }));
+    } else if (exportType === 'PRICE_ALERTS') {
+      const alerts = getStoredAlerts();
+      rows = alerts.map(a => ({
+        col1: a.ticker,
+        col2: a.targetType,
+        col3: `$${a.targetPrice}`,
+        col4: `${a.triggerProximityPercent}% Prox`,
+        col5: a.status,
+      }));
+    } else {
+      // Master backup
+      rows = stocks.map(s => ({
+        col1: s.ticker,
+        col2: s.name,
+        col3: 'SEPA Stock',
+        col4: `Score ${s.trendScore}/8`,
+        col5: 'Archived',
+      }));
+    }
+
+    if (previewFilter.trim()) {
+      const q = previewFilter.toLowerCase();
+      return rows.filter(r =>
+        r.col1.toLowerCase().includes(q) ||
+        r.col2.toLowerCase().includes(q) ||
+        r.col3.toLowerCase().includes(q) ||
+        r.col4.toLowerCase().includes(q) ||
+        r.col5.toLowerCase().includes(q)
+      );
+    }
+    return rows;
+  }, [exportType, stocks, previewFilter]);
+
   return (
-    <div className="bg-[#161b22] border border-[#30363d] p-6 shadow-xl space-y-6 text-white font-mono">
+    <div
+      id="export-trade-data-container"
+      className={`border p-4 sm:p-6 shadow-xl space-y-6 transition-colors duration-300 font-sans ${
+        isObsidian
+          ? 'bg-[#11141b] border-[#242b38] text-white'
+          : 'bg-white border-[#e5e4e1] text-[#1a1a1a]'
+      }`}
+    >
       {/* Header Banner */}
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#30363d] pb-4">
+      <div
+        className={`flex flex-wrap items-center justify-between gap-4 border-b pb-4 ${
+          isObsidian ? 'border-[#242b38]' : 'border-[#e5e4e1]'
+        }`}
+      >
         <div className="flex items-center space-x-3.5">
-          <div className="w-11 h-11 bg-emerald-950 border border-emerald-500/50 flex items-center justify-center text-emerald-400 shrink-0">
+          <div
+            className={`w-11 h-11 border flex items-center justify-center shrink-0 rounded-sm ${
+              isObsidian
+                ? 'bg-emerald-950/80 border-emerald-500/50 text-emerald-400'
+                : 'bg-emerald-50 border-emerald-600 text-emerald-700'
+            }`}
+          >
             <Download className="w-6 h-6" />
           </div>
           <div>
             <div className="flex items-center space-x-2">
-              <span className="text-[10px] uppercase font-mono tracking-[0.25em] text-emerald-400 font-bold block">
-                Data Sovereignty Engine
+              <span className="text-[10px] uppercase font-mono tracking-[0.25em] text-emerald-500 font-bold block">
+                Data Sovereignty &amp; Interoperability
               </span>
-              <span className="bg-emerald-950 text-emerald-300 border border-emerald-700 text-[9px] px-2 py-0.5 font-bold uppercase">
-                CSV, JSON, PineScript & Obsidian Export
+              <span
+                className={`text-[9px] px-2 py-0.5 font-bold uppercase rounded-xs ${
+                  isObsidian
+                    ? 'bg-emerald-950 text-emerald-300 border border-emerald-700'
+                    : 'bg-emerald-100 text-emerald-800'
+                }`}
+              >
+                CSV • PDF • JSON • TradingView • Brokerages
               </span>
             </div>
-            <h3 className="text-xl sm:text-2xl font-serif font-black tracking-tight text-white mt-0.5">
-              Export Trade Data & Strategy Analytics
+            <h3 className="text-xl sm:text-2xl font-serif font-black tracking-tight mt-0.5">
+              Export Trade Data &amp; Strategy Analytics
             </h3>
           </div>
         </div>
 
-        {/* Quick Action Buttons */}
-        <div className="flex items-center space-x-3">
+        {/* Quick Action Top Bar */}
+        <div className="flex flex-wrap items-center gap-2">
           <button
+            type="button"
             onClick={handleCopyToClipboard}
-            className="bg-[#0e1117] hover:bg-[#1f242d] text-amber-300 font-bold px-4 py-2 text-xs uppercase tracking-wider flex items-center space-x-2 border border-amber-500/50 transition-all cursor-pointer"
+            className={`font-mono text-xs font-bold uppercase tracking-wider px-3.5 py-2 flex items-center space-x-2 border transition-all cursor-pointer rounded-xs ${
+              isObsidian
+                ? 'bg-[#161b22] hover:bg-[#1f242d] text-amber-300 border-amber-500/50'
+                : 'bg-gray-100 hover:bg-gray-200 text-gray-800 border-gray-300'
+            }`}
           >
             {copiedStatus ? (
               <>
                 <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                <span>Copied to Clipboard!</span>
+                <span>Copied!</span>
               </>
             ) : (
               <>
                 <Copy className="w-4 h-4 text-amber-400" />
-                <span>Copy Formatted Code</span>
+                <span>Copy Data</span>
               </>
             )}
           </button>
 
-          <button
-            onClick={handleExport}
-            className="bg-emerald-700 hover:bg-emerald-600 text-white font-black px-5 py-2 text-xs uppercase tracking-wider flex items-center space-x-2 border border-emerald-500 shadow-lg transition-all cursor-pointer"
-          >
-            <Download className="w-4 h-4 text-white" />
-            <span>Download {exportFormat} File</span>
-          </button>
+          {exportFormat === 'PDF_REPORT' ? (
+            <button
+              type="button"
+              onClick={handleExport}
+              className="bg-emerald-600 hover:bg-emerald-500 text-white font-mono font-black px-4 py-2 text-xs uppercase tracking-wider flex items-center space-x-2 border border-emerald-400 shadow-md transition-all cursor-pointer rounded-xs"
+            >
+              <Printer className="w-4 h-4 text-white" />
+              <span>Generate PDF Dossier</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleExport}
+              className="bg-emerald-700 hover:bg-emerald-600 text-white font-mono font-black px-4 py-2 text-xs uppercase tracking-wider flex items-center space-x-2 border border-emerald-500 shadow-md transition-all cursor-pointer rounded-xs"
+            >
+              <Download className="w-4 h-4 text-white" />
+              <span>Download {exportFormat}</span>
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Control Grid: Select Export Subject & File Format */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Step 1: Export Target Selection */}
-        <div className="bg-[#0e1117] border border-[#30363d] p-4 space-y-3">
-          <span className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider block">
-            1. Select Trade Data Subject
-          </span>
+      {/* Step 1 & Step 2 Selection Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        
+        {/* Step 1: Select Trade Data Subject */}
+        <div
+          className={`border p-4 space-y-3 rounded-xs ${
+            isObsidian ? 'bg-[#161a22] border-[#242b38]' : 'bg-[#faf9f6] border-[#e5e4e1]'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] uppercase font-mono font-bold text-emerald-500 tracking-wider">
+              1. Select Trade Data Subject
+            </span>
+            <span className="text-[10px] font-mono text-gray-400">
+              {stocks.length} Setups Loaded
+            </span>
+          </div>
 
-          <div className="space-y-2 text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+            {/* Screener Qualified Setups */}
             <button
+              type="button"
               onClick={() => setExportType('SCREENER_SETUPS')}
-              className={`w-full p-3 text-left border flex items-center justify-between transition-all cursor-pointer ${
+              className={`p-2.5 text-left border flex flex-col justify-between transition-all cursor-pointer rounded-xs ${
                 exportType === 'SCREENER_SETUPS'
-                  ? 'bg-emerald-950/80 text-white border-emerald-500 font-bold'
-                  : 'bg-[#161b22] text-gray-400 border-[#30363d] hover:text-white'
+                  ? 'bg-emerald-950/80 text-white border-emerald-500 font-bold shadow-xs'
+                  : isObsidian
+                  ? 'bg-[#0e1117] text-gray-300 border-[#2b3342] hover:border-gray-500'
+                  : 'bg-white text-gray-800 border-[#e5e4e1] hover:border-gray-400'
               }`}
             >
-              <div className="flex items-center space-x-2.5">
-                <BarChart3 className="w-4 h-4 text-emerald-400" />
-                <span>Screener Qualified Setups ({stocks.length} Stocks)</span>
+              <div className="flex items-center space-x-2 mb-1">
+                <BarChart3 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span className="font-semibold truncate">Screener Setups</span>
               </div>
-              <span className="text-[10px] text-emerald-300">SEPA 8/8 Data</span>
+              <span className="text-[10px] text-gray-400 font-mono">SEPA 8/8 Criteria ({stocks.length})</span>
             </button>
 
+            {/* Bhavcopy Settlement Records */}
             <button
+              type="button"
+              onClick={() => setExportType('BHAVCOPY_DAILY')}
+              className={`p-2.5 text-left border flex flex-col justify-between transition-all cursor-pointer rounded-xs ${
+                exportType === 'BHAVCOPY_DAILY'
+                  ? 'bg-emerald-950/80 text-white border-emerald-500 font-bold shadow-xs'
+                  : isObsidian
+                  ? 'bg-[#0e1117] text-gray-300 border-[#2b3342] hover:border-gray-500'
+                  : 'bg-white text-gray-800 border-[#e5e4e1] hover:border-gray-400'
+              }`}
+            >
+              <div className="flex items-center space-x-2 mb-1">
+                <FileSpreadsheet className="w-4 h-4 text-amber-400 shrink-0" />
+                <span className="font-semibold truncate">NSE / BSE Bhavcopy</span>
+              </div>
+              <span className="text-[10px] text-gray-400 font-mono">Settlement &amp; Delivery Data</span>
+            </button>
+
+            {/* Portfolio Holdings */}
+            <button
+              type="button"
               onClick={() => setExportType('PORTFOLIO')}
-              className={`w-full p-3 text-left border flex items-center justify-between transition-all cursor-pointer ${
+              className={`p-2.5 text-left border flex flex-col justify-between transition-all cursor-pointer rounded-xs ${
                 exportType === 'PORTFOLIO'
-                  ? 'bg-emerald-950/80 text-white border-emerald-500 font-bold'
-                  : 'bg-[#161b22] text-gray-400 border-[#30363d] hover:text-white'
+                  ? 'bg-emerald-950/80 text-white border-emerald-500 font-bold shadow-xs'
+                  : isObsidian
+                  ? 'bg-[#0e1117] text-gray-300 border-[#2b3342] hover:border-gray-500'
+                  : 'bg-white text-gray-800 border-[#e5e4e1] hover:border-gray-400'
               }`}
             >
-              <div className="flex items-center space-x-2.5">
-                <Briefcase className="w-4 h-4 text-amber-400" />
-                <span>My Portfolio Holdings & P&L Records</span>
+              <div className="flex items-center space-x-2 mb-1">
+                <Briefcase className="w-4 h-4 text-amber-400 shrink-0" />
+                <span className="font-semibold truncate">Portfolio Holdings</span>
               </div>
-              <span className="text-[10px] text-amber-300">Live Positions</span>
+              <span className="text-[10px] text-gray-400 font-mono">Live Positions &amp; P&amp;L</span>
             </button>
 
+            {/* Trade Journal Notes */}
             <button
+              type="button"
               onClick={() => setExportType('TRADE_JOURNAL')}
-              className={`w-full p-3 text-left border flex items-center justify-between transition-all cursor-pointer ${
+              className={`p-2.5 text-left border flex flex-col justify-between transition-all cursor-pointer rounded-xs ${
                 exportType === 'TRADE_JOURNAL'
-                  ? 'bg-emerald-950/80 text-white border-emerald-500 font-bold'
-                  : 'bg-[#161b22] text-gray-400 border-[#30363d] hover:text-white'
+                  ? 'bg-emerald-950/80 text-white border-emerald-500 font-bold shadow-xs'
+                  : isObsidian
+                  ? 'bg-[#0e1117] text-gray-300 border-[#2b3342] hover:border-gray-500'
+                  : 'bg-white text-gray-800 border-[#e5e4e1] hover:border-gray-400'
               }`}
             >
-              <div className="flex items-center space-x-2.5">
-                <BookMarked className="w-4 h-4 text-purple-400" />
-                <span>Trade Journal & Executed Trades</span>
+              <div className="flex items-center space-x-2 mb-1">
+                <BookMarked className="w-4 h-4 text-purple-400 shrink-0" />
+                <span className="font-semibold truncate">Trade Journal</span>
               </div>
-              <span className="text-[10px] text-purple-300">Post-Mortem Logs</span>
+              <span className="text-[10px] text-gray-400 font-mono">Executed Trades &amp; Lessons</span>
             </button>
 
+            {/* Custom Watchlists */}
             <button
+              type="button"
+              onClick={() => setExportType('WATCHLIST')}
+              className={`p-2.5 text-left border flex flex-col justify-between transition-all cursor-pointer rounded-xs ${
+                exportType === 'WATCHLIST'
+                  ? 'bg-emerald-950/80 text-white border-emerald-500 font-bold shadow-xs'
+                  : isObsidian
+                  ? 'bg-[#0e1117] text-gray-300 border-[#2b3342] hover:border-gray-500'
+                  : 'bg-white text-gray-800 border-[#e5e4e1] hover:border-gray-400'
+              }`}
+            >
+              <div className="flex items-center space-x-2 mb-1">
+                <Bookmark className="w-4 h-4 text-sky-400 shrink-0" />
+                <span className="font-semibold truncate">Watchlist Candidates</span>
+              </div>
+              <span className="text-[10px] text-gray-400 font-mono">Tracked Watchlist Tickers</span>
+            </button>
+
+            {/* Price Alerts & Audits */}
+            <button
+              type="button"
               onClick={() => setExportType('PRICE_ALERTS')}
-              className={`w-full p-3 text-left border flex items-center justify-between transition-all cursor-pointer ${
+              className={`p-2.5 text-left border flex flex-col justify-between transition-all cursor-pointer rounded-xs ${
                 exportType === 'PRICE_ALERTS'
-                  ? 'bg-emerald-950/80 text-white border-emerald-500 font-bold'
-                  : 'bg-[#161b22] text-gray-400 border-[#30363d] hover:text-white'
+                  ? 'bg-emerald-950/80 text-white border-emerald-500 font-bold shadow-xs'
+                  : isObsidian
+                  ? 'bg-[#0e1117] text-gray-300 border-[#2b3342] hover:border-gray-500'
+                  : 'bg-white text-gray-800 border-[#e5e4e1] hover:border-gray-400'
               }`}
             >
-              <div className="flex items-center space-x-2.5">
-                <Bell className="w-4 h-4 text-rose-400" />
-                <span>Price Alerts & Background Audit Logs</span>
+              <div className="flex items-center space-x-2 mb-1">
+                <Bell className="w-4 h-4 text-rose-400 shrink-0" />
+                <span className="font-semibold truncate">Price Alerts</span>
               </div>
-              <span className="text-[10px] text-rose-300">Alert History</span>
+              <span className="text-[10px] text-gray-400 font-mono">Audit Logs &amp; Proximity</span>
             </button>
 
+            {/* Brokerage Watchlist (Zerodha, Groww, Angel One) */}
             <button
-              onClick={() => setExportType('BACKTEST_DATA')}
-              className={`w-full p-3 text-left border flex items-center justify-between transition-all cursor-pointer ${
-                exportType === 'BACKTEST_DATA'
-                  ? 'bg-emerald-950/80 text-white border-emerald-500 font-bold'
-                  : 'bg-[#161b22] text-gray-400 border-[#30363d] hover:text-white'
+              type="button"
+              onClick={() => setExportType('BROKERAGE_WATCHLIST')}
+              className={`p-2.5 text-left border flex flex-col justify-between transition-all cursor-pointer rounded-xs ${
+                exportType === 'BROKERAGE_WATCHLIST'
+                  ? 'bg-emerald-950/80 text-white border-emerald-500 font-bold shadow-xs'
+                  : isObsidian
+                  ? 'bg-[#0e1117] text-gray-300 border-[#2b3342] hover:border-gray-500'
+                  : 'bg-white text-gray-800 border-[#e5e4e1] hover:border-gray-400'
               }`}
             >
-              <div className="flex items-center space-x-2.5">
-                <Sparkles className="w-4 h-4 text-teal-400" />
-                <span>Historical Backtest Metrics & Equity Curve</span>
+              <div className="flex items-center space-x-2 mb-1">
+                <Sparkles className="w-4 h-4 text-amber-300 shrink-0" />
+                <span className="font-semibold truncate">Brokerage Watchlist</span>
               </div>
-              <span className="text-[10px] text-teal-300">Backtest Data</span>
+              <span className="text-[10px] text-gray-400 font-mono">Zerodha / Groww / AngelOne</span>
+            </button>
+
+            {/* Master Complete Backup */}
+            <button
+              type="button"
+              onClick={() => {
+                setExportType('MASTER_BACKUP');
+                setExportFormat('JSON');
+              }}
+              className={`p-2.5 text-left border flex flex-col justify-between transition-all cursor-pointer rounded-xs ${
+                exportType === 'MASTER_BACKUP'
+                  ? 'bg-emerald-950/80 text-white border-emerald-500 font-bold shadow-xs'
+                  : isObsidian
+                  ? 'bg-[#0e1117] text-gray-300 border-[#2b3342] hover:border-gray-500'
+                  : 'bg-white text-gray-800 border-[#e5e4e1] hover:border-gray-400'
+              }`}
+            >
+              <div className="flex items-center space-x-2 mb-1">
+                <HardDrive className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span className="font-semibold truncate">Master Backup</span>
+              </div>
+              <span className="text-[10px] text-gray-400 font-mono">All-in-One Data Archive</span>
+            </button>
+          </div>
+
+          {/* Sub-Option for Brokerage Target */}
+          {exportType === 'BROKERAGE_WATCHLIST' && (
+            <div
+              className={`p-3 border space-y-2 rounded-xs ${
+                isObsidian ? 'bg-[#0e1117] border-amber-500/30' : 'bg-amber-50 border-amber-200'
+              }`}
+            >
+              <span className="text-[10px] font-mono uppercase tracking-wider text-amber-400 font-bold block">
+                Select Brokerage Format:
+              </span>
+              <div className="grid grid-cols-3 gap-2 text-xs">
+                {(['zerodha', 'groww', 'angelone'] as const).map((b) => (
+                  <button
+                    key={b}
+                    type="button"
+                    onClick={() => setBrokerageTarget(b)}
+                    className={`py-1.5 px-2 rounded-xs border text-center font-mono font-bold capitalize transition-all cursor-pointer ${
+                      brokerageTarget === b
+                        ? 'bg-amber-500 text-slate-950 border-amber-400'
+                        : isObsidian
+                        ? 'bg-[#161a22] text-gray-300 border-[#30363d]'
+                        : 'bg-white text-gray-700 border-gray-300'
+                    }`}
+                  >
+                    {b === 'angelone' ? 'Angel One' : b}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Step 2: Select Export Format */}
+        <div
+          className={`border p-4 space-y-3 rounded-xs ${
+            isObsidian ? 'bg-[#161a22] border-[#242b38]' : 'bg-[#faf9f6] border-[#e5e4e1]'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] uppercase font-mono font-bold text-amber-500 tracking-wider">
+              2. Choose Output Format
+            </span>
+            <span className="text-[10px] font-mono text-gray-400">
+              Active: {exportFormat}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs">
+            {/* CSV */}
+            <button
+              type="button"
+              onClick={() => setExportFormat('CSV')}
+              className={`p-3 border text-left flex flex-col justify-between space-y-1.5 transition-all cursor-pointer rounded-xs ${
+                exportFormat === 'CSV'
+                  ? 'bg-amber-950/80 border-amber-400 text-white font-bold shadow-xs'
+                  : isObsidian
+                  ? 'bg-[#0e1117] border-[#2b3342] text-gray-300 hover:border-gray-500'
+                  : 'bg-white border-[#e5e4e1] text-gray-800 hover:border-gray-400'
+              }`}
+            >
+              <FileSpreadsheet className="w-5 h-5 text-emerald-400" />
+              <div>
+                <strong className="block text-xs">CSV Sheet</strong>
+                <span className="text-[10px] text-gray-400">Excel / Google Sheets</span>
+              </div>
+            </button>
+
+            {/* PDF Report */}
+            <button
+              type="button"
+              onClick={() => setExportFormat('PDF_REPORT')}
+              className={`p-3 border text-left flex flex-col justify-between space-y-1.5 transition-all cursor-pointer rounded-xs ${
+                exportFormat === 'PDF_REPORT'
+                  ? 'bg-amber-950/80 border-amber-400 text-white font-bold shadow-xs'
+                  : isObsidian
+                  ? 'bg-[#0e1117] border-[#2b3342] text-gray-300 hover:border-gray-500'
+                  : 'bg-white border-[#e5e4e1] text-gray-800 hover:border-gray-400'
+              }`}
+            >
+              <Printer className="w-5 h-5 text-rose-400" />
+              <div>
+                <strong className="block text-xs">PDF Dossier</strong>
+                <span className="text-[10px] text-gray-400">Audit report / Print</span>
+              </div>
+            </button>
+
+            {/* JSON */}
+            <button
+              type="button"
+              onClick={() => setExportFormat('JSON')}
+              className={`p-3 border text-left flex flex-col justify-between space-y-1.5 transition-all cursor-pointer rounded-xs ${
+                exportFormat === 'JSON'
+                  ? 'bg-amber-950/80 border-amber-400 text-white font-bold shadow-xs'
+                  : isObsidian
+                  ? 'bg-[#0e1117] border-[#2b3342] text-gray-300 hover:border-gray-500'
+                  : 'bg-white border-[#e5e4e1] text-gray-800 hover:border-gray-400'
+              }`}
+            >
+              <FileJson className="w-5 h-5 text-amber-400" />
+              <div>
+                <strong className="block text-xs">Raw JSON</strong>
+                <span className="text-[10px] text-gray-400">Programmatic export</span>
+              </div>
+            </button>
+
+            {/* TradingView Ticker List */}
+            <button
+              type="button"
+              onClick={() => setExportFormat('TRADINGVIEW')}
+              className={`p-3 border text-left flex flex-col justify-between space-y-1.5 transition-all cursor-pointer rounded-xs ${
+                exportFormat === 'TRADINGVIEW'
+                  ? 'bg-amber-950/80 border-amber-400 text-white font-bold shadow-xs'
+                  : isObsidian
+                  ? 'bg-[#0e1117] border-[#2b3342] text-gray-300 hover:border-gray-500'
+                  : 'bg-white border-[#e5e4e1] text-gray-800 hover:border-gray-400'
+              }`}
+            >
+              <Radio className="w-5 h-5 text-sky-400" />
+              <div>
+                <strong className="block text-xs">TradingView</strong>
+                <span className="text-[10px] text-gray-400">Comma list for TV</span>
+              </div>
+            </button>
+
+            {/* Obsidian MD */}
+            <button
+              type="button"
+              onClick={() => setExportFormat('OBSIDIAN_MD')}
+              className={`p-3 border text-left flex flex-col justify-between space-y-1.5 transition-all cursor-pointer rounded-xs ${
+                exportFormat === 'OBSIDIAN_MD'
+                  ? 'bg-amber-950/80 border-amber-400 text-white font-bold shadow-xs'
+                  : isObsidian
+                  ? 'bg-[#0e1117] border-[#2b3342] text-gray-300 hover:border-gray-500'
+                  : 'bg-white border-[#e5e4e1] text-gray-800 hover:border-gray-400'
+              }`}
+            >
+              <Gem className="w-5 h-5 text-amber-500" />
+              <div>
+                <strong className="block text-xs">Obsidian MD</strong>
+                <span className="text-[10px] text-gray-400">Knowledge vault</span>
+              </div>
+            </button>
+
+            {/* PineScript */}
+            <button
+              type="button"
+              onClick={() => setExportFormat('PINESCRIPT')}
+              className={`p-3 border text-left flex flex-col justify-between space-y-1.5 transition-all cursor-pointer rounded-xs ${
+                exportFormat === 'PINESCRIPT'
+                  ? 'bg-amber-950/80 border-amber-400 text-white font-bold shadow-xs'
+                  : isObsidian
+                  ? 'bg-[#0e1117] border-[#2b3342] text-gray-300 hover:border-gray-500'
+                  : 'bg-white border-[#e5e4e1] text-gray-800 hover:border-gray-400'
+              }`}
+            >
+              <Code className="w-5 h-5 text-indigo-400" />
+              <div>
+                <strong className="block text-xs">PineScript v6</strong>
+                <span className="text-[10px] text-gray-400">Chart indicator</span>
+              </div>
+            </button>
+          </div>
+
+          {/* Export Action Strip */}
+          <div
+            className={`p-3 border rounded-xs flex flex-wrap items-center justify-between gap-3 ${
+              isObsidian ? 'bg-[#0e1117] border-[#2b3342]' : 'bg-gray-50 border-gray-200'
+            }`}
+          >
+            <div className="space-y-0.5">
+              <span className="text-[10px] font-mono text-gray-400 block uppercase">
+                Target Format: <strong className="text-emerald-400">{exportFormat}</strong>
+              </span>
+              <span className="text-xs text-gray-300">
+                Ready to export {previewRows.length} records
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleExport}
+              className="bg-emerald-600 hover:bg-emerald-500 text-white font-mono text-xs font-black uppercase tracking-wider py-2 px-4 rounded-xs shadow-md flex items-center space-x-2 transition-all cursor-pointer"
+            >
+              <Download className="w-4 h-4" />
+              <span>Export {exportFormat}</span>
             </button>
           </div>
         </div>
 
-        {/* Step 2: Format Target Selection */}
-        <div className="bg-[#0e1117] border border-[#30363d] p-4 space-y-3">
-          <span className="text-[10px] uppercase font-bold text-amber-400 tracking-wider block">
-            2. Choose Output Format
-          </span>
+      </div>
 
-          <div className="grid grid-cols-2 gap-3 text-xs">
-            <button
-              onClick={() => setExportFormat('CSV')}
-              className={`p-4 border text-left flex flex-col justify-between space-y-2 transition-all cursor-pointer ${
-                exportFormat === 'CSV'
-                  ? 'bg-amber-950/80 border-amber-400 text-white font-bold'
-                  : 'bg-[#161b22] border-[#30363d] text-gray-400 hover:text-white'
-              }`}
-            >
-              <FileSpreadsheet className="w-6 h-6 text-emerald-400" />
-              <div>
-                <strong className="block text-sm text-white">CSV Spreadsheet</strong>
-                <span className="text-[10px] text-gray-400">Excel / Google Sheets compatible</span>
-              </div>
-            </button>
-
-            <button
-              onClick={() => setExportFormat('JSON')}
-              className={`p-4 border text-left flex flex-col justify-between space-y-2 transition-all cursor-pointer ${
-                exportFormat === 'JSON'
-                  ? 'bg-amber-950/80 border-amber-400 text-white font-bold'
-                  : 'bg-[#161b22] border-[#30363d] text-gray-400 hover:text-white'
-              }`}
-            >
-              <FileJson className="w-6 h-6 text-amber-400" />
-              <div>
-                <strong className="block text-sm text-white">Raw JSON Object</strong>
-                <span className="text-[10px] text-gray-400">Programmatic API backup</span>
-              </div>
-            </button>
-
-            <button
-              onClick={() => setExportFormat('OBSIDIAN_MD')}
-              className={`p-4 border text-left flex flex-col justify-between space-y-2 transition-all cursor-pointer ${
-                exportFormat === 'OBSIDIAN_MD'
-                  ? 'bg-amber-950/80 border-amber-400 text-white font-bold'
-                  : 'bg-[#161b22] border-[#30363d] text-gray-400 hover:text-white'
-              }`}
-            >
-              <Gem className="w-6 h-6 text-amber-500" />
-              <div>
-                <strong className="block text-sm text-white">Obsidian Markdown</strong>
-                <span className="text-[10px] text-gray-400">Personal Knowledge Base</span>
-              </div>
-            </button>
-
-            <button
-              onClick={() => setExportFormat('PINESCRIPT')}
-              className={`p-4 border text-left flex flex-col justify-between space-y-2 transition-all cursor-pointer ${
-                exportFormat === 'PINESCRIPT'
-                  ? 'bg-amber-950/80 border-amber-400 text-white font-bold'
-                  : 'bg-[#161b22] border-[#30363d] text-gray-400 hover:text-white'
-              }`}
-            >
-              <Code className="w-6 h-6 text-sky-400" />
-              <div>
-                <strong className="block text-sm text-white">PineScript v6</strong>
-                <span className="text-[10px] text-gray-400">TradingView Chart Overlay</span>
-              </div>
-            </button>
+      {/* Live Data Preview Section */}
+      <div
+        className={`border p-4 space-y-3 rounded-xs ${
+          isObsidian ? 'bg-[#161a22] border-[#242b38]' : 'bg-[#faf9f6] border-[#e5e4e1]'
+        }`}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-3 border-gray-700/30">
+          <div className="flex items-center space-x-2">
+            <Eye className="w-4 h-4 text-emerald-400" />
+            <h4 className="font-mono text-xs font-bold uppercase tracking-wider">
+              Live Data Preview ({previewRows.length} Matches)
+            </h4>
+            <span className="px-2 py-0.5 text-[9px] font-mono bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xs">
+              READY FOR EXPORT
+            </span>
           </div>
+
+          {/* Quick Filter Box */}
+          <div className="relative w-full sm:w-64">
+            <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-gray-400" />
+            <input
+              type="text"
+              value={previewFilter}
+              onChange={(e) => setPreviewFilter(e.target.value)}
+              placeholder="Search records in preview..."
+              className={`w-full text-xs pl-8 pr-3 py-1.5 border rounded-xs font-sans outline-hidden ${
+                isObsidian
+                  ? 'bg-[#0e1117] border-[#30363d] text-white placeholder-gray-500'
+                  : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400'
+              }`}
+            />
+          </div>
+        </div>
+
+        {/* Preview Table */}
+        <div className="overflow-x-auto border border-gray-700/30 rounded-xs">
+          <table className="w-full text-left font-mono text-xs">
+            <thead
+              className={`text-[10px] uppercase font-bold tracking-wider ${
+                isObsidian ? 'bg-[#0e1117] text-gray-400' : 'bg-gray-100 text-gray-600'
+              }`}
+            >
+              <tr>
+                <th className="p-2.5">Symbol / Ticker</th>
+                <th className="p-2.5">Description / Name</th>
+                <th className="p-2.5">Price / Status</th>
+                <th className="p-2.5">Technical Metric</th>
+                <th className="p-2.5">Stage / Action</th>
+              </tr>
+            </thead>
+            <tbody
+              className={`divide-y text-xs ${
+                isObsidian ? 'divide-[#242b38]' : 'divide-gray-200'
+              }`}
+            >
+              {previewRows.slice(0, 8).map((row, idx) => (
+                <tr
+                  key={idx}
+                  className={`transition-colors ${
+                    isObsidian ? 'hover:bg-[#1f2533]' : 'hover:bg-gray-50'
+                  }`}
+                >
+                  <td className="p-2.5 font-bold text-amber-400">{row.col1}</td>
+                  <td className="p-2.5 truncate max-w-[200px]">{row.col2}</td>
+                  <td className="p-2.5 text-emerald-400 font-semibold">{row.col3}</td>
+                  <td className="p-2.5">{row.col4}</td>
+                  <td className="p-2.5 text-gray-400">{row.col5}</td>
+                </tr>
+              ))}
+              {previewRows.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="p-6 text-center text-gray-400 font-sans italic">
+                    No matching records found for "{previewFilter}".
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="flex items-center justify-between text-[11px] font-mono text-gray-400 pt-1">
+          <span>Showing top {Math.min(previewRows.length, 8)} of {previewRows.length} records</span>
+          <span>Timestamp: {new Date().toLocaleDateString()}</span>
         </div>
       </div>
     </div>

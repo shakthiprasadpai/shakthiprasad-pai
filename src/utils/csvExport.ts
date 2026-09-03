@@ -315,3 +315,70 @@ export const exportBrokerageWatchlistToCsv = (stocks: MinerviniTradeSetup[], bro
   downloadCsv(`SEPA_${brokerage.toUpperCase()}_Watchlist_${dateStr}.csv`, csvContent);
 };
 
+/**
+ * Exports Bhavcopy daily records to CSV
+ */
+export const exportBhavcopyToCsv = (records: any[], exchangeName: string = 'NSE_BSE') => {
+  const headers = [
+    'Symbol',
+    'Company Name',
+    'Exchange',
+    'Series',
+    'Close Price',
+    'Prev Close',
+    'Change (%)',
+    'Total Traded Qty',
+    'Turnover (Cr)',
+    '52W High',
+    '52W Low',
+    'RS Rating',
+    'SEPA Stage',
+    'Volume Surge Ratio',
+    'Delivery (%)'
+  ];
+
+  const rows = records.map((r) => [
+    escapeCsvCell(r.symbol),
+    escapeCsvCell(r.name),
+    escapeCsvCell(r.exchange),
+    escapeCsvCell(r.series),
+    escapeCsvCell(r.close?.toFixed(2)),
+    escapeCsvCell(r.prevClose?.toFixed(2)),
+    escapeCsvCell(r.changePercent?.toFixed(2) + '%'),
+    escapeCsvCell(r.totalTradedQty),
+    escapeCsvCell(r.turnoverCr?.toFixed(2)),
+    escapeCsvCell(r.high52w?.toFixed(2)),
+    escapeCsvCell(r.low52w?.toFixed(2)),
+    escapeCsvCell(r.rsRating),
+    escapeCsvCell(r.sepaStage),
+    escapeCsvCell(r.volumeSurgeRatio?.toFixed(2) + 'x'),
+    escapeCsvCell(r.deliveryPercent !== undefined ? r.deliveryPercent.toFixed(1) + '%' : 'N/A')
+  ].join(','));
+
+  const csvContent = [headers.join(','), ...rows].join('\n');
+  const dateStr = new Date().toISOString().split('T')[0];
+  downloadCsv(`Bhavcopy_Settlement_${exchangeName}_${dateStr}.csv`, csvContent);
+};
+
+/**
+ * Exports TradingView formatted watchlist (.txt)
+ */
+export const exportTradingViewWatchlistText = (stocks: MinerviniTradeSetup[]) => {
+  const lines = stocks.map((s) => {
+    const ex = s.exchange?.toUpperCase() || 'NSE';
+    const ticker = s.ticker?.toUpperCase().trim();
+    return `${ex}:${ticker}`;
+  });
+  const content = lines.join('\n');
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.setAttribute('href', url);
+  link.setAttribute('download', `TradingView_Watchlist_${new Date().toISOString().split('T')[0]}.txt`);
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};
+
