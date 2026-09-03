@@ -1,5 +1,6 @@
 import { PriceAlert, MinerviniTradeSetup } from '../types';
 import { getCurrencySymbol } from './sepaCalculator';
+import { logAlertTrigger } from './priceAlertHistoryStorage';
 
 export const ALERTS_STORAGE_KEY = 'minervini_price_alerts';
 export const TRACKER_LOGS_KEY = 'minervini_price_tracker_logs';
@@ -226,6 +227,30 @@ export function appendTrackerLog(log: Omit<BackgroundCheckLog, 'id' | 'timestamp
     // Keep last 30 logs
     const updated = [newLog, ...logs].slice(0, 30);
     localStorage.setItem(TRACKER_LOGS_KEY, JSON.stringify(updated));
+
+    // Also record into persistent Recent Price Alert History
+    if (log.triggered) {
+      try {
+        logAlertTrigger({
+          ticker: log.ticker,
+          exchange: log.exchange,
+          triggeredPrice: log.currentPrice,
+          targetPrice: log.targetPrice,
+          alertType: (log.targetType as any) || 'PIVOT_ENTRY',
+          eventTypeLabel:
+            log.event === 'PIVOT_CROSSED'
+              ? 'Breakout Pivot Crossover'
+              : log.event === 'STOP_LOSS_HIT'
+              ? 'Stop Loss Defense Trigger'
+              : log.event === 'VOLATILITY_DRYUP_PRIMED'
+              ? 'VCP Volatility Dry-Up Primed'
+              : log.event.replace(/_/g, ' '),
+          notes: `Price moved from ${log.previousPrice.toFixed(2)} to ${log.currentPrice.toFixed(2)} (Target: ${log.targetPrice.toFixed(2)})`,
+        });
+      } catch (err) {
+        // Safe failover
+      }
+    }
   } catch (e) {
     console.error(e);
   }

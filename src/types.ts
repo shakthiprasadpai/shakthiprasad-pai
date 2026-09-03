@@ -223,6 +223,47 @@ export interface PriceAlert {
   divergenceConviction?: number;
 }
 
+export interface PriceAlertHistoryRecord {
+  id: string;
+  ticker: string;
+  stockName?: string;
+  exchange: 'NASDAQ' | 'NYSE' | 'NSE' | 'BSE' | string;
+  timestamp: string; // ISO string
+  formattedDate: string;
+  formattedTime: string;
+  relativeTime: string;
+  triggeredPrice: number;
+  targetPrice: number;
+  priceDelta: number; // triggeredPrice - targetPrice
+  priceDeltaPercent: number;
+  alertType:
+    | 'PIVOT_ENTRY'
+    | 'STOP_LOSS'
+    | 'VOLATILITY_DRYUP'
+    | 'PROXIMITY_WARNING'
+    | 'CUSTOM_ABOVE'
+    | 'CUSTOM_BELOW'
+    | 'VOLUME_SPIKE'
+    | 'STAGE_2_COMPLETED'
+    | 'VCP_BASE_FORMED';
+  eventTypeLabel: string;
+  volatilityEventType:
+    | 'BREAKOUT_SURGE'
+    | 'RISK_VIOLATION'
+    | 'SUPPLY_SQUEEZE'
+    | 'APPROACHING_PIVOT'
+    | 'TIGHTENING_RANGE'
+    | 'VOLUME_EXPANSION'
+    | 'STAGE_TRANSITION';
+  severity: 'CRITICAL' | 'WARNING' | 'SUCCESS' | 'INFO';
+  volumeAtTrigger?: number;
+  avgVolume20d?: number;
+  volumeRatio?: number;
+  volatilityRangePercent?: number;
+  notes?: string;
+  status: 'TRIGGERED' | 'ACKNOWLEDGED' | 'DISMISSED';
+}
+
 export interface SmartMoneyDivergenceAlertPayload {
   ticker: string;
   stockName: string;

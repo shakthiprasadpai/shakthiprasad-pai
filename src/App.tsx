@@ -33,10 +33,12 @@ import { DailyReview } from './components/DailyReview';
 import { SectorCorrelationLeadershipCard } from './components/SectorCorrelationLeadershipCard';
 import { PositionRiskCalculator } from './components/PositionRiskCalculator';
 import { DailyStage2ScannerModal } from './components/DailyStage2ScannerModal';
+import { RecentPriceAlertHistory } from './components/RecentPriceAlertHistory';
+import { initializeAlertHistory } from './utils/priceAlertHistoryStorage';
 import { MOCK_STOCKS } from './data/mockStocks';
 import { MinerviniTradeSetup } from './types';
 import { formatCurrency, formatVolume, getCurrencySymbol, calculateBreakoutProbability } from './utils/sepaCalculator';
-import { TrendingUp, ShieldCheck, Target, Droplets, ArrowUpRight, Flame, BarChart3, Calculator, Sparkles, Gem, Bot, Bell, Keyboard, Command, Search, Zap } from 'lucide-react';
+import { TrendingUp, ShieldCheck, Target, Droplets, ArrowUpRight, Flame, BarChart3, Calculator, Sparkles, Gem, Bot, Bell, Keyboard, Command, Search, Zap, History } from 'lucide-react';
 
 export default function App() {
   const [stocksList, setStocksList] = useState<MinerviniTradeSetup[]>(MOCK_STOCKS);
@@ -46,6 +48,9 @@ export default function App() {
   const [isDailyScanModalOpen, setIsDailyScanModalOpen] = useState<boolean>(false);
 
   useEffect(() => {
+    // Initialize default price alert history for stocks if not already in localStorage
+    initializeAlertHistory(MOCK_STOCKS);
+
     const handleOpenScanner = () => setIsDailyScanModalOpen(true);
     window.addEventListener('minervini_open_daily_stage2_scanner', handleOpenScanner);
 
@@ -383,9 +388,16 @@ export default function App() {
                   </div>
 
                   <div className="flex items-center space-x-3">
+                    <a
+                      href="#recent-price-alert-history-table"
+                      className="bg-white hover:bg-[#f5f4f0] text-[#1a1a1a] font-bold px-4 py-2.5 text-xs uppercase tracking-widest flex items-center space-x-2 transition-all border border-[#1a1a1a]"
+                    >
+                      <History className="w-4 h-4 text-amber-600" />
+                      <span>Price Alert History</span>
+                    </a>
                     <button
                       onClick={() => setActiveTab('chart')}
-                      className="bg-[#1a1a1a] hover:bg-black text-white font-bold px-5 py-2.5 text-xs uppercase tracking-widest flex items-center space-x-2 transition-all border border-black"
+                      className="bg-[#1a1a1a] hover:bg-black text-white font-bold px-5 py-2.5 text-xs uppercase tracking-widest flex items-center space-x-2 transition-all border border-black cursor-pointer"
                     >
                       <BarChart3 className="w-4 h-4" />
                       <span>View Interactive VCP Chart</span>
@@ -397,6 +409,13 @@ export default function App() {
                 <TradePlanCard
                   stock={selectedStock}
                   onNavigateToJournal={() => setActiveTab('journal')}
+                />
+
+                {/* Recent Price Alert History Table Component */}
+                <RecentPriceAlertHistory
+                  stock={selectedStock}
+                  allStocks={stocksList}
+                  onSelectStock={(stk) => setSelectedStock(stk)}
                 />
 
                 {/* Sector Correlation & Trend Leadership Validator */}
@@ -465,6 +484,13 @@ export default function App() {
               <TradePlanCard
                 stock={selectedStock}
                 onNavigateToJournal={() => setActiveTab('journal')}
+              />
+
+              {/* Recent Price Alert History Table Component */}
+              <RecentPriceAlertHistory
+                stock={selectedStock}
+                allStocks={stocksList}
+                onSelectStock={(stk) => setSelectedStock(stk)}
               />
 
               {/* Trend Template Check */}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { PriceAlert, MinerviniTradeSetup } from '../types';
 import { formatCurrency, getCurrencySymbol } from '../utils/sepaCalculator';
+import { RecentPriceAlertHistory } from './RecentPriceAlertHistory';
 import {
   getStoredAlerts,
   saveStoredAlerts,
@@ -57,7 +58,7 @@ export const PriceAlertSystem: React.FC<PriceAlertSystemProps> = ({
 
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
   const [filterStatus, setFilterStatus] = useState<'ALL' | 'ACTIVE' | 'TRIGGERED'>('ALL');
-  const [activeSubTab, setActiveSubTab] = useState<'ALERTS' | 'AUDIT_LOGS'>('ALERTS');
+  const [activeSubTab, setActiveSubTab] = useState<'ALERTS' | 'PRICE_HISTORY' | 'AUDIT_LOGS'>('ALERTS');
 
   // Custom alert form state
   const [customPrice, setCustomPrice] = useState<string>('');
@@ -674,7 +675,7 @@ export const PriceAlertSystem: React.FC<PriceAlertSystemProps> = ({
         </div>
       </div>
 
-      {/* Main View Mode Selector: Active Alerts vs Audit Logs */}
+      {/* Main View Mode Selector: Active Alerts vs Audit Logs vs Recent Alert History */}
       <div className="flex items-center justify-between border-b border-[#e5e4e1] pb-2 font-mono text-xs">
         <div className="flex items-center space-x-2">
           <button
@@ -688,6 +689,17 @@ export const PriceAlertSystem: React.FC<PriceAlertSystemProps> = ({
             Monitored Alerts ({alerts.length})
           </button>
           <button
+            onClick={() => setActiveSubTab('PRICE_HISTORY')}
+            className={`px-4 py-2 font-bold uppercase tracking-wider flex items-center space-x-1.5 transition-all border ${
+              activeSubTab === 'PRICE_HISTORY'
+                ? 'bg-[#1a1a1a] text-white border-black'
+                : 'bg-white text-gray-600 border-[#e5e4e1] hover:text-black'
+            }`}
+          >
+            <Activity className="w-3.5 h-3.5 text-amber-400" />
+            <span>Recent Price Alert History ({selectedStock?.ticker || stocks[0]?.ticker})</span>
+          </button>
+          <button
             onClick={() => setActiveSubTab('AUDIT_LOGS')}
             className={`px-4 py-2 font-bold uppercase tracking-wider flex items-center space-x-1.5 transition-all border ${
               activeSubTab === 'AUDIT_LOGS'
@@ -695,7 +707,7 @@ export const PriceAlertSystem: React.FC<PriceAlertSystemProps> = ({
                 : 'bg-white text-gray-600 border-[#e5e4e1] hover:text-black'
             }`}
           >
-            <History className="w-3.5 h-3.5 text-amber-400" />
+            <History className="w-3.5 h-3.5 text-gray-400" />
             <span>Background Tracker Logs ({logs.length})</span>
           </button>
         </div>
@@ -706,7 +718,13 @@ export const PriceAlertSystem: React.FC<PriceAlertSystemProps> = ({
         </div>
       </div>
 
-      {activeSubTab === 'AUDIT_LOGS' ? (
+      {activeSubTab === 'PRICE_HISTORY' ? (
+        <RecentPriceAlertHistory
+          stock={selectedStock || stocks[0]}
+          allStocks={stocks}
+          onSelectStock={onSelectStock}
+        />
+      ) : activeSubTab === 'AUDIT_LOGS' ? (
         /* Background Tracker Audit Logs Table */
         <div className="bg-[#f9f8f5] border border-[#e5e4e1] p-4 space-y-3 font-mono text-xs">
           <div className="flex justify-between items-center pb-2 border-b border-[#e5e4e1]">
