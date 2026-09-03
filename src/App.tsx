@@ -34,6 +34,7 @@ import { SectorCorrelationLeadershipCard } from './components/SectorCorrelationL
 import { PositionRiskCalculator } from './components/PositionRiskCalculator';
 import { DailyStage2ScannerModal } from './components/DailyStage2ScannerModal';
 import { RecentPriceAlertHistory } from './components/RecentPriceAlertHistory';
+import { TradingViewWebhookHub } from './components/TradingViewWebhookHub';
 import { BhavcopyView } from './components/BhavcopyView';
 import { initializeAlertHistory } from './utils/priceAlertHistoryStorage';
 import { DEFAULT_NSE_BHAVCOPY, DEFAULT_BSE_BHAVCOPY } from './data/bhavcopyData';
@@ -870,6 +871,32 @@ export default function App() {
                 stocks={stocksList}
                 selectedStock={selectedStock}
                 onSelectStock={(stock) => setSelectedStock(stock)}
+              />
+            </motion.div>
+          )}
+
+          {/* TAB: TRADINGVIEW WEBHOOK INTEGRATION HUB */}
+          {activeTab === 'tradingview_webhook' && (
+            <motion.div
+              key="tradingview_webhook"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.25, ease: 'easeInOut' }}
+              className="space-y-8"
+            >
+              <TradingViewWebhookHub
+                stocks={stocksList}
+                selectedStock={selectedStock}
+                onSelectStock={(stock) => setSelectedStock(stock)}
+                onViewChart={(stock) => {
+                  setSelectedStock(stock);
+                  setActiveTab('chart');
+                }}
+                onOpenCalculator={(stock) => {
+                  setSelectedStock(stock);
+                  setActiveTab('calculator');
+                }}
               />
             </motion.div>
           )}

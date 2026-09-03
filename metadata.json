@@ -1,6 +1,6 @@
 {
   "name": "Remix Remix Minervini SEPA Trend & VCP Screener",
-  "description": "Mark Minervini SEPA Trend Template & VCP setup analyzer with NSE & BSE Bhavcopy daily settlement data, precise pivot entries, tight volume checks, and exit price levels.",
+  "description": "Mark Minervini SEPA Trend Template & VCP setup analyzer with NSE & BSE Bhavcopy daily settlement data, TradingView automated webhook alerts, precise pivot entries, and tight volume checks.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

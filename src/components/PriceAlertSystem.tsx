@@ -29,6 +29,7 @@ import {
   TrendingUp,
   HardDrive,
   RefreshCw,
+  Radio,
 } from 'lucide-react';
 
 interface PriceAlertSystemProps {
@@ -498,6 +499,19 @@ export const PriceAlertSystem: React.FC<PriceAlertSystemProps> = ({
             className="p-2 border border-[#e5e4e1] hover:bg-gray-100 text-[#1a1a1a] transition-colors"
           >
             {soundEnabled ? <Volume2 className="w-4 h-4 text-emerald-700" /> : <VolumeX className="w-4 h-4 text-gray-400" />}
+          </button>
+
+          {/* Quick link to TradingView Webhook Hub */}
+          <button
+            onClick={() => {
+              const tvTabBtn = document.getElementById('nav-tab-tradingview-webhook');
+              if (tvTabBtn) tvTabBtn.click();
+            }}
+            className="bg-emerald-700 hover:bg-emerald-600 text-white font-bold px-3 py-2 text-xs flex items-center space-x-1.5 transition-all shadow-xs cursor-pointer"
+            title="Open real-time TradingView Webhook Stream"
+          >
+            <Radio className="w-3.5 h-3.5 text-white animate-pulse" />
+            <span>TradingView Webhooks</span>
           </button>
         </div>
       </div>

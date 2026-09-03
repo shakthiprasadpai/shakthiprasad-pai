@@ -8,6 +8,8 @@ async function startServer() {
   const PORT = 3000;
 
   app.use(express.json());
+  app.use(express.text({ type: ['text/*', 'application/json', 'text/plain'] }));
+  app.use(express.urlencoded({ extended: true }));
 
   // Helper for Gemini AI instance
   const getGeminiClient = () => {
@@ -1097,6 +1099,286 @@ tags:
     } catch (err: any) {
       res.status(500).json({ error: 'Failed to process batch obsidian notes' });
     }
+  });
+
+  // ==========================================
+  // TRADINGVIEW WEBHOOK ENGINE (Minervini SEPA)
+  // ==========================================
+  interface TradingViewServerEvent {
+    id: string;
+    receivedAt: string;
+    formattedTime: string;
+    ticker: string;
+    stockName?: string;
+    action: string;
+    price: number;
+    volume?: number;
+    exchange: string;
+    message: string;
+    strategy?: string;
+    status: 'VALID' | 'WARNING' | 'UNAUTHORIZED';
+    sepaCategory: 'PIVOT_ENTRY' | 'STOP_EXIT' | 'TARGET_PROFIT' | 'VOLUME_SURGE' | 'VCP_CONTRACTION' | 'STAGE_2_SIGNAL' | 'GENERAL_ALERT';
+    rawPayload: string;
+    ip?: string;
+  }
+
+  let tradingViewWebhookPassphrase = process.env.TRADINGVIEW_WEBHOOK_SECRET || '';
+  const tradingViewEvents: TradingViewServerEvent[] = [
+    {
+      id: 'tv-seed-1',
+      receivedAt: new Date(Date.now() - 8 * 60 * 1000).toISOString(),
+      formattedTime: new Date(Date.now() - 8 * 60 * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      ticker: 'NVDA',
+      stockName: 'NVIDIA Corporation',
+      action: 'PIVOT_BREAKOUT',
+      price: 132.85,
+      volume: 72500000,
+      exchange: 'NASDAQ',
+      message: 'NVDA broke above VCP Pivot $131.50 with +85% institutional volume surge. Stage 2 confirmed.',
+      strategy: 'Minervini SEPA VCP Squeeze Indicator',
+      status: 'VALID',
+      sepaCategory: 'PIVOT_ENTRY',
+      rawPayload: '{"ticker":"NVDA","action":"PIVOT_BREAKOUT","price":132.85,"volume":72500000,"strategy":"Minervini SEPA VCP Squeeze Indicator"}',
+      ip: '52.89.214.238'
+    },
+    {
+      id: 'tv-seed-2',
+      receivedAt: new Date(Date.now() - 32 * 60 * 1000).toISOString(),
+      formattedTime: new Date(Date.now() - 32 * 60 * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      ticker: 'RELIANCE',
+      stockName: 'Reliance Industries Ltd',
+      action: 'VCP_CONTRACTION_DRYUP',
+      price: 3042.50,
+      volume: 1240000,
+      exchange: 'NSE',
+      message: 'RELIANCE volume dried up by -62% near pivot ₹3,050.00. Contraction T3 tightening within 2.1%.',
+      strategy: 'SEPA Stage 2 Scanner v5.2',
+      status: 'VALID',
+      sepaCategory: 'VCP_CONTRACTION',
+      rawPayload: '{"ticker":"RELIANCE","action":"VCP_CONTRACTION_DRYUP","price":3042.5,"exchange":"NSE"}',
+      ip: '52.89.214.238'
+    },
+    {
+      id: 'tv-seed-3',
+      receivedAt: new Date(Date.now() - 75 * 60 * 1000).toISOString(),
+      formattedTime: new Date(Date.now() - 75 * 60 * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      ticker: 'BEL',
+      stockName: 'Bharat Electronics Ltd',
+      action: 'TARGET_1_REACHED',
+      price: 318.00,
+      volume: 8900000,
+      exchange: 'NSE',
+      message: 'BEL hit 3:1 Reward/Risk Target 1 at ₹318.00 (+14.2% gain). Minervini rule: scale 50% profits, move stop to breakeven.',
+      strategy: 'Minervini Profit Target Alarm',
+      status: 'VALID',
+      sepaCategory: 'TARGET_PROFIT',
+      rawPayload: '{"ticker":"BEL","action":"TARGET_1_REACHED","price":318.0,"exchange":"NSE"}',
+      ip: '52.89.214.238'
+    }
+  ];
+
+  const classifySepaCategory = (action: string, msg: string): TradingViewServerEvent['sepaCategory'] => {
+    const text = `${action} ${msg}`.toUpperCase();
+    if (text.includes('STOP') || text.includes('EXIT') || text.includes('LOSS') || text.includes('SELL')) return 'STOP_EXIT';
+    if (text.includes('TARGET') || text.includes('PROFIT') || text.includes('TP1') || text.includes('TP2')) return 'TARGET_PROFIT';
+    if (text.includes('PIVOT') || text.includes('BREAKOUT') || text.includes('BUY') || text.includes('ENTRY')) return 'PIVOT_ENTRY';
+    if (text.includes('DRY') || text.includes('VCP') || text.includes('CONTRACTION') || text.includes('SQUEEZE')) return 'VCP_CONTRACTION';
+    if (text.includes('VOLUME') || text.includes('SURGE') || text.includes('DELIVERY') || text.includes('ACCUMULATION')) return 'VOLUME_SURGE';
+    if (text.includes('STAGE') || text.includes('TREND') || text.includes('SMA')) return 'STAGE_2_SIGNAL';
+    return 'GENERAL_ALERT';
+  };
+
+  // 1. Primary Inbound TradingView Webhook Endpoint
+  app.post('/api/tradingview-webhook', (req, res) => {
+    try {
+      const clientIp = req.headers['x-forwarded-for']?.toString() || req.socket.remoteAddress || 'unknown';
+      let payloadData: any = {};
+      let rawText = '';
+
+      if (typeof req.body === 'string') {
+        rawText = req.body.trim();
+        try {
+          payloadData = JSON.parse(rawText);
+        } catch {
+          // Parse plain text formats e.g. "NVDA BUY 132.50" or "PIVOT BREAKOUT TATAMOTORS 1025.0"
+          const tokens = rawText.split(/\s+/);
+          const tickerMatch = rawText.match(/\b([A-Z0-9_\.]{2,12})\b/);
+          const priceMatch = rawText.match(/(?:price|at|close|@|\$|₹)?\s*([0-9]+\.?[0-9]*)/i);
+          const actionMatch = rawText.match(/\b(BUY|SELL|PIVOT|BREAKOUT|STOP|TARGET|EXIT|ALERT|VCP)\b/i);
+
+          payloadData = {
+            ticker: tickerMatch ? tickerMatch[1] : (tokens[0] || 'TICKER'),
+            action: actionMatch ? actionMatch[1].toUpperCase() : 'ALERT',
+            price: priceMatch ? parseFloat(priceMatch[1]) : 0,
+            message: rawText,
+            strategy: 'TradingView Plain Text Alert'
+          };
+        }
+      } else if (typeof req.body === 'object' && req.body !== null) {
+        payloadData = req.body;
+        rawText = JSON.stringify(payloadData);
+      } else {
+        payloadData = {};
+        rawText = String(req.body || '');
+      }
+
+      // Extract and normalize core alert attributes
+      const rawTicker = (payloadData.ticker || payloadData.symbol || payloadData.scrip || payloadData.pair || 'STOCK').toString().toUpperCase().trim();
+      // Clean ticker from exchange prefix like NASDAQ:NVDA or NSE:RELIANCE
+      const tickerClean = rawTicker.includes(':') ? rawTicker.split(':')[1] : rawTicker;
+      const action = (payloadData.action || payloadData.order || payloadData.event || payloadData.type || payloadData.signal || 'ALERT').toString().toUpperCase();
+      const price = Number(payloadData.price || payloadData.close || payloadData.last || payloadData.bar?.close || 0);
+      const volume = Number(payloadData.volume || payloadData.vol || payloadData.bar?.volume || 0);
+      const exchange = (payloadData.exchange || payloadData.market || (tickerClean.endsWith('.NS') || ['RELIANCE', 'TCS', 'INFY', 'HDFCBANK', 'BEL', 'TATAELXSI', 'DIXON', 'HAL'].includes(tickerClean) ? 'NSE' : 'NASDAQ')).toString().toUpperCase();
+      const strategy = payloadData.strategy || payloadData.indicator || payloadData.source || 'TradingView Webhook';
+      const userMessage = payloadData.message || payloadData.alert || payloadData.desc || payloadData.text || `${tickerClean} ${action} triggered at $${price}`;
+
+      // Validate secret passphrase if configured
+      const incomingPassphrase = payloadData.passphrase || payloadData.token || payloadData.secret || req.headers['x-tradingview-passphrase'] || req.headers['x-webhook-secret'];
+      let status: TradingViewServerEvent['status'] = 'VALID';
+      if (tradingViewWebhookPassphrase && tradingViewWebhookPassphrase.trim().length > 0) {
+        if (incomingPassphrase !== tradingViewWebhookPassphrase.trim()) {
+          status = 'UNAUTHORIZED';
+        }
+      }
+
+      const sepaCategory = classifySepaCategory(action, userMessage);
+      const now = new Date();
+
+      const newEvent: TradingViewServerEvent = {
+        id: `tv-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        receivedAt: now.toISOString(),
+        formattedTime: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        ticker: tickerClean,
+        stockName: payloadData.stockName || payloadData.name || undefined,
+        action,
+        price,
+        volume: volume > 0 ? volume : undefined,
+        exchange,
+        message: userMessage,
+        strategy,
+        status,
+        sepaCategory,
+        rawPayload: rawText,
+        ip: clientIp
+      };
+
+      // Prepend to event log and cap at 200 events
+      tradingViewEvents.unshift(newEvent);
+      if (tradingViewEvents.length > 200) {
+        tradingViewEvents.pop();
+      }
+
+      console.log(`[TradingView Webhook] Received ${action} for ${tickerClean} @ ${price} (${status})`);
+
+      res.status(status === 'UNAUTHORIZED' ? 401 : 200).json({
+        success: status !== 'UNAUTHORIZED',
+        status,
+        eventId: newEvent.id,
+        message: status === 'UNAUTHORIZED'
+          ? 'TradingView webhook received but passphrase did not match configured secret'
+          : `Successfully processed TradingView alert for ${tickerClean}`,
+        event: newEvent
+      });
+    } catch (err: any) {
+      console.error('[TradingView Webhook Error]', err);
+      res.status(400).json({ error: 'Failed to parse TradingView webhook payload', details: err?.message });
+    }
+  });
+
+  // 2. Fetch Received Webhook Events
+  app.get('/api/tradingview-webhook/events', (req, res) => {
+    const limit = Math.min(200, parseInt(req.query.limit as string) || 50);
+    const tickerFilter = (req.query.ticker as string || '').toUpperCase().trim();
+    const categoryFilter = req.query.category as string;
+
+    let filtered = tradingViewEvents;
+    if (tickerFilter) {
+      filtered = filtered.filter(e => e.ticker.includes(tickerFilter));
+    }
+    if (categoryFilter && categoryFilter !== 'ALL') {
+      filtered = filtered.filter(e => e.sepaCategory === categoryFilter);
+    }
+
+    res.json({
+      events: filtered.slice(0, limit),
+      totalCount: tradingViewEvents.length,
+      serverTime: new Date().toISOString(),
+      passphraseConfigured: Boolean(tradingViewWebhookPassphrase && tradingViewWebhookPassphrase.length > 0)
+    });
+  });
+
+  // 3. Clear Webhook Events
+  app.delete('/api/tradingview-webhook/events', (req, res) => {
+    tradingViewEvents.length = 0;
+    res.json({ success: true, message: 'TradingView webhook event log cleared' });
+  });
+
+  // 4. Simulate a TradingView Webhook (Test Endpoint)
+  app.post('/api/tradingview-webhook/simulate', (req, res) => {
+    const {
+      ticker = 'NVDA',
+      action = 'PIVOT_BREAKOUT',
+      price = 132.50,
+      volume = 68000000,
+      exchange = 'NASDAQ',
+      message,
+      strategy = 'Minervini SEPA VCP Simulator'
+    } = req.body || {};
+
+    const now = new Date();
+    const generatedMessage = message || `${ticker} crossed above Pivot Price $${price} on heavy volume surge (+75% vs 20d avg).`;
+    const sepaCategory = classifySepaCategory(action, generatedMessage);
+
+    const testEvent: TradingViewServerEvent = {
+      id: `tv-sim-${Date.now()}`,
+      receivedAt: now.toISOString(),
+      formattedTime: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      ticker: ticker.toUpperCase(),
+      action: action.toUpperCase(),
+      price: Number(price),
+      volume: Number(volume),
+      exchange: exchange.toUpperCase(),
+      message: generatedMessage,
+      strategy,
+      status: 'VALID',
+      sepaCategory,
+      rawPayload: JSON.stringify({ ticker, action, price, volume, exchange, strategy, test: true }),
+      ip: '127.0.0.1 (Local Simulator)'
+    };
+
+    tradingViewEvents.unshift(testEvent);
+    if (tradingViewEvents.length > 200) tradingViewEvents.pop();
+
+    res.json({
+      success: true,
+      message: `Simulated TradingView webhook triggered for ${ticker}`,
+      event: testEvent
+    });
+  });
+
+  // 5. Update Webhook Passphrase / Configuration
+  app.post('/api/tradingview-webhook/config', (req, res) => {
+    const { passphrase } = req.body || {};
+    if (typeof passphrase === 'string') {
+      tradingViewWebhookPassphrase = passphrase.trim();
+    }
+    res.json({
+      success: true,
+      passphraseConfigured: Boolean(tradingViewWebhookPassphrase && tradingViewWebhookPassphrase.length > 0)
+    });
+  });
+
+  // 6. Webhook Status & Diagnostics
+  app.get('/api/tradingview-webhook/status', (req, res) => {
+    res.json({
+      status: 'ONLINE_LISTENING',
+      endpoint: '/api/tradingview-webhook',
+      totalEventsReceived: tradingViewEvents.length,
+      hasPassphrase: Boolean(tradingViewWebhookPassphrase && tradingViewWebhookPassphrase.length > 0),
+      supportedFormats: ['application/json', 'text/plain', 'application/x-www-form-urlencoded'],
+      serverTime: new Date().toISOString()
+    });
   });
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
