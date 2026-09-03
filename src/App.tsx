@@ -37,6 +37,7 @@ import { DailyStage2ScannerModal } from './components/DailyStage2ScannerModal';
 import { RecentPriceAlertHistory } from './components/RecentPriceAlertHistory';
 import { TradingViewWebhookHub } from './components/TradingViewWebhookHub';
 import { BhavcopyView } from './components/BhavcopyView';
+import { RrgToolView } from './components/RrgToolView';
 import { initializeAlertHistory } from './utils/priceAlertHistoryStorage';
 import { DEFAULT_NSE_BHAVCOPY, DEFAULT_BSE_BHAVCOPY } from './data/bhavcopyData';
 import { MOCK_STOCKS } from './data/mockStocks';

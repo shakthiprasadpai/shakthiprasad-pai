@@ -28,7 +28,8 @@ import {
   ChevronRight,
   Sun,
   Moon,
-  Monitor
+  Monitor,
+  Compass
 } from 'lucide-react';
 import { AppNavTab } from './Navbar';
 
@@ -114,6 +115,15 @@ const NAV_ITEMS: NavItemDef[] = [
     subtitle: 'Leading industry groups & relative rotation',
     category: 'market',
     icon: Layers,
+  },
+  {
+    id: 'rrg_chart',
+    title: 'RRG Relative Rotation',
+    subtitle: 'JdK RS-Ratio™ & RS-Momentum™ tool with audio feedback',
+    category: 'market',
+    icon: Compass,
+    badge: 'NEW TOOL',
+    badgeColor: 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30',
   },
   {
     id: 'earnings',

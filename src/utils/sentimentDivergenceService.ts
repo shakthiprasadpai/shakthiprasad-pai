@@ -12,6 +12,7 @@ export type SmartMoneyDivergenceType =
   | 'NEUTRAL_CONVERGENCE';
 
 export interface SmartMoneyDivergenceSignal {
+  hasDivergence: boolean;
   ticker: string;
   stockName: string;
   exchange: 'NASDAQ' | 'NYSE' | 'NSE' | 'BSE' | string;
@@ -164,6 +165,43 @@ function computeHeadlineScore(h: HeadlineItem): number {
 }
 
 /**
+ * Creates a fallback neutral divergence signal when price action and sentiment are in equilibrium.
+ */
+export function createNeutralDivergenceSignal(
+  stock?: MinerviniTradeSetup | null,
+  lookbackDays: number = 20
+): SmartMoneyDivergenceSignal {
+  const currentPrice = stock?.currentPrice || 0;
+  const currency = stock?.exchange ? getCurrencySymbol(stock.exchange) : '$';
+
+  return {
+    hasDivergence: false,
+    ticker: stock?.ticker || 'UNKNOWN',
+    stockName: stock?.name || '',
+    exchange: stock?.exchange || 'NASDAQ',
+    divergenceType: 'NEUTRAL_CONVERGENCE',
+    strength: 'LOW',
+    convictionScore: 5.0,
+    priceSlopePct: 0,
+    sentimentSlopeScore: 0,
+    priceStart: currentPrice,
+    priceEnd: currentPrice,
+    sentimentStart: 50,
+    sentimentEnd: 50,
+    lookbackDays,
+    startDate: '',
+    endDate: '',
+    title: `Institutional Flow Monitor: ${stock?.ticker || ''} Price/Sentiment In-Sync`,
+    description: `Price action and sentiment metrics are in structural equilibrium. No institutional accumulation or distribution divergence identified over the ${lookbackDays}-day window.`,
+    sepaPlaybook: `SEPA Strategy: Standard discipline applies. Monitor VCP contractions, volume dry-up, and ${currency}${stock?.pivotPrice || currentPrice} pivot level.`,
+    institutionalPhase: 'NEUTRAL',
+    detectedAt: new Date().toLocaleTimeString(),
+    keyHeadlines: [],
+    correlation: 0.5,
+  };
+}
+
+/**
  * Primary Engine: Evaluates Price Action vs Sentiment Series to detect Smart Money Divergence.
  */
 export function detectSmartMoneyDivergence(
@@ -172,21 +210,23 @@ export function detectSmartMoneyDivergence(
   options?: {
     lookbackDays?: number;
     maPeriod?: number;
-  }
-): SmartMoneyDivergenceSignal | null {
-  if (!stock || !stock.priceHistory || stock.priceHistory.length < 5) {
-    return null;
-  }
+  } | number
+): SmartMoneyDivergenceSignal {
+  const lookbackDays = typeof options === 'number' ? options : options?.lookbackDays || 20;
+  const maPeriod = typeof options === 'number' ? 5 : options?.maPeriod || 5;
 
-  const lookbackDays = options?.lookbackDays || 20;
-  const maPeriod = options?.maPeriod || 5;
+  if (!stock || !stock.priceHistory || stock.priceHistory.length < 5) {
+    return createNeutralDivergenceSignal(stock, lookbackDays);
+  }
 
   const sortedPrices = [...stock.priceHistory].sort(
     (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
   );
 
   const lookbackPrices = sortedPrices.slice(-lookbackDays);
-  if (lookbackPrices.length < 5) return null;
+  if (lookbackPrices.length < 5) {
+    return createNeutralDivergenceSignal(stock, lookbackDays);
+  }
 
   const refNow = new Date(lookbackPrices[lookbackPrices.length - 1].date).getTime() || Date.now();
 
@@ -292,7 +332,21 @@ export function detectSmartMoneyDivergence(
     priceSlopePct <= 0.5 && sentimentSlopeScore >= 10.0 && stock.rsRating < 75;
 
   if (!isBullishAccumulation && !isBearishDistribution && !isHiddenAccumulation && !isHiddenDistribution) {
-    return null; // No significant divergence
+    const neutralSignal = createNeutralDivergenceSignal(stock, lookbackDays);
+    return {
+      ...neutralSignal,
+      hasDivergence: false,
+      priceSlopePct,
+      sentimentSlopeScore,
+      priceStart: Number(startPrice.toFixed(2)),
+      priceEnd: Number(endPrice.toFixed(2)),
+      sentimentStart: Number(startSentiment.toFixed(1)),
+      sentimentEnd: Number(endSentiment.toFixed(1)),
+      startDate: startPoint.date,
+      endDate: endPoint.date,
+      correlation,
+      detectedAt: nowStr,
+    };
   }
 
   let divergenceType: SmartMoneyDivergenceType = 'NEUTRAL_CONVERGENCE';
@@ -345,6 +399,7 @@ export function detectSmartMoneyDivergence(
   }
 
   return {
+    hasDivergence: true,
     ticker: stock.ticker,
     stockName: stock.name,
     exchange: stock.exchange,
@@ -506,6 +561,7 @@ export function simulateSmartMoneyDivergenceAlert(
   const currency = getCurrencySymbol(stock.exchange);
 
   const signal: SmartMoneyDivergenceSignal = {
+    hasDivergence: true,
     ticker: stock.ticker,
     stockName: stock.name,
     exchange: stock.exchange,
@@ -554,7 +610,7 @@ export function scanWatchlistForDivergences(
   stocks.forEach((stock) => {
     const headlines = headlinesMap[stock.ticker] || [];
     const signal = detectSmartMoneyDivergence(stock, headlines);
-    if (signal && signal.convictionScore >= 6.5) {
+    if (signal && signal.hasDivergence && signal.convictionScore >= 6.5) {
       signals.push(signal);
       triggerSmartMoneyPushNotification(stock, signal);
     }

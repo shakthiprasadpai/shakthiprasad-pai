@@ -21,8 +21,20 @@ import {
   AlertTriangle,
   ArrowUpRight,
   ArrowDownRight,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
+import {
+  playRrgLeadingChime,
+  playRrgImprovingChime,
+  playRrgWeakeningTone,
+  playRrgLaggingTone,
+  playRrgStepChime,
+  playRrgQuadrantSound,
+  getAudioSettings,
+  saveAudioSettings,
+} from '../utils/audioAlertEngine';
 
 export interface RrgPoint {
   step: number; // 0=T-4, 1=T-3, 2=T-2, 3=T-1, 4=Current
@@ -69,6 +81,14 @@ export const RelativeRotationGraph: React.FC<RelativeRotationGraphProps> = ({
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [animStep, setAnimStep] = useState<number>(4); // 0 to 4 (Current)
   const [timeframe, setTimeframe] = useState<'DAILY' | 'WEEKLY'>('WEEKLY');
+  const [audioEnabled, setAudioEnabled] = useState<boolean>(() => getAudioSettings().rrgSound && getAudioSettings().enabled);
+
+  const toggleAudio = () => {
+    const next = !audioEnabled;
+    setAudioEnabled(next);
+    saveAudioSettings({ rrgSound: next });
+    if (next) playRrgLeadingChime(0.5);
+  };
 
   // Compute RRG Position & Tail Trajectory for each Sector
   const rrgSectorList = useMemo(() => {
@@ -212,13 +232,23 @@ export const RelativeRotationGraph: React.FC<RelativeRotationGraphProps> = ({
     let timer: any = null;
     if (isPlaying) {
       timer = setInterval(() => {
-        setAnimStep((prev) => (prev >= 4 ? 0 : prev + 1));
+        setAnimStep((prev) => {
+          const next = prev >= 4 ? 0 : prev + 1;
+          if (audioEnabled) {
+            if (next === 4) {
+              playRrgLeadingChime(0.6);
+            } else {
+              playRrgStepChime(next);
+            }
+          }
+          return next;
+        });
       }, 800);
     }
     return () => {
       if (timer) clearInterval(timer);
     };
-  }, [isPlaying]);
+  }, [isPlaying, audioEnabled]);
 
   // Filtered RRG Sector List
   const filteredRrgList = useMemo(() => {
@@ -307,6 +337,20 @@ export const RelativeRotationGraph: React.FC<RelativeRotationGraphProps> = ({
             </button>
           </div>
 
+          {/* Audio Toggle Button */}
+          <button
+            onClick={toggleAudio}
+            className={`px-3 py-1.5 border text-xs font-bold uppercase transition-all flex items-center space-x-1.5 cursor-pointer ${
+              audioEnabled
+                ? 'bg-emerald-500 text-black border-emerald-400 font-black'
+                : 'bg-[#0e1117] text-gray-400 border-[#30363d]'
+            }`}
+            title="Toggle RRG Audio Feedback"
+          >
+            {audioEnabled ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
+            <span>{audioEnabled ? 'Sound ON' : 'Muted'}</span>
+          </button>
+
           {/* Tail Trails Toggle */}
           <button
             onClick={() => setShowTails(!showTails)}
@@ -339,7 +383,11 @@ export const RelativeRotationGraph: React.FC<RelativeRotationGraphProps> = ({
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 font-mono text-xs">
         {/* Leading Quadrant */}
         <button
-          onClick={() => setSelectedQuadrant(selectedQuadrant === 'LEADING' ? 'ALL' : 'LEADING')}
+          onClick={() => {
+            const next = selectedQuadrant === 'LEADING' ? 'ALL' : 'LEADING';
+            setSelectedQuadrant(next);
+            if (audioEnabled && next !== 'ALL') playRrgQuadrantSound('LEADING');
+          }}
           className={`p-3 border transition-all text-left cursor-pointer ${
             selectedQuadrant === 'LEADING'
               ? 'bg-emerald-950/90 border-emerald-400 text-white shadow-lg'
@@ -364,7 +412,11 @@ export const RelativeRotationGraph: React.FC<RelativeRotationGraphProps> = ({
 
         {/* Weakening Quadrant */}
         <button
-          onClick={() => setSelectedQuadrant(selectedQuadrant === 'WEAKENING' ? 'ALL' : 'WEAKENING')}
+          onClick={() => {
+            const next = selectedQuadrant === 'WEAKENING' ? 'ALL' : 'WEAKENING';
+            setSelectedQuadrant(next);
+            if (audioEnabled && next !== 'ALL') playRrgQuadrantSound('WEAKENING');
+          }}
           className={`p-3 border transition-all text-left cursor-pointer ${
             selectedQuadrant === 'WEAKENING'
               ? 'bg-amber-950/90 border-amber-400 text-white shadow-lg'
@@ -389,7 +441,11 @@ export const RelativeRotationGraph: React.FC<RelativeRotationGraphProps> = ({
 
         {/* Lagging Quadrant */}
         <button
-          onClick={() => setSelectedQuadrant(selectedQuadrant === 'LAGGING' ? 'ALL' : 'LAGGING')}
+          onClick={() => {
+            const next = selectedQuadrant === 'LAGGING' ? 'ALL' : 'LAGGING';
+            setSelectedQuadrant(next);
+            if (audioEnabled && next !== 'ALL') playRrgQuadrantSound('LAGGING');
+          }}
           className={`p-3 border transition-all text-left cursor-pointer ${
             selectedQuadrant === 'LAGGING'
               ? 'bg-rose-950/90 border-rose-400 text-white shadow-lg'
@@ -414,7 +470,11 @@ export const RelativeRotationGraph: React.FC<RelativeRotationGraphProps> = ({
 
         {/* Improving Quadrant */}
         <button
-          onClick={() => setSelectedQuadrant(selectedQuadrant === 'IMPROVING' ? 'ALL' : 'IMPROVING')}
+          onClick={() => {
+            const next = selectedQuadrant === 'IMPROVING' ? 'ALL' : 'IMPROVING';
+            setSelectedQuadrant(next);
+            if (audioEnabled && next !== 'ALL') playRrgQuadrantSound('IMPROVING');
+          }}
           className={`p-3 border transition-all text-left cursor-pointer ${
             selectedQuadrant === 'IMPROVING'
               ? 'bg-sky-950/90 border-sky-400 text-white shadow-lg'

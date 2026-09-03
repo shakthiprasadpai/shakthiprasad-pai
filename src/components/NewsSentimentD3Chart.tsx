@@ -196,7 +196,7 @@ export const NewsSentimentD3Chart: React.FC<NewsSentimentD3ChartProps> = ({
 
   // Smart Money Sentiment vs Price Action Divergence Engine
   const divergenceSignal = useMemo<SmartMoneyDivergenceSignal>(() => {
-    return detectSmartMoneyDivergence(stock, headlines, lookbackDays);
+    return detectSmartMoneyDivergence(stock, headlines, { lookbackDays });
   }, [stock, headlines, lookbackDays]);
 
   const [divergencePushSent, setDivergencePushSent] = useState<boolean>(false);
@@ -1772,11 +1772,11 @@ export const NewsSentimentD3Chart: React.FC<NewsSentimentD3ChartProps> = ({
           {/* Smart Money Price vs Sentiment Divergence Phase Banner */}
           <div
             className={`p-3 border transition-all ${
-              divergenceSignal.hasDivergence &&
+              divergenceSignal?.hasDivergence &&
               (divergenceSignal.divergenceType === 'BULLISH_ACCUMULATION' ||
                 divergenceSignal.divergenceType === 'HIDDEN_ACCUMULATION')
                 ? 'bg-[#0f1f24] text-white border-cyan-400 shadow-md'
-                : divergenceSignal.hasDivergence
+                : divergenceSignal?.hasDivergence
                 ? 'bg-[#260f14] text-white border-rose-500 shadow-md'
                 : 'bg-[#f7f6f2] text-gray-800 border-[#e5e4e1]'
             }`}
@@ -1785,11 +1785,11 @@ export const NewsSentimentD3Chart: React.FC<NewsSentimentD3ChartProps> = ({
               <div className="flex items-start space-x-2.5">
                 <div
                   className={`w-7 h-7 flex items-center justify-center font-bold text-xs mt-0.5 shrink-0 ${
-                    divergenceSignal.hasDivergence &&
+                    divergenceSignal?.hasDivergence &&
                     (divergenceSignal.divergenceType === 'BULLISH_ACCUMULATION' ||
                       divergenceSignal.divergenceType === 'HIDDEN_ACCUMULATION')
                       ? 'bg-cyan-400 text-slate-950 animate-pulse'
-                      : divergenceSignal.hasDivergence
+                      : divergenceSignal?.hasDivergence
                       ? 'bg-rose-500 text-white'
                       : 'bg-gray-200 text-gray-700'
                   }`}
@@ -1801,45 +1801,45 @@ export const NewsSentimentD3Chart: React.FC<NewsSentimentD3ChartProps> = ({
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span
                       className={`text-[10px] uppercase font-mono tracking-wider font-extrabold ${
-                        divergenceSignal.hasDivergence &&
+                        divergenceSignal?.hasDivergence &&
                         (divergenceSignal.divergenceType === 'BULLISH_ACCUMULATION' ||
                           divergenceSignal.divergenceType === 'HIDDEN_ACCUMULATION')
                           ? 'text-cyan-300'
-                          : divergenceSignal.hasDivergence
+                          : divergenceSignal?.hasDivergence
                           ? 'text-rose-300'
                           : 'text-gray-700'
                       }`}
                     >
-                      {divergenceSignal.hasDivergence
+                      {divergenceSignal?.hasDivergence
                         ? `⚡ Smart Money Divergence: ${divergenceSignal.divergenceType.replace('_', ' ')}`
                         : 'Institutional Flow Monitor: Price/Sentiment Sync'}
                     </span>
 
                     <span
                       className={`text-[9px] font-black uppercase px-1.5 py-0.2 font-mono ${
-                        divergenceSignal.hasDivergence &&
+                        divergenceSignal?.hasDivergence &&
                         (divergenceSignal.divergenceType === 'BULLISH_ACCUMULATION' ||
                           divergenceSignal.divergenceType === 'HIDDEN_ACCUMULATION')
                           ? 'bg-cyan-400 text-slate-950'
-                          : divergenceSignal.hasDivergence
+                          : divergenceSignal?.hasDivergence
                           ? 'bg-rose-500 text-white'
                           : 'bg-gray-200 text-gray-800'
                       }`}
                     >
-                      {divergenceSignal.institutionalPhase} PHASE
+                      {divergenceSignal?.institutionalPhase || 'NEUTRAL'} PHASE
                     </span>
 
                     <span className="text-[9px] font-mono px-1 py-0.2 bg-black/20 text-gray-300">
-                      Conviction: {divergenceSignal.convictionScore}/10
+                      Conviction: {divergenceSignal?.convictionScore || 5}/10
                     </span>
                   </div>
 
                   <p
                     className={`text-[11px] font-sans leading-tight ${
-                      divergenceSignal.hasDivergence ? 'text-gray-200' : 'text-gray-600'
+                      divergenceSignal?.hasDivergence ? 'text-gray-200' : 'text-gray-600'
                     }`}
                   >
-                    {divergenceSignal.description}
+                    {divergenceSignal?.description || 'Price action and sentiment metrics are progressing in equilibrium.'}
                   </p>
                 </div>
               </div>
@@ -1848,11 +1848,11 @@ export const NewsSentimentD3Chart: React.FC<NewsSentimentD3ChartProps> = ({
               <div className="flex items-center space-x-2 shrink-0 self-end sm:self-center font-mono text-[10px]">
                 <button
                   onClick={handleTriggerPushAlert}
-                  disabled={divergencePushSent}
+                  disabled={divergencePushSent || !divergenceSignal}
                   className={`px-3 py-1.5 font-bold uppercase tracking-wider flex items-center space-x-1.5 transition-all cursor-pointer ${
                     divergencePushSent
                       ? 'bg-emerald-600 text-white'
-                      : divergenceSignal.hasDivergence
+                      : divergenceSignal?.hasDivergence
                       ? 'bg-cyan-400 hover:bg-cyan-300 text-slate-950 shadow-sm'
                       : 'bg-black hover:bg-gray-800 text-white shadow-xs'
                   }`}
@@ -1873,7 +1873,7 @@ export const NewsSentimentD3Chart: React.FC<NewsSentimentD3ChartProps> = ({
               </div>
             </div>
 
-            {divergenceSignal.hasDivergence && (
+            {divergenceSignal?.hasDivergence && (
               <div className="mt-2 pt-1.5 border-t border-white/10 flex flex-col sm:flex-row sm:items-center justify-between text-[10px] text-gray-300 font-mono gap-1">
                 <div>
                   <span className="text-gray-400">Price Action Delta: </span>

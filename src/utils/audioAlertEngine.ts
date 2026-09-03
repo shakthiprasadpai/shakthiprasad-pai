@@ -8,6 +8,7 @@ export interface AudioSettings {
   volumeSpikeSound: boolean;
   highConvictionBreakoutSound: boolean;
   smartMoneyDivergenceSound: boolean;
+  rrgSound: boolean;
 }
 
 const AUDIO_SETTINGS_KEY = 'minervini_audio_alert_settings';
@@ -18,6 +19,7 @@ export const DEFAULT_AUDIO_SETTINGS: AudioSettings = {
   volumeSpikeSound: true,
   highConvictionBreakoutSound: true,
   smartMoneyDivergenceSound: true,
+  rrgSound: true,
 };
 
 export function getAudioSettings(): AudioSettings {
@@ -346,4 +348,256 @@ export function scanAndTriggerWatchlistAudio(
   }
 
   return triggeredCount;
+}
+
+/**
+ * ============================================================================
+ * RELATIVE ROTATION GRAPH (RRG®) QUADRANT AUDIO ENGINE
+ * Synthesizes dedicated harmonic spatial tones reflecting JdK Relative Strength
+ * and Relative Momentum rotation cycles.
+ * ============================================================================
+ */
+
+/**
+ * Plays a triumphant, shimmering ascending pentatonic chime for the LEADING quadrant.
+ * Denotes superior Relative Strength (RS-Ratio > 100) and accelerating Momentum (RS-Momentum > 100).
+ */
+export function playRrgLeadingChime(volumeMultiplier: number = 1.0): void {
+  const settings = getAudioSettings();
+  if (!settings.enabled || !settings.rrgSound) return;
+
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+
+    const now = ctx.currentTime;
+    const masterGain = ctx.createGain();
+    masterGain.gain.setValueAtTime(settings.volume * 0.85 * volumeMultiplier, now);
+    masterGain.connect(ctx.destination);
+
+    // Notes: F#5 (739.99Hz), A#5 (932.33Hz), C#6 (1108.73Hz), F#6 (1479.98Hz)
+    const notes = [
+      { freq: 739.99, start: 0, dur: 0.38, type: 'sine' as OscillatorType },
+      { freq: 932.33, start: 0.08, dur: 0.40, type: 'triangle' as OscillatorType },
+      { freq: 1108.73, start: 0.16, dur: 0.44, type: 'sine' as OscillatorType },
+      { freq: 1479.98, start: 0.24, dur: 0.65, type: 'sine' as OscillatorType },
+    ];
+
+    notes.forEach((note) => {
+      const osc = ctx.createOscillator();
+      const toneGain = ctx.createGain();
+
+      osc.type = note.type;
+      osc.frequency.setValueAtTime(note.freq, now + note.start);
+
+      toneGain.gain.setValueAtTime(0.0001, now + note.start);
+      toneGain.gain.exponentialRampToValueAtTime(0.28, now + note.start + 0.02);
+      toneGain.gain.exponentialRampToValueAtTime(0.0001, now + note.start + note.dur);
+
+      osc.connect(toneGain);
+      toneGain.connect(masterGain);
+
+      osc.start(now + note.start);
+      osc.stop(now + note.start + note.dur);
+    });
+  } catch (e) {
+    // Suppress audio policy issues
+  }
+}
+
+/**
+ * Plays an optimistic, upward-springing dual-tone chime for the IMPROVING quadrant.
+ * Denotes turnaround accumulation: Momentum > 100 while RS-Ratio is rotating up.
+ */
+export function playRrgImprovingChime(volumeMultiplier: number = 1.0): void {
+  const settings = getAudioSettings();
+  if (!settings.enabled || !settings.rrgSound) return;
+
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+
+    const now = ctx.currentTime;
+    const masterGain = ctx.createGain();
+    masterGain.gain.setValueAtTime(settings.volume * 0.75 * volumeMultiplier, now);
+    masterGain.connect(ctx.destination);
+
+    // Notes: D5 (587.33Hz), G5 (783.99Hz), B5 (987.77Hz)
+    const notes = [
+      { freq: 587.33, start: 0, dur: 0.30, type: 'sine' as OscillatorType },
+      { freq: 783.99, start: 0.09, dur: 0.35, type: 'triangle' as OscillatorType },
+      { freq: 987.77, start: 0.18, dur: 0.48, type: 'sine' as OscillatorType },
+    ];
+
+    notes.forEach((note) => {
+      const osc = ctx.createOscillator();
+      const toneGain = ctx.createGain();
+
+      osc.type = note.type;
+      osc.frequency.setValueAtTime(note.freq, now + note.start);
+
+      toneGain.gain.setValueAtTime(0.0001, now + note.start);
+      toneGain.gain.exponentialRampToValueAtTime(0.24, now + note.start + 0.02);
+      toneGain.gain.exponentialRampToValueAtTime(0.0001, now + note.start + note.dur);
+
+      osc.connect(toneGain);
+      toneGain.connect(masterGain);
+
+      osc.start(now + note.start);
+      osc.stop(now + note.start + note.dur);
+    });
+  } catch (e) {
+    // Suppress audio policy issues
+  }
+}
+
+/**
+ * Plays a gentle, descending cautionary tone for the WEAKENING quadrant.
+ * Denotes RS-Ratio > 100 but RS-Momentum dropping below 100 (taking profits / trailing stops).
+ */
+export function playRrgWeakeningTone(volumeMultiplier: number = 1.0): void {
+  const settings = getAudioSettings();
+  if (!settings.enabled || !settings.rrgSound) return;
+
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+
+    const now = ctx.currentTime;
+    const masterGain = ctx.createGain();
+    masterGain.gain.setValueAtTime(settings.volume * 0.7 * volumeMultiplier, now);
+    masterGain.connect(ctx.destination);
+
+    // Notes: A5 (880.00Hz), F#5 (739.99Hz), D5 (587.33Hz)
+    const notes = [
+      { freq: 880.00, start: 0, dur: 0.28 },
+      { freq: 739.99, start: 0.10, dur: 0.32 },
+      { freq: 587.33, start: 0.20, dur: 0.45 },
+    ];
+
+    notes.forEach((note) => {
+      const osc = ctx.createOscillator();
+      const toneGain = ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(note.freq, now + note.start);
+
+      toneGain.gain.setValueAtTime(0.0001, now + note.start);
+      toneGain.gain.exponentialRampToValueAtTime(0.20, now + note.start + 0.02);
+      toneGain.gain.exponentialRampToValueAtTime(0.0001, now + note.start + note.dur);
+
+      osc.connect(toneGain);
+      toneGain.connect(masterGain);
+
+      osc.start(now + note.start);
+      osc.stop(now + note.start + note.dur);
+    });
+  } catch (e) {
+    // Suppress audio policy issues
+  }
+}
+
+/**
+ * Plays a low, grounding warning tone for the LAGGING quadrant.
+ * Denotes both RS-Ratio < 100 and RS-Momentum < 100 (underperforming benchmark).
+ */
+export function playRrgLaggingTone(volumeMultiplier: number = 1.0): void {
+  const settings = getAudioSettings();
+  if (!settings.enabled || !settings.rrgSound) return;
+
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+
+    const now = ctx.currentTime;
+    const masterGain = ctx.createGain();
+    masterGain.gain.setValueAtTime(settings.volume * 0.65 * volumeMultiplier, now);
+    masterGain.connect(ctx.destination);
+
+    // Notes: Eb4 (311.13Hz) -> Bb3 (233.08Hz)
+    const notes = [
+      { freq: 311.13, start: 0, dur: 0.30 },
+      { freq: 233.08, start: 0.12, dur: 0.45 },
+    ];
+
+    notes.forEach((note) => {
+      const osc = ctx.createOscillator();
+      const toneGain = ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(note.freq, now + note.start);
+
+      toneGain.gain.setValueAtTime(0.0001, now + note.start);
+      toneGain.gain.exponentialRampToValueAtTime(0.22, now + note.start + 0.03);
+      toneGain.gain.exponentialRampToValueAtTime(0.0001, now + note.start + note.dur);
+
+      osc.connect(toneGain);
+      toneGain.connect(masterGain);
+
+      osc.start(now + note.start);
+      osc.stop(now + note.start + note.dur);
+    });
+  } catch (e) {
+    // Suppress audio policy issues
+  }
+}
+
+/**
+ * Plays a subtle tactile synth click / pip when stepping or scrubbing through historical rotational trail steps.
+ */
+export function playRrgStepChime(stepIndex: number = 0): void {
+  const settings = getAudioSettings();
+  if (!settings.enabled || !settings.rrgSound) return;
+
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+
+    const now = ctx.currentTime;
+    const masterGain = ctx.createGain();
+    masterGain.gain.setValueAtTime(settings.volume * 0.45, now);
+    masterGain.connect(ctx.destination);
+
+    const baseFreq = 640 + stepIndex * 85;
+    const osc = ctx.createOscillator();
+    const toneGain = ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(baseFreq, now);
+
+    toneGain.gain.setValueAtTime(0.0001, now);
+    toneGain.gain.exponentialRampToValueAtTime(0.18, now + 0.01);
+    toneGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.08);
+
+    osc.connect(toneGain);
+    toneGain.connect(masterGain);
+
+    osc.start(now);
+    osc.stop(now + 0.08);
+  } catch (e) {
+    // Suppress audio policy issues
+  }
+}
+
+/**
+ * Dispatches the corresponding RRG quadrant chime.
+ */
+export function playRrgQuadrantSound(
+  quadrant: 'LEADING' | 'WEAKENING' | 'LAGGING' | 'IMPROVING',
+  volumeMultiplier: number = 1.0
+): void {
+  switch (quadrant) {
+    case 'LEADING':
+      playRrgLeadingChime(volumeMultiplier);
+      break;
+    case 'IMPROVING':
+      playRrgImprovingChime(volumeMultiplier);
+      break;
+    case 'WEAKENING':
+      playRrgWeakeningTone(volumeMultiplier);
+      break;
+    case 'LAGGING':
+      playRrgLaggingTone(volumeMultiplier);
+      break;
+  }
 }
