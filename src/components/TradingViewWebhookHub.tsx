@@ -33,11 +33,13 @@ import {
   ChevronRight,
   Shield,
   Layers,
-  Sparkles
+  Sparkles,
+  Activity
 } from 'lucide-react';
 import { MinerviniTradeSetup, TradingViewWebhookEvent, TradingViewSepaCategory } from '../types';
 import { playAlertChime } from '../utils/backgroundPriceChecker';
 import { logAlertTrigger } from '../utils/priceAlertHistoryStorage';
+import { RecentWebhookEventsLog } from './RecentWebhookEventsLog';
 
 interface TradingViewWebhookHubProps {
   stocks: MinerviniTradeSetup[];
@@ -69,7 +71,7 @@ export const TradingViewWebhookHub: React.FC<TradingViewWebhookHubProps> = ({
   // Filter state
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [activeSubTab, setActiveSubTab] = useState<'events' | 'simulator' | 'pine_script' | 'config'>('events');
+  const [activeSubTab, setActiveSubTab] = useState<'recent_log' | 'events' | 'simulator' | 'pine_script' | 'config'>('recent_log');
 
   // Config State
   const [passphrase, setPassphrase] = useState<string>('');
@@ -234,6 +236,31 @@ export const TradingViewWebhookHub: React.FC<TradingViewWebhookHubProps> = ({
       setSimSuccessMsg(`Failed to send test: ${e?.message}`);
     } finally {
       setSimIsSending(false);
+    }
+  };
+
+  // Instant one-click ping for troubleshooting Recent Webhook Events log
+  const handleFastTestPing = async () => {
+    try {
+      const res = await fetch('/api/tradingview-webhook/simulate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ticker: 'NVDA',
+          action: 'PIVOT_BREAKOUT',
+          price: 132.85,
+          volume: 74200000,
+          exchange: 'NASDAQ',
+          strategy: 'Minervini SEPA VCP Squeeze',
+          message: 'NVDA broke above VCP Pivot $131.50 with +85% institutional volume surge. (Test Ping)'
+        })
+      });
+      if (res.ok) {
+        if (soundEnabled) playAlertChime();
+        await fetchEvents();
+      }
+    } catch (e) {
+      console.error('Fast ping failed:', e);
     }
   };
 
@@ -557,17 +584,38 @@ if isVcpBreakout and enableWebhookAlerts
 
       {/* 2. Navigation Tabs for Webhook Hub */}
       <div className="flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800 pb-2">
-        <div className="flex items-center space-x-2 sm:space-x-4 overflow-x-auto">
+        <div className="flex items-center space-x-2 sm:space-x-3 overflow-x-auto">
           <button
+            id="tab-recent-webhook-events"
+            onClick={() => setActiveSubTab('recent_log')}
+            className={`px-3.5 py-2 rounded-lg text-xs sm:text-sm font-bold flex items-center space-x-2 transition-all cursor-pointer shrink-0 ${
+              activeSubTab === 'recent_log'
+                ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 shadow-sm'
+                : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800'
+            }`}
+          >
+            <Activity className="w-4 h-4 text-emerald-500" />
+            <span>Recent Webhook Events</span>
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+              activeSubTab === 'recent_log'
+                ? 'bg-emerald-500 text-white'
+                : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+            }`}>
+              Last 10 Log
+            </span>
+          </button>
+
+          <button
+            id="tab-live-webhook-feed"
             onClick={() => setActiveSubTab('events')}
-            className={`px-4 py-2 rounded-lg text-xs sm:text-sm font-bold flex items-center space-x-2 transition-all cursor-pointer ${
+            className={`px-3.5 py-2 rounded-lg text-xs sm:text-sm font-bold flex items-center space-x-2 transition-all cursor-pointer shrink-0 ${
               activeSubTab === 'events'
                 ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 shadow-sm'
                 : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800'
             }`}
           >
             <Radio className="w-4 h-4 text-emerald-500" />
-            <span>Live Webhook Feed</span>
+            <span>All Alerts Feed</span>
             {events.length > 0 && (
               <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
                 activeSubTab === 'events' ? 'bg-emerald-500 text-white' : 'bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-300'
@@ -579,31 +627,31 @@ if isVcpBreakout and enableWebhookAlerts
 
           <button
             onClick={() => setActiveSubTab('simulator')}
-            className={`px-4 py-2 rounded-lg text-xs sm:text-sm font-bold flex items-center space-x-2 transition-all cursor-pointer ${
+            className={`px-3.5 py-2 rounded-lg text-xs sm:text-sm font-bold flex items-center space-x-2 transition-all cursor-pointer shrink-0 ${
               activeSubTab === 'simulator'
                 ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 shadow-sm'
                 : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800'
             }`}
           >
             <Send className="w-4 h-4 text-blue-500" />
-            <span>Test Simulator & Curl</span>
+            <span>Test Simulator</span>
           </button>
 
           <button
             onClick={() => setActiveSubTab('pine_script')}
-            className={`px-4 py-2 rounded-lg text-xs sm:text-sm font-bold flex items-center space-x-2 transition-all cursor-pointer ${
+            className={`px-3.5 py-2 rounded-lg text-xs sm:text-sm font-bold flex items-center space-x-2 transition-all cursor-pointer shrink-0 ${
               activeSubTab === 'pine_script'
                 ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 shadow-sm'
                 : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800'
             }`}
           >
             <Code className="w-4 h-4 text-amber-500" />
-            <span>Pine Script v5 & Setup Guide</span>
+            <span>Pine Script v5</span>
           </button>
 
           <button
             onClick={() => setActiveSubTab('config')}
-            className={`px-4 py-2 rounded-lg text-xs sm:text-sm font-bold flex items-center space-x-2 transition-all cursor-pointer ${
+            className={`px-3.5 py-2 rounded-lg text-xs sm:text-sm font-bold flex items-center space-x-2 transition-all cursor-pointer shrink-0 ${
               activeSubTab === 'config'
                 ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 shadow-sm'
                 : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800'
@@ -614,7 +662,7 @@ if isVcpBreakout and enableWebhookAlerts
           </button>
         </div>
 
-        <div className="hidden sm:flex items-center space-x-2 text-xs text-zinc-500">
+        <div className="hidden sm:flex items-center space-x-2 text-xs text-zinc-500 shrink-0">
           <Clock className="w-3.5 h-3.5" />
           <span>Last sync: {lastPollTime || 'Connecting...'}</span>
         </div>
@@ -622,9 +670,41 @@ if isVcpBreakout and enableWebhookAlerts
 
       {/* 3. SUBTAB CONTENT */}
 
+      {/* SUBTAB 0: RECENT WEBHOOK EVENTS TROUBLESHOOTING LOG (LAST 10 REQUESTS) */}
+      {activeSubTab === 'recent_log' && (
+        <RecentWebhookEventsLog
+          events={events}
+          webhookUrl={webhookUrl}
+          onRefresh={fetchEvents}
+          onClear={handleClearEvents}
+          onSelectEvent={(ev) => {
+            setSelectedEventModal(ev);
+          }}
+          onSimulateFastPing={handleFastTestPing}
+          isPolling={autoPoll}
+          lastPollTime={lastPollTime}
+        />
+      )}
+
       {/* SUBTAB 1: LIVE WEBHOOK FEED */}
       {activeSubTab === 'events' && (
         <div className="space-y-4">
+          {/* Quick banner to switch to Troubleshooter */}
+          <div className="p-3 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl flex items-center justify-between text-xs">
+            <div className="flex items-center space-x-2 text-zinc-600 dark:text-zinc-400">
+              <Activity className="w-4 h-4 text-emerald-500" />
+              <span>
+                Troubleshooting TradingView connection? Inspect incoming requests, HTTP status codes, and payloads in the <strong>Recent Webhook Events</strong> log.
+              </span>
+            </div>
+            <button
+              onClick={() => setActiveSubTab('recent_log')}
+              className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-lg shrink-0 cursor-pointer"
+            >
+              Open Recent Log
+            </button>
+          </div>
+
           {/* Quick Metrics Cards */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="bg-white dark:bg-[#1e1e1e] border border-zinc-200 dark:border-zinc-800 p-4 rounded-xl shadow-xs">

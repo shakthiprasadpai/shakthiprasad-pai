@@ -587,6 +587,10 @@ export interface TradingViewWebhookEvent {
   sepaCategory: TradingViewSepaCategory;
   rawPayload: string;
   ip?: string;
+  httpStatus?: number;
+  diagnostics?: string;
+  contentType?: string;
+  requestDurationMs?: number;
 }
 
 export interface TradingViewWebhookConfig {
