@@ -411,6 +411,8 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
 
     if (!matchesSearch) return false;
 
+    if (filterCategory === 'RS_80_PLUS') return (stock.rsRating || 0) >= 80;
+    if (filterCategory === 'RS_70_PLUS') return (stock.rsRating || 0) >= 70;
     if (filterCategory === 'TIER_1_POWER') return calculateTrendStrengthMeter(stock).tier === 'TIER_1_POWER';
     if (filterCategory === 'PERFECT') return stock.trendScore === 8;
     if (filterCategory === 'ULTRA_TIGHT') return stock.volumeDryUpPercent <= -60 || stock.isTightVolume;
@@ -748,6 +750,8 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
         <div className="flex flex-wrap items-center gap-2 text-xs font-sans">
           {[
             { id: 'ALL', label: `All Candidates (${stocks.length})` },
+            { id: 'RS_80_PLUS', label: '🏆 RS ≥ 80 (Elite Leaders)' },
+            { id: 'RS_70_PLUS', label: '🎯 RS ≥ 70 (Trend Continuation)' },
             { id: 'TIER_1_POWER', label: '⚡ Tier-1 Power Slope' },
             { id: 'ULTRA_TIGHT', label: '🔥 Ultra Tight (-60%+)' },
             { id: 'PERFECT', label: '⭐ Perfect 8/8 SEPA' },

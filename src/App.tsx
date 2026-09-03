@@ -422,7 +422,11 @@ export default function App() {
                 <TickerNewsGrounding stock={selectedStock} />
 
                 {/* 8-Rule Trend Template Checklist */}
-                <TrendTemplateChecklist stock={selectedStock} />
+                <TrendTemplateChecklist
+                  stock={selectedStock}
+                  allStocks={stocksList}
+                  onSelectStock={(stock) => setSelectedStock(stock)}
+                />
 
                 {/* AI Gemini Analysis Desk */}
                 <AiMinerviniAnalyst stock={selectedStock} />
@@ -464,7 +468,11 @@ export default function App() {
               />
 
               {/* Trend Template Check */}
-              <TrendTemplateChecklist stock={selectedStock} />
+              <TrendTemplateChecklist
+                stock={selectedStock}
+                allStocks={stocksList}
+                onSelectStock={(stock) => setSelectedStock(stock)}
+              />
 
             </motion.div>
           )}

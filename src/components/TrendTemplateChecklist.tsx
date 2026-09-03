@@ -6,6 +6,7 @@ import { CheckCircle2, XCircle, ShieldCheck, AlertCircle, Info, Code, Copy, Chec
 import { PineScriptExporter, PINE_SCRIPT_CODE } from './PineScriptExporter';
 import { HistoricalBacktestPanel } from './HistoricalBacktestPanel';
 import { AutomatedScoreCard } from './AutomatedScoreCard';
+import { RelativeStrengthContinuationPanel } from './RelativeStrengthContinuationPanel';
 
 interface Stage2Explanation {
   summary: string;
@@ -58,9 +59,15 @@ const STAGE_2_EXPLANATIONS: Record<string, Stage2Explanation> = {
 
 interface TrendTemplateChecklistProps {
   stock: MinerviniTradeSetup;
+  allStocks?: MinerviniTradeSetup[];
+  onSelectStock?: (stock: MinerviniTradeSetup) => void;
 }
 
-export const TrendTemplateChecklist: React.FC<TrendTemplateChecklistProps> = ({ stock }) => {
+export const TrendTemplateChecklist: React.FC<TrendTemplateChecklistProps> = ({
+  stock,
+  allStocks = [],
+  onSelectStock
+}) => {
   // Local state tracking for manually marked/overridden rules
   const [userOverrides, setUserOverrides] = useState<Record<string, boolean>>(() => {
     try {
@@ -376,8 +383,42 @@ export const TrendTemplateChecklist: React.FC<TrendTemplateChecklistProps> = ({ 
                 Target: <span className="text-[#1a1a1a]">{rule.requiredConditionStr}</span>
               </span>
             </div>
+
+            {/* Rule 8 Special Relative Strength Prerequisite Callout */}
+            {rule.id === 'rule_8' && (
+              <div className="mt-2.5 pt-2 border-t border-dashed border-[#e5e4e1] flex items-center justify-between text-[10px] font-mono">
+                <div className="flex items-center space-x-1.5">
+                  <span className="font-bold text-amber-800 uppercase">Minervini RS Prerequisite:</span>
+                  <span className={`px-1.5 py-0.2 font-bold ${
+                    (stock.rsRating || 0) >= 80
+                      ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                      : (stock.rsRating || 0) >= 70
+                      ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                      : 'bg-rose-100 text-rose-900 border border-rose-300'
+                  }`}>
+                    {(stock.rsRating || 0) >= 80 ? 'Elite (RS 80+)' : (stock.rsRating || 0) >= 70 ? 'Qualified (RS 70+)' : 'Fails Prerequisite (<70)'}
+                  </span>
+                </div>
+                <a
+                  href="#relative-strength-continuation-panel"
+                  className="text-amber-700 hover:text-black font-bold flex items-center space-x-0.5 underline"
+                >
+                  <span>RS Deep Dive</span>
+                  <ArrowUpRight className="w-3 h-3" />
+                </a>
+              </div>
+            )}
           </div>
         ))}
+      </div>
+
+      {/* Relative Strength (RS) Rating & Trend Continuation Setups Engine */}
+      <div id="relative-strength-continuation-panel" className="pt-2">
+        <RelativeStrengthContinuationPanel
+          stock={stock}
+          allStocks={allStocks}
+          onSelectStock={onSelectStock}
+        />
       </div>
 
       {/* Stage 2 Rule Explanation Popup Modal */}

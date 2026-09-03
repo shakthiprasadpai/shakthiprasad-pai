@@ -369,4 +369,80 @@ export interface DailyRankedPick {
   updatedAt: string;
 }
 
+// ===================================================
+// MINERVINI RELATIVE STRENGTH (RS) & CONTINUATION TYPES
+// ===================================================
+
+export interface RelativeStrengthQuarterBreakdown {
+  quarter: string; // 'Q1 (Recent 3M)', 'Q2 (4-6M)', 'Q3 (7-9M)', 'Q4 (10-12M)'
+  periodLabel: string;
+  weightPercent: number; // 40%, 20%, 20%, 20%
+  stockReturnPercent: number;
+  benchmarkReturnPercent: number;
+  excessReturnPercent: number;
+  weightedContribution: number;
+}
+
+export interface RelativeStrengthCalculation {
+  ticker: string;
+  calculatedRsRating: number; // 1 - 99 scale
+  percentileRank: number; // 1 - 99
+  tier: 'ELITE_LEADER_90' | 'HIGH_LEADERSHIP_80' | 'QUALIFIED_70' | 'SUBPAR_UNDER_70';
+  tierLabel: string;
+  badgeBg: string;
+  badgeText: string;
+  badgeBorder: string;
+  prerequisitePassed70: boolean; // >= 70
+  prerequisitePassed80: boolean; // >= 80
+  weightedPerformanceScore: number; // Raw 4-quarter weighted score
+  annualReturnPercent: number; // 12-month net gain
+  quarters: RelativeStrengthQuarterBreakdown[];
+  rsLineTrend: 'NEW_HIGH_BEFORE_PRICE' | 'STRONG_UPTREND' | 'CONSOLIDATING' | 'LAGGING';
+  rsLineTrendLabel: string;
+  rsLineTrendDescription: string;
+  trendContinuationEligibility: 'PRIME_SETUP' | 'QUALIFIED_SETUP' | 'MARGINAL_SETUP' | 'DISQUALIFIED';
+  eligibilityExplanation: string;
+}
+
+export interface TrendContinuationSetup {
+  stock: MinerviniTradeSetup;
+  rsCalculation: RelativeStrengthCalculation;
+  isEligible: boolean;
+  setupGrade: 'A+' | 'A' | 'B+' | 'C';
+  entryPrices: {
+    pivotPrice: number; // Exact breakout level
+    buyZoneMin: number; // Equal to pivotPrice
+    buyZoneMax: number; // Pivot + 2%
+    maxChasePrice: number; // Pivot + 5% (Minervini strict rule: never buy >5% above pivot)
+    cheatEntryPrice?: number;
+    cheatStopLossPrice?: number;
+    entryTriggerType: string;
+  };
+  exitPrices: {
+    stopLossPrice: number; // Hard stop level (low of handle/contraction)
+    stopLossPercent: number; // Risk percentage e.g. -5.8%
+    riskAmountDollars: number; // Dollar risk per share
+    breakevenTriggerPrice: number; // Move stop to breakeven when price hits +3R or +10%
+    target1Price: number; // 3:1 R/R profit objective (+18% to +20%)
+    target1Percent: number;
+    target1GainDollars: number;
+    target2Price: number; // Extended runner objective (+35%)
+    target2Percent: number;
+    target2GainDollars: number;
+    riskRewardRatio: number;
+    trailingStopDescription: string;
+  };
+  tightVolumeCriteria: {
+    avgVolume20d: number;
+    pivotVolume: number;
+    volumeDryUpPercent: number; // e.g. -71.5%
+    isTightVolume: boolean;
+    requiredBreakoutVolume: number; // +50% to +100% surge requirement
+    dryUpStatus: 'EXTREME_DRY_UP' | 'HEALTHY_DRY_UP' | 'MODERATE_DRY_UP' | 'ABOVE_AVERAGE';
+    dryUpStatusLabel: string;
+    supplyExhaustionScore: number; // 0 - 100
+    volumeSequenceSummary: string;
+  };
+}
+
 
