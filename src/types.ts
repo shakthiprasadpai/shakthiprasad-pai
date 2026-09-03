@@ -359,29 +359,12 @@ export interface TradeJournalNote {
   entryPrice?: number;
   exitPrice?: number;
   stopLossPrice?: number;
-  targetPrice?: number;
-  riskRewardRatio?: number;
   emotionalState: EmotionalState;
   notes: string;
   keyLesson: string;
   tradeStatus: TradeStatus;
   rating: number; // 1 to 5 stars
   chartSnapshotUrl?: string;
-
-  // Smart Pattern Intelligence Fields
-  patternQualityScore?: number; // 0 to 100
-  patternTightnessRatio?: number; // e.g. 55% reduction in depth
-  volumeDryUpRatio?: number; // e.g. -68% below 20-day average
-  contractionsSummary?: string; // e.g. "T1: -14.5% (14d) ➔ T2: -4.2% (5d)"
-  patternChecklistPassed?: string[]; // e.g. ["Stage 2 Trend 8/8", "Volume Dry-up -68%", "Progressive Tightening"]
-
-  // Sectoral Context & Leadership Fields
-  sector?: string; // e.g. "Technology", "Consumer Cyclical", "Healthcare", "Industrials"
-  industry?: string; // e.g. "Semiconductors", "Apparel Retail", "Aerospace & Defense"
-  sectorRank?: number; // e.g. Rank 1 of 6 sectors
-  sectorRsScore?: number; // 0 to 99
-  sectorTrend?: 'LEADING' | 'IMPROVING' | 'ROTATIONAL' | 'LAGGING';
-  sectorTailwindNotes?: string; // e.g. "Heavy institutional inflow, peer group expanding"
 }
 
 // ==========================================

@@ -50,12 +50,8 @@ import {
   Tag,
   Calculator,
   Layers,
-  Bookmark,
-  Building2,
-  Zap,
+  Bookmark
 } from 'lucide-react';
-import { SmartPatternSectorAssistant } from './SmartPatternSectorAssistant';
-import { SectoralJournalAnalytics } from './SectoralJournalAnalytics';
 
 interface TradeJournalProps {
   stocks: MinerviniTradeSetup[];
@@ -130,8 +126,6 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({
   const [selectedEmotionFilter, setSelectedEmotionFilter] = useState<string>('ALL');
   const [selectedOutcomeFilter, setSelectedOutcomeFilter] = useState<string>('ALL');
   const [selectedSetupFilter, setSelectedSetupFilter] = useState<string>('ALL');
-  const [selectedSectorFilter, setSelectedSectorFilter] = useState<string>('ALL');
-  const [activeJournalTab, setActiveJournalTab] = useState<'LOGGED_NOTES' | 'SECTOR_ANALYTICS'>('LOGGED_NOTES');
   const [strategyChartMetric, setStrategyChartMetric] = useState<'netPnl' | 'gainsVsLosses' | 'winRate'>('netPnl');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [journalViewMode, setJournalViewMode] = useState<'grid' | 'grouped'>('grid');
@@ -155,21 +149,6 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({
   const [formRating, setFormRating] = useState<number>(5);
   const [formChartSnapshotUrl, setFormChartSnapshotUrl] = useState<string>('');
   const [lightboxSnapshot, setLightboxSnapshot] = useState<string | null>(null);
-
-  // Smart Pattern & Sector fields
-  const [formSector, setFormSector] = useState<string>(selectedStock?.sector || stocks[0]?.sector || 'Technology');
-  const [formIndustry, setFormIndustry] = useState<string>(selectedStock?.industry || stocks[0]?.industry || 'Semiconductors');
-  const [formSectorRank, setFormSectorRank] = useState<number>(1);
-  const [formSectorRsScore, setFormSectorRsScore] = useState<number>(92);
-  const [formSectorTrend, setFormSectorTrend] = useState<'LEADING' | 'IMPROVING' | 'ROTATIONAL' | 'LAGGING'>('LEADING');
-  const [formSectorTailwindNotes, setFormSectorTailwindNotes] = useState<string>('');
-  const [formPatternQualityScore, setFormPatternQualityScore] = useState<number>(94);
-  const [formPatternTightnessRatio, setFormPatternTightnessRatio] = useState<number>(0.85);
-  const [formVolumeDryUpRatio, setFormVolumeDryUpRatio] = useState<number>(0.65);
-  const [formContractionsSummary, setFormContractionsSummary] = useState<string>('3 Contractions (22% → 11% → 4%)');
-  const [formPatternChecklistPassed, setFormPatternChecklistPassed] = useState<string[]>([]);
-  const [formTargetPrice, setFormTargetPrice] = useState<string>('');
-  const [formRiskRewardRatio, setFormRiskRewardRatio] = useState<string>('');
 
   const [tradeGoals, setTradeGoals] = useState<TradeGoals>(() => getStoredTradeGoals());
   const [isGoalsModalOpen, setIsGoalsModalOpen] = useState<boolean>(false);
@@ -239,54 +218,10 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({
       setFormStockName(found.name);
       setFormExchange(found.exchange);
       setFormEntryPrice(found.pivotPrice.toString());
-      if (found.stopLossPrice) setFormStopLossPrice(found.stopLossPrice.toString());
-      if (found.sector) setFormSector(found.sector);
-      if (found.industry) setFormIndustry(found.industry);
-      if (found.patternType) setFormSetupType(found.patternType);
     } else {
       setFormTicker(tickerStr);
       setFormStockName(tickerStr + ' Stock');
     }
-  };
-
-  const handleApplySmartData = (smart: {
-    setupType: string;
-    entryPrice?: number;
-    stopLossPrice?: number;
-    targetPrice?: number;
-    riskRewardRatio?: number;
-    notes: string;
-    keyLesson: string;
-    sector: string;
-    industry: string;
-    sectorRank: number;
-    sectorRsScore: number;
-    sectorTrend: 'LEADING' | 'IMPROVING' | 'ROTATIONAL' | 'LAGGING';
-    sectorTailwindNotes: string;
-    patternQualityScore: number;
-    patternTightnessRatio: number;
-    volumeDryUpRatio: number;
-    contractionsSummary: string;
-    patternChecklistPassed: string[];
-  }) => {
-    if (smart.setupType) setFormSetupType(smart.setupType);
-    if (smart.entryPrice !== undefined) setFormEntryPrice(smart.entryPrice.toString());
-    if (smart.stopLossPrice !== undefined) setFormStopLossPrice(smart.stopLossPrice.toString());
-    if (smart.targetPrice !== undefined) setFormTargetPrice(smart.targetPrice.toString());
-    if (smart.riskRewardRatio !== undefined) setFormRiskRewardRatio(smart.riskRewardRatio.toString());
-    if (smart.notes) setFormNotes(smart.notes);
-    if (smart.keyLesson) setFormKeyLesson(smart.keyLesson);
-    setFormSector(smart.sector);
-    setFormIndustry(smart.industry);
-    setFormSectorRank(smart.sectorRank);
-    setFormSectorRsScore(smart.sectorRsScore);
-    setFormSectorTrend(smart.sectorTrend);
-    setFormSectorTailwindNotes(smart.sectorTailwindNotes);
-    setFormPatternQualityScore(smart.patternQualityScore);
-    setFormPatternTightnessRatio(smart.patternTightnessRatio);
-    setFormVolumeDryUpRatio(smart.volumeDryUpRatio);
-    setFormContractionsSummary(smart.contractionsSummary);
-    setFormPatternChecklistPassed(smart.patternChecklistPassed);
   };
 
   const handleCaptureVcpSnapshot = () => {
@@ -329,28 +264,9 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({
     setEditingNoteId(null);
     setFormNotes('');
     setFormKeyLesson('');
-    const targetStock = selectedStock || stocks[0];
-    const initTicker = targetStock ? targetStock.ticker : 'NVDA';
-    setFormTicker(initTicker);
-    setFormStockName(targetStock ? targetStock.name : 'NVIDIA Corporation');
-    setFormExchange(targetStock ? targetStock.exchange : 'NASDAQ');
-    setFormSetupType(targetStock?.patternType || 'VCP (3 Contractions)');
-    setFormEntryPrice(targetStock ? targetStock.pivotPrice.toString() : '125.00');
-    setFormStopLossPrice(targetStock ? targetStock.stopLossPrice.toString() : '116.00');
+    setFormEntryPrice(selectedStock ? selectedStock.pivotPrice.toString() : '125.00');
+    setFormStopLossPrice(selectedStock ? selectedStock.stopLossPrice.toString() : '116.00');
     setFormExitPrice('');
-    setFormSector(targetStock?.sector || 'Technology');
-    setFormIndustry(targetStock?.industry || 'Semiconductors');
-    setFormSectorRank(1);
-    setFormSectorRsScore(92);
-    setFormSectorTrend('LEADING');
-    setFormSectorTailwindNotes('');
-    setFormPatternQualityScore(94);
-    setFormPatternTightnessRatio(0.85);
-    setFormVolumeDryUpRatio(0.65);
-    setFormContractionsSummary(targetStock?.vcpContractions ? `${targetStock.vcpContractions} Contractions` : '');
-    setFormPatternChecklistPassed([]);
-    setFormTargetPrice('');
-    setFormRiskRewardRatio('');
     setFormRating(5);
     setFormChartSnapshotUrl('');
     setIsModalOpen(true);
@@ -371,19 +287,6 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({
     setFormTradeStatus(note.tradeStatus);
     setFormRating(note.rating);
     setFormChartSnapshotUrl(note.chartSnapshotUrl || '');
-    setFormSector(note.sector || '');
-    setFormIndustry(note.industry || '');
-    setFormSectorRank(note.sectorRank || 1);
-    setFormSectorRsScore(note.sectorRsScore || 85);
-    setFormSectorTrend(note.sectorTrend || 'LEADING');
-    setFormSectorTailwindNotes(note.sectorTailwindNotes || '');
-    setFormPatternQualityScore(note.patternQualityScore || 90);
-    setFormPatternTightnessRatio(note.patternTightnessRatio || 0.85);
-    setFormVolumeDryUpRatio(note.volumeDryUpRatio || 0.65);
-    setFormContractionsSummary(note.contractionsSummary || '');
-    setFormPatternChecklistPassed(note.patternChecklistPassed || []);
-    setFormTargetPrice(note.targetPrice?.toString() || '');
-    setFormRiskRewardRatio(note.riskRewardRatio?.toString() || '');
     setIsModalOpen(true);
   };
 
@@ -401,25 +304,12 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({
       entryPrice: formEntryPrice ? parseFloat(formEntryPrice) : undefined,
       stopLossPrice: formStopLossPrice ? parseFloat(formStopLossPrice) : undefined,
       exitPrice: formExitPrice ? parseFloat(formExitPrice) : undefined,
-      targetPrice: formTargetPrice ? parseFloat(formTargetPrice) : undefined,
-      riskRewardRatio: formRiskRewardRatio ? parseFloat(formRiskRewardRatio) : undefined,
       emotionalState: formEmotionalState,
       notes: formNotes || 'No notes provided.',
       keyLesson: formKeyLesson || 'Patience and risk management are paramount.',
       tradeStatus: formTradeStatus,
       rating: formRating,
       chartSnapshotUrl: formChartSnapshotUrl || undefined,
-      sector: formSector || undefined,
-      industry: formIndustry || undefined,
-      sectorRank: formSectorRank || undefined,
-      sectorRsScore: formSectorRsScore || undefined,
-      sectorTrend: formSectorTrend || undefined,
-      sectorTailwindNotes: formSectorTailwindNotes || undefined,
-      patternQualityScore: formPatternQualityScore || undefined,
-      patternTightnessRatio: formPatternTightnessRatio || undefined,
-      volumeDryUpRatio: formVolumeDryUpRatio || undefined,
-      contractionsSummary: formContractionsSummary || undefined,
-      patternChecklistPassed: formPatternChecklistPassed.length > 0 ? formPatternChecklistPassed : undefined,
     };
 
     let updated: TradeJournalNote[];
@@ -445,14 +335,6 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({
     new Set([...stocks.map((s) => s.ticker), ...journalNotes.map((n) => n.ticker)])
   );
 
-  // Extract all sectors present in stocks or journal notes
-  const allSectors = Array.from(
-    new Set([
-      ...stocks.map((s) => s.sector).filter(Boolean),
-      ...journalNotes.map((n) => n.sector).filter(Boolean) as string[],
-    ])
-  );
-
   // Extract all setup types/tags for filter dropdown
   const allSetupTypes = Array.from(
     new Set([
@@ -461,7 +343,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({
     ])
   ).filter(Boolean);
 
-  // Filtered notes keyed by ticker / emotion / outcome / setup tag / sector / search query
+  // Filtered notes keyed by ticker / emotion / outcome / setup tag / search query
   const filteredNotes = journalNotes.filter((note) => {
     const matchesTicker = selectedTickerFilter === 'ALL' || note.ticker.toUpperCase() === selectedTickerFilter.toUpperCase();
     const matchesEmotion = selectedEmotionFilter === 'ALL' || note.emotionalState === selectedEmotionFilter;
@@ -478,19 +360,15 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({
     const matchesSetup =
       selectedSetupFilter === 'ALL' ||
       note.setupType.toLowerCase().includes(selectedSetupFilter.toLowerCase());
-    const matchesSector =
-      selectedSectorFilter === 'ALL' ||
-      (note.sector && note.sector.toLowerCase() === selectedSectorFilter.toLowerCase());
     const matchesSearch =
       !searchQuery ||
       note.ticker.toLowerCase().includes(searchQuery.toLowerCase()) ||
       note.stockName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       note.notes.toLowerCase().includes(searchQuery.toLowerCase()) ||
       note.keyLesson.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      note.setupType.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (note.sector && note.sector.toLowerCase().includes(searchQuery.toLowerCase()));
+      note.setupType.toLowerCase().includes(searchQuery.toLowerCase());
 
-    return matchesTicker && matchesEmotion && matchesOutcome && matchesSetup && matchesSector && matchesSearch;
+    return matchesTicker && matchesEmotion && matchesOutcome && matchesSetup && matchesSearch;
   });
 
   // Calculate statistics (reflecting filteredNotes)
@@ -1127,69 +1005,7 @@ export const TradeJournal: React.FC<TradeJournalProps> = ({
         </div>
       </div>
 
-      {/* Journal View Switcher: Logged Notes vs Sector & Pattern Analytics */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e5e4e1] pb-2 font-mono">
-        <div className="flex items-center space-x-2">
-          <button
-            type="button"
-            onClick={() => setActiveJournalTab('LOGGED_NOTES')}
-            className={`px-4 py-2.5 text-xs font-bold uppercase tracking-wider transition-all flex items-center space-x-2 cursor-pointer border ${
-              activeJournalTab === 'LOGGED_NOTES'
-                ? 'bg-[#1a1a1a] text-white border-black shadow-xs'
-                : 'bg-white text-gray-700 border-[#e5e4e1] hover:bg-gray-50'
-            }`}
-          >
-            <BookMarked className="w-4 h-4 text-amber-400" />
-            <span>Trade Diary & Logged Notes ({filteredNotes.length})</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveJournalTab('SECTOR_ANALYTICS')}
-            className={`px-4 py-2.5 text-xs font-bold uppercase tracking-wider transition-all flex items-center space-x-2 cursor-pointer border ${
-              activeJournalTab === 'SECTOR_ANALYTICS'
-                ? 'bg-purple-900 text-white border-purple-950 shadow-xs ring-2 ring-purple-400'
-                : 'bg-purple-50 text-purple-900 border-purple-200 hover:bg-purple-100'
-            }`}
-          >
-            <Building2 className="w-4 h-4 text-purple-600" />
-            <span>Sectoral & Pattern Analytics</span>
-            <span className="text-[10px] bg-purple-200 text-purple-950 px-1.5 py-0.5 rounded font-black ml-1">
-              {allSectors.length} Sectors
-            </span>
-          </button>
-        </div>
-
-        {selectedSectorFilter !== 'ALL' && (
-          <div className="flex items-center space-x-2 text-xs bg-purple-50 border border-purple-200 px-3 py-1.5 text-purple-900">
-            <span>Filtering Sector: <strong>{selectedSectorFilter}</strong></span>
-            <button
-              type="button"
-              onClick={() => setSelectedSectorFilter('ALL')}
-              className="text-purple-600 hover:text-purple-950 font-bold ml-1 text-xs cursor-pointer"
-            >
-              ✕ Clear
-            </button>
-          </div>
-        )}
-      </div>
-
-      {activeJournalTab === 'SECTOR_ANALYTICS' ? (
-        <SectoralJournalAnalytics
-          notes={journalNotes}
-          allStocks={stocks}
-          onFilterBySector={(sec) => {
-            setSelectedSectorFilter(sec);
-            setActiveJournalTab('LOGGED_NOTES');
-          }}
-          onFilterByPattern={(pat) => {
-            setSelectedSetupFilter(pat);
-            setActiveJournalTab('LOGGED_NOTES');
-          }}
-        />
-      ) : (
-        <>
-          {/* Executive Trade Summary Dashboard */}
+      {/* Executive Trade Summary Dashboard */}
       <div className="bg-white border border-[#e5e4e1] p-6 space-y-4 shadow-xs">
         <div className="flex flex-wrap items-center justify-between border-b border-[#e5e4e1] pb-3 gap-2">
           <div className="flex items-center space-x-2">
