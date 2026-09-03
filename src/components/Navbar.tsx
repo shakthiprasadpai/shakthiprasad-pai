@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { TrendingUp, BarChart3, Calculator, BookOpen, SlidersHorizontal, Briefcase, Calendar, Video, Gem, Moon, Sun, Zap, Target, BookMarked, Layers, BellRing, Download, Sparkles, Bot, Cpu, Bookmark, ShieldCheck, CheckSquare, Award, Monitor } from 'lucide-react';
+import { TrendingUp, BarChart3, Calculator, BookOpen, SlidersHorizontal, Briefcase, Calendar, Video, Gem, Moon, Sun, Zap, Target, BookMarked, Layers, BellRing, Download, Sparkles, Bot, Cpu, Bookmark, ShieldCheck, CheckSquare, Award, Monitor, FileSpreadsheet } from 'lucide-react';
 import { DesktopRemixGuideModal } from './DesktopRemixGuideModal';
 
 export type AppNavTab = 
@@ -10,6 +10,7 @@ export type AppNavTab =
   | 'watchlist'
   | 'chart' 
   | 'calculator' 
+  | 'bhavcopy'
   | 'custom' 
   | 'playbook' 
   | 'portfolio' 
@@ -277,6 +278,24 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <Calculator className="w-3.5 h-3.5" />
               <span className="hidden md:inline">Trade Plan</span>
+            </button>
+
+            <button
+              id="nav-tab-bhavcopy"
+              onClick={() => setActiveTab('bhavcopy')}
+              className={`flex items-center space-x-1.5 py-2 transition-all border-b-2 font-bold cursor-pointer ${
+                activeTab === 'bhavcopy'
+                  ? 'border-amber-500 text-amber-500'
+                  : 'border-transparent text-gray-500 hover:text-amber-500 hover:border-amber-300'
+              }`}
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-amber-500" />
+              <span className="flex items-center space-x-1">
+                <span>NSE/BSE Bhavcopy</span>
+                <span className="px-1 py-0.2 bg-amber-500/20 text-amber-500 text-[8px] font-mono rounded font-black">
+                  DAILY
+                </span>
+              </span>
             </button>
 
             <button

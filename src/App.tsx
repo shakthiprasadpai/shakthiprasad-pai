@@ -34,7 +34,9 @@ import { SectorCorrelationLeadershipCard } from './components/SectorCorrelationL
 import { PositionRiskCalculator } from './components/PositionRiskCalculator';
 import { DailyStage2ScannerModal } from './components/DailyStage2ScannerModal';
 import { RecentPriceAlertHistory } from './components/RecentPriceAlertHistory';
+import { BhavcopyView } from './components/BhavcopyView';
 import { initializeAlertHistory } from './utils/priceAlertHistoryStorage';
+import { DEFAULT_NSE_BHAVCOPY, DEFAULT_BSE_BHAVCOPY } from './data/bhavcopyData';
 import { MOCK_STOCKS } from './data/mockStocks';
 import { MinerviniTradeSetup } from './types';
 import { formatCurrency, formatVolume, getCurrencySymbol, calculateBreakoutProbability } from './utils/sepaCalculator';
@@ -120,6 +122,114 @@ export default function App() {
     setStocksList(updated);
     if (imported.length > 0) {
       setSelectedStock(imported[0]);
+    }
+  };
+
+  const handleSelectBhavcopyTicker = (ticker: string, destinationTab: 'chart' | 'calculator' | 'watchlist') => {
+    const existing = stocksList.find(s => s.ticker.toUpperCase() === ticker.toUpperCase());
+    if (existing) {
+      setSelectedStock(existing);
+    } else {
+      const allBhav = [...DEFAULT_NSE_BHAVCOPY, ...DEFAULT_BSE_BHAVCOPY];
+      const rec = allBhav.find(r => r.symbol.toUpperCase() === ticker.toUpperCase());
+      if (rec) {
+        const dummyHistory = MOCK_STOCKS[0].priceHistory.map((pt, idx) => ({
+          ...pt,
+          close: rec.close * (1 + (idx - 20) * 0.005),
+          price: rec.close * (1 + (idx - 20) * 0.005),
+          volume: rec.totalTradedQty * (0.8 + (idx % 5) * 0.1)
+        }));
+
+        const newStock: MinerviniTradeSetup = {
+          ticker: rec.symbol,
+          name: rec.name,
+          exchange: rec.exchange,
+          currentPrice: rec.close,
+          changePercent: rec.changePercent,
+          avgVolume20d: rec.avgVolume20d,
+          high52w: rec.high52w,
+          low52w: rec.low52w,
+          sma50: rec.close * 0.95,
+          sma150: rec.close * 0.90,
+          sma200: rec.close * 0.86,
+          sma200_1mo_ago: rec.close * 0.84,
+          rsRating: rec.rsRating,
+          patternType: 'VCP (3 Contractions)',
+          vcpStage: 'T3',
+          trendScore: 8,
+          pivotVolume: Math.round(rec.avgVolume20d * 0.5),
+          volumeDryUpPercent: rec.volumeSurgeRatio < 1 ? -Math.round((1 - rec.volumeSurgeRatio) * 100) : 25,
+          isTightVolume: rec.volumeSurgeRatio < 0.75,
+          pivotPrice: Number((rec.high52w * 0.99).toFixed(2)),
+          buyZoneMax: Number(((rec.high52w * 0.99) * 1.02).toFixed(2)),
+          stopLossPrice: Number((rec.close * 0.94).toFixed(2)),
+          stopLossPercent: -6.0,
+          target1Price: Number((rec.close * 1.20).toFixed(2)),
+          target1Percent: 20,
+          target2Price: Number((rec.close * 1.35).toFixed(2)),
+          target2Percent: 35,
+          riskRewardRatio: 3.3,
+          contractions: [
+            {
+              contractionIndex: 1,
+              depthPercent: -14.5,
+              durationDays: 14,
+              volumeDryUpPercent: -20,
+              startDate: '2026-07-15',
+              endDate: '2026-08-01',
+              highPrice: rec.high52w,
+              lowPrice: rec.high52w * 0.855
+            },
+            {
+              contractionIndex: 2,
+              depthPercent: -8.2,
+              durationDays: 10,
+              volumeDryUpPercent: -45,
+              startDate: '2026-08-02',
+              endDate: '2026-08-16',
+              highPrice: rec.high52w * 0.96,
+              lowPrice: rec.high52w * 0.88
+            },
+            {
+              contractionIndex: 3,
+              depthPercent: -4.2,
+              durationDays: 5,
+              volumeDryUpPercent: -62,
+              startDate: '2026-08-17',
+              endDate: '2026-09-02',
+              highPrice: rec.high52w * 0.98,
+              lowPrice: rec.close * 0.96
+            }
+          ],
+          priceHistory: dummyHistory,
+          sepaNotes: `Official ${rec.exchange} Bhavcopy settlement scrip. Delivery: ${rec.deliveryPercent ? rec.deliveryPercent.toFixed(1) + '%' : 'N/A'}, Stage: ${rec.sepaStage}.`,
+          sector: 'Indian Equities',
+          industry: `${rec.exchange} Series ${rec.series}`
+        };
+        setStocksList(prev => [newStock, ...prev]);
+        setSelectedStock(newStock);
+      }
+    }
+    setActiveTab(destinationTab);
+  };
+
+  const handleAddToWatchlistFromBhavcopy = (stockData: Partial<MinerviniTradeSetup>) => {
+    if (!stockData.ticker) return;
+    const ticker = stockData.ticker;
+    const existing = stocksList.find(s => s.ticker.toUpperCase() === ticker.toUpperCase());
+    if (existing) {
+      // already in list, just save to watchlist key in localStorage
+      try {
+        const saved = JSON.parse(localStorage.getItem('minervini_custom_watchlist') || '[]');
+        if (!saved.includes(ticker)) {
+          saved.push(ticker);
+          localStorage.setItem('minervini_custom_watchlist', JSON.stringify(saved));
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    } else {
+      handleSelectBhavcopyTicker(ticker, 'watchlist');
     }
   };
 
@@ -528,6 +638,24 @@ export default function App() {
                 onNavigateToJournal={() => setActiveTab('journal')}
               />
               <TrendTemplateChecklist stock={selectedStock} />
+            </motion.div>
+          )}
+
+          {/* TAB: NSE & BSE BHAVCOPY SETTLEMENTS ENGINE */}
+          {activeTab === 'bhavcopy' && (
+            <motion.div
+              key="bhavcopy"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.25, ease: 'easeInOut' }}
+              className="space-y-8"
+            >
+              <BhavcopyView
+                onSelectStockForChart={(ticker) => handleSelectBhavcopyTicker(ticker, 'chart')}
+                onSelectStockForTradePlan={(ticker) => handleSelectBhavcopyTicker(ticker, 'calculator')}
+                onAddToWatchlist={handleAddToWatchlistFromBhavcopy}
+              />
             </motion.div>
           )}
 

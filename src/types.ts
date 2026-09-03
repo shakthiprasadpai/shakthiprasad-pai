@@ -486,4 +486,59 @@ export interface TrendContinuationSetup {
   };
 }
 
+// NSE and BSE Bhavcopy Types
+export type BhavcopyExchange = 'NSE' | 'BSE' | 'ALL';
+
+export interface BhavcopyRecord {
+  symbol: string;
+  scripCode?: string; // BSE Scrip Code e.g. 500251
+  name: string;
+  exchange: 'NSE' | 'BSE';
+  series: string; // 'EQ' | 'BE' | 'SM' for NSE, or 'A' | 'B' | 'T' | 'X' for BSE group
+  isin: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  lastPrice: number;
+  prevClose: number;
+  change: number;
+  changePercent: number;
+  totalTradedQty: number; // Traded Volume
+  totalTradedVal: number; // Value in INR
+  totalTrades: number;
+  deliveryQty?: number;
+  deliveryPercent?: number; // Institutional delivery %
+  high52w: number;
+  low52w: number;
+  distanceFrom52wHighPercent: number; // e.g. -3.2%
+  avgVolume20d: number;
+  volumeSurgeRatio: number; // volume / avgVolume20d
+  isCircuitHit?: 'UPPER' | 'LOWER' | 'NONE';
+  circuitLimitPercent?: number;
+  sepaStage: 'Stage 2 (Breakout)' | 'Stage 2 (Contraction)' | 'Stage 1 (Base)' | 'Stage 3/4';
+  rsRating: number;
+  isMinerviniCandidate: boolean;
+  date: string; // YYYY-MM-DD
+  sector?: string;
+  industry?: string;
+}
+
+export interface BhavcopyMarketSummary {
+  exchange: BhavcopyExchange;
+  tradingDate: string;
+  totalTradedCount: number;
+  advances: number;
+  declines: number;
+  unchanged: number;
+  totalTurnoverCrores: number;
+  totalVolumeTraded: number;
+  stocksAt52wHigh: number;
+  stocksAt52wLow: number;
+  upperCircuitCount: number;
+  lowerCircuitCount: number;
+  highDeliveryAccumulationCount: number; // Delivery > 55%
+  stage2BreakoutCount: number;
+}
+
 

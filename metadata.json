@@ -1,6 +1,6 @@
 {
-  "name": "Remix Remix Minervini SEPA Trend \u0026 VCP Screener",
-  "description": "Mark Minervini SEPA Trend Template \u0026 VCP setup analyzer with precise pivot entries, tight volume checks, and exit price levels.",
+  "name": "Remix Remix Minervini SEPA Trend & VCP Screener",
+  "description": "Mark Minervini SEPA Trend Template & VCP setup analyzer with NSE & BSE Bhavcopy daily settlement data, precise pivot entries, tight volume checks, and exit price levels.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
