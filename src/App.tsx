@@ -38,6 +38,7 @@ import { RecentPriceAlertHistory } from './components/RecentPriceAlertHistory';
 import { TradingViewWebhookHub } from './components/TradingViewWebhookHub';
 import { BhavcopyView } from './components/BhavcopyView';
 import { RrgToolView } from './components/RrgToolView';
+import { getStoredWatchlists } from './utils/watchlistStorage';
 import { initializeAlertHistory } from './utils/priceAlertHistoryStorage';
 import { DEFAULT_NSE_BHAVCOPY, DEFAULT_BSE_BHAVCOPY } from './data/bhavcopyData';
 import { MOCK_STOCKS } from './data/mockStocks';
@@ -616,6 +617,41 @@ export default function App() {
                 onSelectStock={(stock) => setSelectedStock(stock)}
               />
 
+            </motion.div>
+          )}
+
+          {/* TAB: RRG (RELATIVE ROTATION GRAPH) TOOL */}
+          {activeTab === 'rrg_chart' && (
+            <motion.div
+              key="rrg_chart"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.25, ease: 'easeInOut' }}
+              className="space-y-8"
+            >
+              <RrgToolView
+                stocks={stocksList}
+                watchlistTickers={
+                  Array.from(new Set([
+                    ...getStoredWatchlists().flatMap((w) => w.tickers),
+                    ...(() => {
+                      try {
+                        return JSON.parse(localStorage.getItem('minervini_custom_watchlist') || '[]');
+                      } catch (e) {
+                        return [];
+                      }
+                    })(),
+                  ]))
+                }
+                selectedStockTicker={selectedStock.ticker}
+                onSelectStock={(stock) => setSelectedStock(stock)}
+                onViewChart={(stock) => {
+                  setSelectedStock(stock);
+                  setActiveTab('chart');
+                }}
+                isObsidian={isObsidian}
+              />
             </motion.div>
           )}
 

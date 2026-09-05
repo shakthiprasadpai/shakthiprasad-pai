@@ -10,7 +10,10 @@ import {
   QUADRANT_META,
   computeStocksRrg,
   computeSectorsRrg,
+  computeWatchlistSectorsRrg,
 } from '../utils/rrgCalculator';
+import { D3RrgChart } from './D3RrgChart';
+import { getStoredWatchlists, CustomWatchlist } from '../utils/watchlistStorage';
 import {
   playRrgLeadingChime,
   playRrgImprovingChime,
@@ -22,6 +25,7 @@ import {
   saveAudioSettings,
 } from '../utils/audioAlertEngine';
 import { formatCurrency, getCurrencySymbol } from '../utils/sepaCalculator';
+import { exportRrgStateToCsv } from '../utils/csvExport';
 import {
   Compass,
   Play,
@@ -50,7 +54,16 @@ import {
   RefreshCw,
   Clock,
   Music,
+  Download,
+  Check,
+  Grid,
+  Tag,
+  Sliders,
+  X,
+  RotateCcw,
 } from 'lucide-react';
+
+export type RrgUniverseMode = 'WATCHLIST_SECTORS' | 'WATCHLIST_STOCKS' | 'SECTORS' | 'SEPA_SETUPS';
 
 interface RrgToolViewProps {
   stocks: MinerviniTradeSetup[];
@@ -71,8 +84,13 @@ export const RrgToolView: React.FC<RrgToolViewProps> = ({
   onToggleWatchlist,
   isObsidian = true,
 }) => {
-  // Mode: All Setups, Watchlist, or Sectors
-  const [universeMode, setUniverseMode] = useState<'SEPA_SETUPS' | 'WATCHLIST' | 'SECTORS'>('SEPA_SETUPS');
+  // Mode: Watchlist Sectors, Watchlist Stocks, All Sectors, or All Setups
+  const [universeMode, setUniverseMode] = useState<RrgUniverseMode>('WATCHLIST_SECTORS');
+
+  // Watchlist source selection
+  const [availableWatchlists] = useState<CustomWatchlist[]>(() => getStoredWatchlists());
+  const [activeWatchlistId, setActiveWatchlistId] = useState<string>(() => availableWatchlists[0]?.id || 'wl-stage2-leaders');
+
   const [benchmark, setBenchmark] = useState<RrgBenchmark>('SPY');
   const [timeframe, setTimeframe] = useState<RrgTimeframe>('WEEKLY');
   const [tailLength, setTailLength] = useState<number>(5); // 3, 5, 8, 10
@@ -82,6 +100,59 @@ export const RrgToolView: React.FC<RrgToolViewProps> = ({
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedItemId, setSelectedItemId] = useState<string | null>(selectedStockTicker || null);
   const [hoveredItemId, setHoveredItemId] = useState<string | null>(null);
+
+  // Chart Display & Visibility Configuration state (Grid lines, Axis labels, and panel visibility)
+  const [showGridLines, setShowGridLines] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('rrg_show_grid_lines');
+      return saved !== null ? saved === 'true' : true;
+    } catch {
+      return true;
+    }
+  });
+
+  const [showAxisLabels, setShowAxisLabels] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('rrg_show_axis_labels');
+      return saved !== null ? saved === 'true' : true;
+    } catch {
+      return true;
+    }
+  });
+
+  const [showConfigPanel, setShowConfigPanel] = useState<boolean>(false);
+
+  const handleToggleGridLines = () => {
+    setShowGridLines((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('rrg_show_grid_lines', String(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  const handleToggleAxisLabels = () => {
+    setShowAxisLabels((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('rrg_show_axis_labels', String(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  const handleResetDisplayConfig = () => {
+    setShowGridLines(true);
+    setShowAxisLabels(true);
+    setShowTails(true);
+    setLabelMode('ALL');
+    setSearchQuery('');
+    try {
+      localStorage.setItem('rrg_show_grid_lines', 'true');
+      localStorage.setItem('rrg_show_axis_labels', 'true');
+    } catch {}
+  };
 
   // Audio settings state
   const [audioEnabled, setAudioEnabled] = useState<boolean>(() => getAudioSettings().rrgSound && getAudioSettings().enabled);
@@ -116,21 +187,44 @@ export const RrgToolView: React.FC<RrgToolViewProps> = ({
     saveAudioSettings({ volume: newVol });
   };
 
-  // Filter input stocks according to universe mode
-  const targetStocks = useMemo(() => {
-    if (universeMode === 'WATCHLIST') {
-      return stocks.filter((s) => watchlistTickers.includes(s.ticker));
+  // Determine active watchlist configuration and tickers
+  const selectedWatchlist = useMemo(() => {
+    if (activeWatchlistId === 'ALL_COMBINED') {
+      const combined = Array.from(new Set([...availableWatchlists.flatMap((w) => w.tickers), ...watchlistTickers]));
+      return {
+        id: 'ALL_COMBINED',
+        name: 'All Combined Watchlists',
+        tickers: combined,
+      };
     }
-    return stocks;
-  }, [stocks, universeMode, watchlistTickers]);
+    return availableWatchlists.find((w) => w.id === activeWatchlistId) || availableWatchlists[0];
+  }, [availableWatchlists, activeWatchlistId, watchlistTickers]);
+
+  const effectiveWatchlistTickers = useMemo(() => {
+    if (selectedWatchlist && selectedWatchlist.tickers && selectedWatchlist.tickers.length > 0) {
+      return selectedWatchlist.tickers;
+    }
+    if (watchlistTickers && watchlistTickers.length > 0) {
+      return watchlistTickers;
+    }
+    return ['HAL', 'TRENT', 'POLYCAB', 'DIXON', 'KAYNES'];
+  }, [selectedWatchlist, watchlistTickers]);
 
   // Compute RRG items
   const rrgItems = useMemo<RrgSecurityData[]>(() => {
+    if (universeMode === 'WATCHLIST_SECTORS') {
+      return computeWatchlistSectorsRrg(stocks, effectiveWatchlistTickers, benchmark, timeframe, tailLength);
+    }
     if (universeMode === 'SECTORS') {
       return computeSectorsRrg(stocks, benchmark, timeframe, tailLength);
     }
-    return computeStocksRrg(targetStocks, benchmark, timeframe, tailLength);
-  }, [universeMode, stocks, targetStocks, benchmark, timeframe, tailLength]);
+    if (universeMode === 'WATCHLIST_STOCKS') {
+      const wlStocks = stocks.filter((s) => effectiveWatchlistTickers.includes(s.ticker));
+      const target = wlStocks.length > 0 ? wlStocks : stocks.slice(0, 8);
+      return computeStocksRrg(target, benchmark, timeframe, tailLength);
+    }
+    return computeStocksRrg(stocks, benchmark, timeframe, tailLength);
+  }, [universeMode, stocks, effectiveWatchlistTickers, benchmark, timeframe, tailLength]);
 
   // Set default selected item if none
   useEffect(() => {
@@ -186,7 +280,7 @@ export const RrgToolView: React.FC<RrgToolViewProps> = ({
     return rrgItems.filter((item) => {
       if (selectedQuadrant !== 'ALL' && item.quadrant !== selectedQuadrant) return false;
       if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
+        const q = searchQuery.toLowerCase().trim();
         const matchTicker = item.ticker.toLowerCase().includes(q);
         const matchName = item.name.toLowerCase().includes(q);
         const matchSector = item.sector.toLowerCase().includes(q);
@@ -196,36 +290,27 @@ export const RrgToolView: React.FC<RrgToolViewProps> = ({
     });
   }, [rrgItems, selectedQuadrant, searchQuery]);
 
+  // Unique sector names available in current dataset for quick chips
+  const availableSectors = useMemo(() => {
+    const set = new Set<string>();
+    rrgItems.forEach((item) => {
+      if (item.type === 'SECTOR') {
+        if (item.name) set.add(item.name);
+      } else {
+        if (item.sector) set.add(item.sector);
+      }
+    });
+    return Array.from(set).filter(Boolean);
+  }, [rrgItems]);
+
   // Active highlighted item
   const activeItemId = hoveredItemId || selectedItemId;
   const activeItem = useMemo(() => {
+    const fromFiltered = filteredItems.find((item) => item.id === activeItemId);
+    if (fromFiltered) return fromFiltered;
+    if (filteredItems.length > 0) return filteredItems[0];
     return rrgItems.find((item) => item.id === activeItemId) || rrgItems[0] || null;
-  }, [rrgItems, activeItemId]);
-
-  // Coordinate Mapping for SVG Canvas
-  // Domain: JdK RS-Ratio & RS-Momentum from 86 to 114 (Centered at 100)
-  const minVal = 86;
-  const maxVal = 114;
-  const svgWidth = 820;
-  const svgHeight = 620;
-  const padLeft = 60;
-  const padRight = 50;
-  const padTop = 50;
-  const padBottom = 50;
-
-  const mapX = (val: number) => {
-    const clamped = Math.max(minVal, Math.min(maxVal, val));
-    return padLeft + ((clamped - minVal) / (maxVal - minVal)) * (svgWidth - padLeft - padRight);
-  };
-
-  const mapY = (val: number) => {
-    // Inverted in SVG: higher value = lower Y coordinate
-    const clamped = Math.max(minVal, Math.min(maxVal, val));
-    return svgHeight - padBottom - ((clamped - minVal) / (maxVal - minVal)) * (svgHeight - padTop - padBottom);
-  };
-
-  const originX = mapX(100);
-  const originY = mapY(100);
+  }, [filteredItems, rrgItems, activeItemId]);
 
   // Trigger Sound for Quadrant
   const handlePlayQuadrantSound = (quadrant: RrgQuadrant, label: string) => {
@@ -252,6 +337,58 @@ export const RrgToolView: React.FC<RrgToolViewProps> = ({
     playRrgQuadrantSound(item.quadrant, 0.7);
     if (item.stockRef) {
       onSelectStock(item.stockRef);
+    }
+  };
+
+  // CSV Export State & Handler
+  const [isExported, setIsExported] = useState<boolean>(false);
+
+  const handleExportCsv = (scope: 'ALL' | 'FILTERED' | 'AUTO' = 'AUTO') => {
+    try {
+      const targetItems =
+        scope === 'ALL'
+          ? rrgItems
+          : scope === 'FILTERED'
+          ? filteredItems
+          : filteredItems.length < rrgItems.length
+          ? filteredItems
+          : rrgItems;
+
+      let filterDesc = '';
+      if (targetItems.length < rrgItems.length) {
+        if (selectedQuadrant !== 'ALL') {
+          filterDesc += `Quadrant: ${selectedQuadrant}`;
+        }
+        if (searchQuery.trim()) {
+          filterDesc += (filterDesc ? ' | ' : '') + `Search: "${searchQuery.trim()}"`;
+        }
+      }
+
+      exportRrgStateToCsv({
+        universeMode,
+        watchlistName:
+          universeMode === 'WATCHLIST_SECTORS' || universeMode === 'WATCHLIST_STOCKS'
+            ? selectedWatchlist?.name
+            : undefined,
+        benchmark,
+        benchmarkLabel: RRG_BENCHMARKS[benchmark].label,
+        timeframe,
+        tailLength,
+        filterDescription: filterDesc || undefined,
+        quadrantCounts,
+        totalCount: rrgItems.length,
+        items: targetItems,
+      });
+
+      setIsExported(true);
+      if (audioEnabled) {
+        playRrgStepChime(tailLength - 1);
+      }
+      setRecentSoundPlayed('RRG State & Quadrant Distribution CSV Exported');
+      setTimeout(() => setIsExported(false), 2500);
+      setTimeout(() => setRecentSoundPlayed(null), 3000);
+    } catch (err) {
+      console.error('Failed to export RRG CSV:', err);
     }
   };
 
@@ -317,12 +454,29 @@ export const RrgToolView: React.FC<RrgToolViewProps> = ({
             </div>
           </div>
 
-          {/* Quick Sound Control Box */}
-          <div
-            className={`p-3 rounded-lg border flex flex-col sm:flex-row items-center gap-3 shrink-0 ${
-              isObsidian ? 'bg-[#181f2c] border-[#29354a]' : 'bg-gray-50 border-gray-200'
-            }`}
-          >
+          {/* Top Actions & Sound Controls */}
+          <div className="flex flex-wrap items-center gap-3 shrink-0">
+            {/* CSV Download Button */}
+            <button
+              id="rrg-export-csv-btn-header"
+              onClick={() => handleExportCsv('AUTO')}
+              className={`px-3.5 py-2.5 rounded-lg border text-xs font-mono font-bold uppercase flex items-center space-x-2 transition-all cursor-pointer shadow-sm active:scale-95 ${
+                isExported
+                  ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-black shadow-emerald-500/20 shadow-md'
+                  : 'bg-amber-500 hover:bg-amber-400 text-slate-950 border-amber-400 hover:shadow-md'
+              }`}
+              title="Download current RRG state, quadrant distribution breakdown, and rotational metrics as CSV for offline analysis"
+            >
+              {isExported ? <Check className="w-4 h-4" /> : <Download className="w-4 h-4" />}
+              <span>{isExported ? 'CSV Exported ✓' : 'Export RRG CSV'}</span>
+            </button>
+
+            {/* Quick Sound Control Box */}
+            <div
+              className={`p-2.5 rounded-lg border flex flex-col sm:flex-row items-center gap-2.5 shrink-0 ${
+                isObsidian ? 'bg-[#181f2c] border-[#29354a]' : 'bg-gray-50 border-gray-200'
+              }`}
+            >
             <div className="flex items-center space-x-2">
               <button
                 onClick={toggleAudio}
@@ -368,6 +522,7 @@ export const RrgToolView: React.FC<RrgToolViewProps> = ({
             </button>
           </div>
         </div>
+      </div>
 
         {/* ========================================================================= */}
         {/* INTERACTIVE SOUNDBOARD STRIP (Test Quadrant Sonification)                 */}
@@ -457,42 +612,86 @@ export const RrgToolView: React.FC<RrgToolViewProps> = ({
         {/* ========================================================================= */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-5 font-mono text-xs">
           {/* 1. Universe Mode Selector */}
-          <div>
-            <label className="block text-[10px] uppercase font-bold text-gray-400 mb-1.5">
-              1. Universe Target:
-            </label>
-            <div className="grid grid-cols-3 border border-white/15 rounded p-0.5 bg-black/20">
+          <div className="lg:col-span-2">
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-[10px] uppercase font-bold text-gray-400">
+                1. Universe Target:
+              </label>
+              {(universeMode === 'WATCHLIST_SECTORS' || universeMode === 'WATCHLIST_STOCKS') && (
+                <span className="text-[10px] text-amber-400 font-bold">
+                  {effectiveWatchlistTickers.length} Watchlist Stocks Active
+                </span>
+              )}
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 border border-white/15 rounded p-1 bg-black/20">
               <button
-                onClick={() => setUniverseMode('SEPA_SETUPS')}
-                className={`py-1.5 px-2 text-center rounded font-bold uppercase transition-all cursor-pointer ${
-                  universeMode === 'SEPA_SETUPS'
+                onClick={() => setUniverseMode('WATCHLIST_SECTORS')}
+                className={`py-1.5 px-2 text-center rounded text-[11px] font-bold uppercase transition-all cursor-pointer flex items-center justify-center space-x-1 ${
+                  universeMode === 'WATCHLIST_SECTORS'
                     ? 'bg-amber-500 text-slate-950 font-black shadow-sm'
                     : 'text-gray-400 hover:text-white'
                 }`}
+                title="Plot rotational strength of the sectors represented in your watchlist"
               >
-                SEPA Setups
+                <span>⭐ Watchlist Sectors</span>
               </button>
               <button
-                onClick={() => setUniverseMode('WATCHLIST')}
-                className={`py-1.5 px-2 text-center rounded font-bold uppercase transition-all cursor-pointer ${
-                  universeMode === 'WATCHLIST'
+                onClick={() => setUniverseMode('WATCHLIST_STOCKS')}
+                className={`py-1.5 px-2 text-center rounded text-[11px] font-bold uppercase transition-all cursor-pointer ${
+                  universeMode === 'WATCHLIST_STOCKS'
                     ? 'bg-amber-500 text-slate-950 font-black shadow-sm'
                     : 'text-gray-400 hover:text-white'
                 }`}
+                title="Plot individual stocks in your watchlist"
               >
-                Watchlist ({watchlistTickers.length})
+                Watchlist Stocks
               </button>
               <button
                 onClick={() => setUniverseMode('SECTORS')}
-                className={`py-1.5 px-2 text-center rounded font-bold uppercase transition-all cursor-pointer ${
+                className={`py-1.5 px-2 text-center rounded text-[11px] font-bold uppercase transition-all cursor-pointer ${
                   universeMode === 'SECTORS'
                     ? 'bg-amber-500 text-slate-950 font-black shadow-sm'
                     : 'text-gray-400 hover:text-white'
                 }`}
+                title="Plot all macro market sectors"
               >
-                Sectors
+                All Sectors
+              </button>
+              <button
+                onClick={() => setUniverseMode('SEPA_SETUPS')}
+                className={`py-1.5 px-2 text-center rounded text-[11px] font-bold uppercase transition-all cursor-pointer ${
+                  universeMode === 'SEPA_SETUPS'
+                    ? 'bg-amber-500 text-slate-950 font-black shadow-sm'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+                title="Plot top SEPA setup stocks"
+              >
+                SEPA Setups
               </button>
             </div>
+
+            {/* Active Watchlist Selector dropdown when in Watchlist modes */}
+            {(universeMode === 'WATCHLIST_SECTORS' || universeMode === 'WATCHLIST_STOCKS') && (
+              <div className="mt-2 flex items-center space-x-2">
+                <span className="text-[10px] text-gray-400 uppercase font-bold shrink-0">Source List:</span>
+                <select
+                  value={activeWatchlistId}
+                  onChange={(e) => setActiveWatchlistId(e.target.value)}
+                  className={`flex-1 py-1 px-2.5 rounded border font-mono text-[11px] cursor-pointer ${
+                    isObsidian
+                      ? 'bg-[#181f2c] border-amber-500/30 text-amber-300'
+                      : 'bg-white border-amber-400 text-gray-800'
+                  }`}
+                >
+                  {availableWatchlists.map((wl) => (
+                    <option key={wl.id} value={wl.id}>
+                      {wl.name} ({wl.tickers.length} stocks)
+                    </option>
+                  ))}
+                  <option value="ALL_COMBINED">All Watchlists Combined ({Array.from(new Set([...availableWatchlists.flatMap(w => w.tickers), ...watchlistTickers])).length} stocks)</option>
+                </select>
+              </div>
+            )}
           </div>
 
           {/* 2. Benchmark Selector */}
@@ -614,6 +813,48 @@ export const RrgToolView: React.FC<RrgToolViewProps> = ({
               </div>
             </div>
           </div>
+        </div>
+
+        {/* 5. Quick Display Preferences Strip */}
+        <div className="mt-3.5 pt-3 border-t border-white/10 flex flex-wrap items-center justify-between text-xs font-mono text-gray-400 gap-2">
+          <div className="flex items-center space-x-2.5">
+            <span className="text-[10px] uppercase font-bold text-gray-400">5. Display Overlays:</span>
+            <button
+              id="rrg-top-toggle-grid-btn"
+              onClick={handleToggleGridLines}
+              className={`px-2 py-1 rounded text-[11px] font-bold uppercase flex items-center space-x-1.5 border transition-colors cursor-pointer ${
+                showGridLines
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/50'
+                  : 'bg-black/25 text-gray-500 border-white/10 hover:text-gray-300'
+              }`}
+              title="Toggle RRG background grid lines"
+            >
+              <Grid className="w-3 h-3" />
+              <span>Grid: {showGridLines ? 'ON' : 'OFF'}</span>
+            </button>
+            <button
+              id="rrg-top-toggle-labels-btn"
+              onClick={handleToggleAxisLabels}
+              className={`px-2 py-1 rounded text-[11px] font-bold uppercase flex items-center space-x-1.5 border transition-colors cursor-pointer ${
+                showAxisLabels
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/50'
+                  : 'bg-black/25 text-gray-500 border-white/10 hover:text-gray-300'
+              }`}
+              title="Toggle RRG axis titles and coordinate scale labels"
+            >
+              <Tag className="w-3 h-3" />
+              <span>Labels: {showAxisLabels ? 'ON' : 'OFF'}</span>
+            </button>
+          </div>
+
+          <button
+            id="rrg-top-open-config-btn"
+            onClick={() => setShowConfigPanel((prev) => !prev)}
+            className="text-[11px] font-bold uppercase text-amber-400 hover:text-amber-300 flex items-center space-x-1.5 cursor-pointer"
+          >
+            <SlidersHorizontal className="w-3.5 h-3.5" />
+            <span>{showConfigPanel ? 'Close Configuration Panel' : 'Chart Configuration Panel'}</span>
+          </button>
         </div>
       </div>
 
@@ -772,395 +1013,491 @@ export const RrgToolView: React.FC<RrgToolViewProps> = ({
                   Reset
                 </button>
               )}
+
+              {/* Active Search Filter Badge in Canvas Toolbar */}
+              {searchQuery.trim() !== '' && (
+                <div
+                  id="rrg-active-search-badge"
+                  className={`px-2 py-1 rounded text-xs font-mono font-bold flex items-center space-x-1.5 border transition-all ${
+                    isObsidian
+                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                      : 'bg-amber-100 text-amber-800 border-amber-300'
+                  }`}
+                  title={`Active sector filter: "${searchQuery}"`}
+                >
+                  <Search className="w-3 h-3 text-amber-400" />
+                  <span className="truncate max-w-[110px]">"{searchQuery}"</span>
+                  <button
+                    id="rrg-clear-search-pill-btn"
+                    onClick={() => setSearchQuery('')}
+                    className="p-0.5 rounded hover:bg-black/20 text-amber-300 hover:text-white cursor-pointer"
+                    title="Clear sector search filter"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              )}
+
+              {/* Quick toggles for Grid & Axis Labels, and Config Panel Opener */}
+              <div className="flex items-center space-x-1.5">
+                <button
+                  id="rrg-quick-toggle-grid-btn"
+                  onClick={handleToggleGridLines}
+                  className={`px-2 py-1 rounded text-xs font-mono font-bold flex items-center space-x-1 border transition-all cursor-pointer ${
+                    showGridLines
+                      ? isObsidian
+                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
+                        : 'bg-amber-100 text-amber-800 border-amber-300'
+                      : isObsidian
+                      ? 'bg-slate-800/60 text-gray-500 border-slate-700/60 hover:text-gray-300'
+                      : 'bg-gray-100 text-gray-400 border-gray-200'
+                  }`}
+                  title={showGridLines ? 'Click to hide background grid lines in RRG chart' : 'Click to show background grid lines in RRG chart'}
+                >
+                  <Grid className="w-3 h-3" />
+                  <span>Grid: {showGridLines ? 'ON' : 'OFF'}</span>
+                </button>
+
+                <button
+                  id="rrg-quick-toggle-labels-btn"
+                  onClick={handleToggleAxisLabels}
+                  className={`px-2 py-1 rounded text-xs font-mono font-bold flex items-center space-x-1 border transition-all cursor-pointer ${
+                    showAxisLabels
+                      ? isObsidian
+                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
+                        : 'bg-amber-100 text-amber-800 border-amber-300'
+                      : isObsidian
+                      ? 'bg-slate-800/60 text-gray-500 border-slate-700/60 hover:text-gray-300'
+                      : 'bg-gray-100 text-gray-400 border-gray-200'
+                  }`}
+                  title={showAxisLabels ? 'Click to hide axis titles and numeric labels' : 'Click to show axis titles and numeric labels'}
+                >
+                  <Tag className="w-3 h-3" />
+                  <span>Labels: {showAxisLabels ? 'ON' : 'OFF'}</span>
+                </button>
+
+                <button
+                  id="rrg-config-panel-toggle-btn"
+                  onClick={() => setShowConfigPanel((prev) => !prev)}
+                  className={`px-2.5 py-1 rounded text-xs font-mono font-bold flex items-center space-x-1.5 border transition-all cursor-pointer ${
+                    showConfigPanel
+                      ? 'bg-amber-500 text-slate-950 border-amber-400 font-black shadow-md'
+                      : isObsidian
+                      ? 'bg-[#181f2c] hover:bg-[#20293a] text-gray-200 border-[#2b384e]'
+                      : 'bg-white hover:bg-gray-100 text-gray-700 border-gray-300'
+                  }`}
+                  title="Toggle RRG Chart Display & Visibility Configuration Panel"
+                >
+                  <SlidersHorizontal className="w-3.5 h-3.5" />
+                  <span>Config</span>
+                  {(!showGridLines || !showAxisLabels || searchQuery.trim() !== '') && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                  )}
+                </button>
+              </div>
+
+              {/* Canvas Toolbar CSV Export */}
+              <button
+                id="rrg-export-csv-btn-canvas"
+                onClick={() => handleExportCsv('AUTO')}
+                className={`px-2.5 py-1 rounded text-xs font-mono font-bold flex items-center space-x-1.5 border transition-all cursor-pointer ${
+                  isExported
+                    ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-black'
+                    : isObsidian
+                    ? 'bg-[#181f2c] hover:bg-[#20293a] text-amber-300 border-amber-500/40 hover:border-amber-400'
+                    : 'bg-white hover:bg-gray-100 text-amber-700 border-amber-300'
+                }`}
+                title="Export current RRG state and quadrant distribution to CSV"
+              >
+                {isExported ? <Check className="w-3.5 h-3.5" /> : <Download className="w-3.5 h-3.5" />}
+                <span>CSV</span>
+              </button>
             </div>
           </div>
 
-          {/* SVG Canvas Area */}
-          <div className="relative w-full aspect-[4/3] max-h-[620px] select-none">
-            <svg
-              viewBox={`0 0 ${svgWidth} ${svgHeight}`}
-              className="w-full h-full"
-              preserveAspectRatio="xMidYMid meet"
-            >
-              <defs>
-                {/* Arrow markers for trail directional heads */}
-                <marker id="arrow-emerald" markerWidth="6" markerHeight="6" refX="4" refY="3" orient="auto">
-                  <path d="M0,0 L6,3 L0,6 Z" fill="#10b981" />
-                </marker>
-                <marker id="arrow-cyan" markerWidth="6" markerHeight="6" refX="4" refY="3" orient="auto">
-                  <path d="M0,0 L6,3 L0,6 Z" fill="#06b6d4" />
-                </marker>
-                <marker id="arrow-amber" markerWidth="6" markerHeight="6" refX="4" refY="3" orient="auto">
-                  <path d="M0,0 L6,3 L0,6 Z" fill="#f59e0b" />
-                </marker>
-                <marker id="arrow-rose" markerWidth="6" markerHeight="6" refX="4" refY="3" orient="auto">
-                  <path d="M0,0 L6,3 L0,6 Z" fill="#f43f5e" />
-                </marker>
-
-                {/* Subtle quadrant background gradients */}
-                <radialGradient id="grad-leading" cx="80%" cy="20%" r="65%">
-                  <stop offset="0%" stopColor="#10b981" stopOpacity="0.12" />
-                  <stop offset="100%" stopColor="#10b981" stopOpacity="0.01" />
-                </radialGradient>
-                <radialGradient id="grad-improving" cx="20%" cy="20%" r="65%">
-                  <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.12" />
-                  <stop offset="100%" stopColor="#06b6d4" stopOpacity="0.01" />
-                </radialGradient>
-                <radialGradient id="grad-lagging" cx="20%" cy="80%" r="65%">
-                  <stop offset="0%" stopColor="#f43f5e" stopOpacity="0.12" />
-                  <stop offset="100%" stopColor="#f43f5e" stopOpacity="0.01" />
-                </radialGradient>
-                <radialGradient id="grad-weakening" cx="80%" cy="80%" r="65%">
-                  <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.12" />
-                  <stop offset="100%" stopColor="#f59e0b" stopOpacity="0.01" />
-                </radialGradient>
-              </defs>
-
-              {/* 1. QUADRANT BACKGROUND FILLS */}
-              {/* Top-Right: LEADING */}
-              <rect
-                x={originX}
-                y={padTop}
-                width={svgWidth - padRight - originX}
-                height={originY - padTop}
-                fill="url(#grad-leading)"
-              />
-              {/* Top-Left: IMPROVING */}
-              <rect
-                x={padLeft}
-                y={padTop}
-                width={originX - padLeft}
-                height={originY - padTop}
-                fill="url(#grad-improving)"
-              />
-              {/* Bottom-Left: LAGGING */}
-              <rect
-                x={padLeft}
-                y={originY}
-                width={originX - padLeft}
-                height={svgHeight - padBottom - originY}
-                fill="url(#grad-lagging)"
-              />
-              {/* Bottom-Right: WEAKENING */}
-              <rect
-                x={originX}
-                y={originY}
-                width={svgWidth - padRight - originX}
-                height={svgHeight - padBottom - originY}
-                fill="url(#grad-weakening)"
-              />
-
-              {/* 2. QUADRANT WATERMARK LABELS */}
-              <text
-                x={svgWidth - padRight - 15}
-                y={padTop + 24}
-                textAnchor="end"
-                className="font-mono text-xs font-black tracking-widest uppercase"
-                fill="#10b981"
-                fillOpacity="0.4"
+          {/* Interactive Chart Display Configuration Panel */}
+          <AnimatePresence>
+            {showConfigPanel && (
+              <motion.div
+                id="rrg-chart-display-config-panel"
+                initial={{ opacity: 0, height: 0, scale: 0.99 }}
+                animate={{ opacity: 1, height: 'auto', scale: 1 }}
+                exit={{ opacity: 0, height: 0, scale: 0.99 }}
+                transition={{ duration: 0.2 }}
+                className={`p-4 rounded-xl border mb-4 shadow-xl overflow-hidden ${
+                  isObsidian
+                    ? 'bg-[#131926] border-[#29354a] text-gray-200'
+                    : 'bg-slate-50 border-gray-300 text-gray-800'
+                }`}
               >
-                LEADING ↗
-              </text>
-              <text
-                x={padLeft + 15}
-                y={padTop + 24}
-                textAnchor="start"
-                className="font-mono text-xs font-black tracking-widest uppercase"
-                fill="#06b6d4"
-                fillOpacity="0.4"
-              >
-                ↖ IMPROVING
-              </text>
-              <text
-                x={padLeft + 15}
-                y={svgHeight - padBottom - 15}
-                textAnchor="start"
-                className="font-mono text-xs font-black tracking-widest uppercase"
-                fill="#f43f5e"
-                fillOpacity="0.4"
-              >
-                ↙ LAGGING
-              </text>
-              <text
-                x={svgWidth - padRight - 15}
-                y={svgHeight - padBottom - 15}
-                textAnchor="end"
-                className="font-mono text-xs font-black tracking-widest uppercase"
-                fill="#f59e0b"
-                fillOpacity="0.4"
-              >
-                WEAKENING ↘
-              </text>
+                {/* Panel Header */}
+                <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-3">
+                  <div className="flex items-center space-x-2.5">
+                    <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                      <SlidersHorizontal className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold font-mono uppercase tracking-wider text-amber-400 flex items-center space-x-2">
+                        <span>RRG Chart Display Configuration</span>
+                        <span className="text-[10px] font-normal px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                          Visibility Controls
+                        </span>
+                      </h4>
+                      <p className="text-[11px] text-gray-400">
+                        Customize chart canvas grid guides, coordinate scale labels, and rotational matrix density.
+                      </p>
+                    </div>
+                  </div>
 
-              {/* 3. CLOCKWISE ROTATION FLOW INDICATOR (Center Arc) */}
-              <circle
-                cx={originX}
-                cy={originY}
-                r="70"
-                fill="none"
-                stroke="#ffffff"
-                strokeOpacity="0.08"
-                strokeDasharray="4 4"
-              />
-              <path
-                d={`M ${originX + 70} ${originY} A 70 70 0 0 1 ${originX} ${originY + 70}`}
-                fill="none"
-                stroke="#f59e0b"
-                strokeOpacity="0.25"
-                strokeWidth="2"
-                strokeDasharray="3 3"
-              />
-              <path
-                d={`M ${originX} ${originY + 70} A 70 70 0 0 1 ${originX - 70} ${originY}`}
-                fill="none"
-                stroke="#f43f5e"
-                strokeOpacity="0.25"
-                strokeWidth="2"
-                strokeDasharray="3 3"
-              />
-              <path
-                d={`M ${originX - 70} ${originY} A 70 70 0 0 1 ${originX} ${originY - 70}`}
-                fill="none"
-                stroke="#06b6d4"
-                strokeOpacity="0.25"
-                strokeWidth="2"
-                strokeDasharray="3 3"
-              />
-              <path
-                d={`M ${originX} ${originY - 70} A 70 70 0 0 1 ${originX + 70} ${originY}`}
-                fill="none"
-                stroke="#10b981"
-                strokeOpacity="0.25"
-                strokeWidth="2"
-                strokeDasharray="3 3"
-              />
-
-              {/* 4. GRID LINES & TICKS */}
-              {[90, 95, 105, 110].map((val) => (
-                <g key={`grid-x-${val}`}>
-                  <line
-                    x1={mapX(val)}
-                    y1={padTop}
-                    x2={mapX(val)}
-                    y2={svgHeight - padBottom}
-                    stroke="#ffffff"
-                    strokeOpacity="0.05"
-                    strokeDasharray="2 4"
-                  />
-                  <text
-                    x={mapX(val)}
-                    y={svgHeight - padBottom + 18}
-                    textAnchor="middle"
-                    className="font-mono text-[10px]"
-                    fill="#888888"
-                  >
-                    {val}
-                  </text>
-                </g>
-              ))}
-
-              {[90, 95, 105, 110].map((val) => (
-                <g key={`grid-y-${val}`}>
-                  <line
-                    x1={padLeft}
-                    y1={mapY(val)}
-                    x2={svgWidth - padRight}
-                    y2={mapY(val)}
-                    stroke="#ffffff"
-                    strokeOpacity="0.05"
-                    strokeDasharray="2 4"
-                  />
-                  <text
-                    x={padLeft - 10}
-                    y={mapY(val) + 3}
-                    textAnchor="end"
-                    className="font-mono text-[10px]"
-                    fill="#888888"
-                  >
-                    {val}
-                  </text>
-                </g>
-              ))}
-
-              {/* 5. CENTER CROSSHAIR AXES (At 100, 100) */}
-              <line
-                x1={originX}
-                y1={padTop}
-                x2={originX}
-                y2={svgHeight - padBottom}
-                stroke="#ffffff"
-                strokeOpacity="0.3"
-                strokeWidth="1.5"
-              />
-              <line
-                x1={padLeft}
-                y1={originY}
-                x2={svgWidth - padRight}
-                y2={originY}
-                stroke="#ffffff"
-                strokeOpacity="0.3"
-                strokeWidth="1.5"
-              />
-
-              {/* Axis Origin Marker: 100 */}
-              <rect
-                x={originX - 16}
-                y={svgHeight - padBottom + 6}
-                width="32"
-                height="16"
-                rx="3"
-                fill="#f59e0b"
-              />
-              <text
-                x={originX}
-                y={svgHeight - padBottom + 18}
-                textAnchor="middle"
-                className="font-mono text-[10px] font-black"
-                fill="#000000"
-              >
-                100
-              </text>
-
-              <rect
-                x={padLeft - 32}
-                y={originY - 8}
-                width="26"
-                height="16"
-                rx="3"
-                fill="#f59e0b"
-              />
-              <text
-                x={padLeft - 19}
-                y={originY + 4}
-                textAnchor="middle"
-                className="font-mono text-[10px] font-black"
-                fill="#000000"
-              >
-                100
-              </text>
-
-              {/* Axis Titles */}
-              <text
-                x={svgWidth / 2}
-                y={svgHeight - 12}
-                textAnchor="middle"
-                className="font-mono text-xs font-bold uppercase tracking-wider"
-                fill="#b5a68d"
-              >
-                JdK RS-Ratio™ (Relative Strength Trend vs Benchmark) →
-              </text>
-
-              <text
-                x={20}
-                y={svgHeight / 2}
-                textAnchor="middle"
-                transform={`rotate(-90 20 ${svgHeight / 2})`}
-                className="font-mono text-xs font-bold uppercase tracking-wider"
-                fill="#b5a68d"
-              >
-                JdK RS-Momentum™ (Rate of Change) →
-              </text>
-
-              {/* 6. SECURITY TRAIL LINES & NODES */}
-              {filteredItems.map((item) => {
-                const isSelected = item.id === selectedItemId;
-                const isHovered = item.id === hoveredItemId;
-                const isProminent = isSelected || isHovered;
-
-                // Points up to current animation step
-                const currentTail = item.tailPoints.slice(0, animStep + 1);
-                const headPoint = currentTail[currentTail.length - 1] || item.tailPoints[item.tailPoints.length - 1];
-
-                const headX = mapX(headPoint.rsRatio);
-                const headY = mapY(headPoint.rsMomentum);
-
-                const quadMeta = QUADRANT_META[item.quadrant];
-                const markerId = `arrow-${
-                  item.quadrant === 'LEADING'
-                    ? 'emerald'
-                    : item.quadrant === 'IMPROVING'
-                    ? 'cyan'
-                    : item.quadrant === 'WEAKENING'
-                    ? 'amber'
-                    : 'rose'
-                }`;
-
-                return (
-                  <g
-                    key={item.id}
-                    className="cursor-pointer transition-opacity"
-                    opacity={selectedItemId && !isProminent ? 0.35 : 1}
-                    onClick={() => handleItemClick(item)}
-                    onMouseEnter={() => setHoveredItemId(item.id)}
-                    onMouseLeave={() => setHoveredItemId(null)}
-                  >
-                    {/* Trajectory Tail Polyline */}
-                    {showTails && currentTail.length > 1 && (
-                      <polyline
-                        points={currentTail.map((p) => `${mapX(p.rsRatio)},${mapY(p.rsMomentum)}`).join(' ')}
-                        fill="none"
-                        stroke={quadMeta.themeColor}
-                        strokeWidth={isProminent ? 3 : 1.75}
-                        strokeOpacity={isProminent ? 0.95 : 0.6}
-                        markerEnd={`url(#${markerId})`}
-                      />
-                    )}
-
-                    {/* Historical Tail Dots */}
-                    {showTails &&
-                      currentTail.slice(0, -1).map((pt, idx) => (
-                        <circle
-                          key={`${item.id}-step-${idx}`}
-                          cx={mapX(pt.rsRatio)}
-                          cy={mapY(pt.rsMomentum)}
-                          r={isProminent ? 2.5 : 1.8}
-                          fill={quadMeta.themeColor}
-                          fillOpacity={(idx + 1) / currentTail.length * 0.7}
-                        />
-                      ))}
-
-                    {/* Pulsing Selection Halo */}
-                    {isProminent && (
-                      <circle
-                        cx={headX}
-                        cy={headY}
-                        r="12"
-                        fill="none"
-                        stroke={quadMeta.themeColor}
-                        strokeWidth="2"
-                        strokeOpacity="0.8"
-                        className="animate-ping"
-                      />
-                    )}
-
-                    {/* Head Node Circle */}
-                    <circle
-                      cx={headX}
-                      cy={headY}
-                      r={isProminent ? 6.5 : 4.5}
-                      fill={quadMeta.themeColor}
-                      stroke="#ffffff"
-                      strokeWidth={isProminent ? 2 : 1}
-                      className="shadow-sm transition-transform"
-                    />
-
-                    {/* Node Ticker Label */}
-                    <text
-                      x={headX + 7}
-                      y={headY + 3.5}
-                      className={`font-mono font-black ${isProminent ? 'text-xs' : 'text-[10px]'}`}
-                      fill={isProminent ? '#ffffff' : quadMeta.themeColor}
-                      stroke="#000000"
-                      strokeWidth="2"
-                      paintOrder="stroke"
+                  <div className="flex items-center space-x-2">
+                    <button
+                      id="rrg-reset-display-config-btn"
+                      onClick={handleResetDisplayConfig}
+                      className={`px-2.5 py-1 rounded text-[11px] font-mono flex items-center space-x-1.5 border transition-all cursor-pointer ${
+                        isObsidian
+                          ? 'bg-slate-800/80 hover:bg-slate-700 text-gray-300 border-slate-600'
+                          : 'bg-white hover:bg-gray-100 text-gray-600 border-gray-300'
+                      }`}
+                      title="Reset chart display visibility settings to default values"
                     >
-                      {item.ticker}
-                    </text>
-                  </g>
-                );
-              })}
-            </svg>
-          </div>
+                      <RotateCcw className="w-3 h-3" />
+                      <span>Reset Defaults</span>
+                    </button>
+
+                    <button
+                      id="rrg-close-config-panel-btn"
+                      onClick={() => setShowConfigPanel(false)}
+                      className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors cursor-pointer"
+                      title="Close Configuration Panel"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Sector / Security Search Filter Bar */}
+                <div
+                  id="rrg-config-search-filter-section"
+                  className={`p-3.5 rounded-lg border mb-3 transition-all ${
+                    searchQuery.trim()
+                      ? isObsidian
+                        ? 'bg-[#182236] border-amber-500/50 shadow-sm'
+                        : 'bg-amber-50/80 border-amber-300 shadow-sm'
+                      : isObsidian
+                      ? 'bg-[#101522] border-[#222c3d]'
+                      : 'bg-white border-gray-200'
+                  }`}
+                >
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div className="flex-1 w-full relative">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <Search className={`w-4 h-4 ${searchQuery.trim() ? 'text-amber-400' : 'text-gray-400'}`} />
+                      </div>
+                      <input
+                        id="rrg-config-sector-search-input"
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="Search & filter visible sectors by name or symbol (e.g. Defense, Tech, Auto, FMCG)..."
+                        className={`w-full pl-9 pr-9 py-2 rounded-lg text-xs font-mono transition-all border outline-none ${
+                          isObsidian
+                            ? 'bg-[#0b0e14] text-white border-[#2b374c] focus:border-amber-400 placeholder-gray-500'
+                            : 'bg-gray-50 text-gray-900 border-gray-300 focus:border-amber-500 placeholder-gray-400'
+                        }`}
+                      />
+                      {searchQuery.trim() && (
+                        <button
+                          id="rrg-config-clear-search-btn"
+                          onClick={() => setSearchQuery('')}
+                          className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-white transition-colors cursor-pointer"
+                          title="Clear sector search filter"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="flex items-center space-x-2 shrink-0 font-mono text-[11px]">
+                      <span
+                        className={`px-2.5 py-1 rounded border font-bold flex items-center space-x-1.5 ${
+                          searchQuery.trim()
+                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                            : isObsidian
+                            ? 'bg-slate-800/60 text-gray-400 border-slate-700/60'
+                            : 'bg-gray-100 text-gray-600 border-gray-200'
+                        }`}
+                      >
+                        <span className="text-gray-400 font-normal">Visible on Chart:</span>
+                        <strong className="text-amber-400">{filteredItems.length}</strong>
+                        <span className="text-gray-400">/ {rrgItems.length}</span>
+                      </span>
+
+                      {searchQuery.trim() && (
+                        <button
+                          id="rrg-config-clear-search-text-btn"
+                          onClick={() => setSearchQuery('')}
+                          className="text-[10px] font-bold text-amber-400 hover:text-amber-300 underline cursor-pointer px-1 py-0.5"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Quick Sector Suggestion Chips */}
+                  {availableSectors.length > 0 && (
+                    <div className="mt-2.5 pt-2 border-t border-white/5 flex flex-wrap items-center gap-1.5 font-mono text-[10px]">
+                      <span className="text-gray-400 uppercase tracking-wider text-[9px] mr-1 flex items-center space-x-1">
+                        <span>Quick Sectors:</span>
+                      </span>
+                      {availableSectors.map((sectorName) => {
+                        const isActive = searchQuery.toLowerCase().trim() === sectorName.toLowerCase().trim();
+                        return (
+                          <button
+                            key={sectorName}
+                            onClick={() => setSearchQuery(isActive ? '' : sectorName)}
+                            className={`px-2.5 py-0.5 rounded-full border transition-all cursor-pointer ${
+                              isActive
+                                ? 'bg-amber-500 text-slate-950 border-amber-400 font-black shadow-xs scale-105'
+                                : isObsidian
+                                ? 'bg-[#151c28] hover:bg-[#1f293b] text-gray-300 border-[#2a374c]'
+                                : 'bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-300'
+                            }`}
+                            title={`Filter visible chart nodes by "${sectorName}"`}
+                          >
+                            {sectorName}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Empty state alert if no sectors match search */}
+                  {searchQuery.trim() !== '' && filteredItems.length === 0 && (
+                    <div className="mt-2.5 p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-mono flex items-center justify-between">
+                      <span className="flex items-center space-x-1.5">
+                        <Info className="w-3.5 h-3.5 shrink-0 text-rose-400" />
+                        <span>No visible sectors match "{searchQuery}". The RRG chart is currently empty.</span>
+                      </span>
+                      <button
+                        onClick={() => setSearchQuery('')}
+                        className="px-2.5 py-1 rounded bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 border border-rose-500/40 text-[10px] font-bold cursor-pointer transition-colors"
+                      >
+                        Reset &amp; Show All
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Grid of Controls */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 font-mono">
+                  {/* Toggle 1: Grid Lines Visibility */}
+                  <div
+                    id="rrg-config-grid-card"
+                    className={`p-3 rounded-lg border transition-all ${
+                      showGridLines
+                        ? isObsidian
+                          ? 'bg-[#182133] border-amber-500/40 shadow-sm'
+                          : 'bg-white border-amber-400 shadow-sm'
+                        : isObsidian
+                        ? 'bg-[#10141e] border-[#222b3d] opacity-75'
+                        : 'bg-gray-100 border-gray-200 opacity-75'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center space-x-2">
+                        <Grid className={`w-4 h-4 ${showGridLines ? 'text-amber-400' : 'text-gray-500'}`} />
+                        <span className="text-xs font-bold uppercase tracking-wider">Grid Lines</span>
+                      </div>
+                      <button
+                        id="rrg-config-toggle-grid-switch"
+                        role="switch"
+                        aria-checked={showGridLines}
+                        onClick={handleToggleGridLines}
+                        className={`relative inline-flex h-5 w-10 items-center rounded-full transition-colors cursor-pointer ${
+                          showGridLines ? 'bg-amber-500' : 'bg-gray-700'
+                        }`}
+                        title={showGridLines ? 'Hide grid lines' : 'Show grid lines'}
+                      >
+                        <span
+                          className={`inline-block h-3.5 w-3.5 transform rounded-full bg-slate-950 transition-transform ${
+                            showGridLines ? 'translate-x-5' : 'translate-x-1'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-gray-400 mb-2 leading-relaxed">
+                      Background RS-Ratio &amp; RS-Momentum tick lines, division markers, and concentric circular guides.
+                    </p>
+                    <div className="flex items-center justify-between text-[10px]">
+                      <span className="text-gray-400">Current State:</span>
+                      <span
+                        className={`font-bold px-1.5 py-0.5 rounded text-[9px] uppercase ${
+                          showGridLines
+                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                            : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                        }`}
+                      >
+                        {showGridLines ? 'Visible (ON)' : 'Hidden (OFF)'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Toggle 2: Axis Labels Visibility */}
+                  <div
+                    id="rrg-config-labels-card"
+                    className={`p-3 rounded-lg border transition-all ${
+                      showAxisLabels
+                        ? isObsidian
+                          ? 'bg-[#182133] border-amber-500/40 shadow-sm'
+                          : 'bg-white border-amber-400 shadow-sm'
+                        : isObsidian
+                        ? 'bg-[#10141e] border-[#222b3d] opacity-75'
+                        : 'bg-gray-100 border-gray-200 opacity-75'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center space-x-2">
+                        <Tag className={`w-4 h-4 ${showAxisLabels ? 'text-amber-400' : 'text-gray-500'}`} />
+                        <span className="text-xs font-bold uppercase tracking-wider">Axis Labels</span>
+                      </div>
+                      <button
+                        id="rrg-config-toggle-labels-switch"
+                        role="switch"
+                        aria-checked={showAxisLabels}
+                        onClick={handleToggleAxisLabels}
+                        className={`relative inline-flex h-5 w-10 items-center rounded-full transition-colors cursor-pointer ${
+                          showAxisLabels ? 'bg-amber-500' : 'bg-gray-700'
+                        }`}
+                        title={showAxisLabels ? 'Hide axis labels' : 'Show axis labels'}
+                      >
+                        <span
+                          className={`inline-block h-3.5 w-3.5 transform rounded-full bg-slate-950 transition-transform ${
+                            showAxisLabels ? 'translate-x-5' : 'translate-x-1'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-gray-400 mb-2 leading-relaxed">
+                      Horizontal JdK RS-Ratio™ &amp; vertical JdK RS-Momentum™ titles, numeric scale ticks, &amp; 100 origin badges.
+                    </p>
+                    <div className="flex items-center justify-between text-[10px]">
+                      <span className="text-gray-400">Current State:</span>
+                      <span
+                        className={`font-bold px-1.5 py-0.5 rounded text-[9px] uppercase ${
+                          showAxisLabels
+                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                            : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                        }`}
+                      >
+                        {showAxisLabels ? 'Visible (ON)' : 'Hidden (OFF)'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Setting 3: Node Label Clutter Mode */}
+                  <div
+                    id="rrg-config-nodelabels-card"
+                    className={`p-3 rounded-lg border ${
+                      isObsidian ? 'bg-[#182133] border-[#29354a]' : 'bg-white border-gray-200'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center space-x-2">
+                        <Eye className="w-4 h-4 text-amber-400" />
+                        <span className="text-xs font-bold uppercase tracking-wider">Node Labels</span>
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-gray-400 mb-2 leading-relaxed">
+                      Control ticker labels displayed next to coordinates on the chart canvas.
+                    </p>
+                    <div className="flex flex-col space-y-1 mt-1">
+                      {(['ALL', 'LEADING_ONLY', 'SELECTED_ONLY'] as const).map((mode) => (
+                        <button
+                          key={mode}
+                          onClick={() => setLabelMode(mode)}
+                          className={`px-2 py-1 rounded text-[10px] font-bold uppercase text-left transition-colors cursor-pointer flex items-center justify-between ${
+                            labelMode === mode
+                              ? 'bg-amber-500 text-slate-950 font-black'
+                              : isObsidian
+                              ? 'bg-slate-800/60 text-gray-400 hover:text-white'
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          }`}
+                        >
+                          <span>{mode === 'ALL' ? 'All Tickers' : mode === 'LEADING_ONLY' ? 'Leading Only' : 'Selected Only'}</span>
+                          {labelMode === mode && <Check className="w-3 h-3" />}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Setting 4: Trail Vectors */}
+                  <div
+                    id="rrg-config-tails-card"
+                    className={`p-3 rounded-lg border ${
+                      isObsidian ? 'bg-[#182133] border-[#29354a]' : 'bg-white border-gray-200'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center space-x-2">
+                        <Compass className="w-4 h-4 text-amber-400" />
+                        <span className="text-xs font-bold uppercase tracking-wider">Trail Vectors</span>
+                      </div>
+                      <button
+                        id="rrg-config-toggle-tails-switch"
+                        role="switch"
+                        aria-checked={showTails}
+                        onClick={() => setShowTails(!showTails)}
+                        className={`relative inline-flex h-5 w-10 items-center rounded-full transition-colors cursor-pointer ${
+                          showTails ? 'bg-amber-500' : 'bg-gray-700'
+                        }`}
+                        title={showTails ? 'Hide trail vectors' : 'Show trail vectors'}
+                      >
+                        <span
+                          className={`inline-block h-3.5 w-3.5 transform rounded-full bg-slate-950 transition-transform ${
+                            showTails ? 'translate-x-5' : 'translate-x-1'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-gray-400 mb-2 leading-relaxed">
+                      Historical trajectory lines displaying rotation velocity over the past {tailLength} bars.
+                    </p>
+                    <div className="flex items-center justify-between text-[10px]">
+                      <span className="text-gray-400">Current State:</span>
+                      <span
+                        className={`font-bold px-1.5 py-0.5 rounded text-[9px] uppercase ${
+                          showTails
+                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                            : 'bg-gray-700 text-gray-300'
+                        }`}
+                      >
+                        {showTails ? `Active (${tailLength} bars)` : 'Hidden'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* D3 Relative Rotation Graph Visualization */}
+          <D3RrgChart
+            items={filteredItems}
+            selectedItemId={selectedItemId}
+            hoveredItemId={hoveredItemId}
+            onSelectItem={handleItemClick}
+            onHoverItem={(id) => setHoveredItemId(id)}
+            animStep={animStep}
+            tailLength={tailLength}
+            showTails={showTails}
+            benchmark={benchmark}
+            isObsidian={isObsidian}
+            universeMode={universeMode}
+            labelMode={labelMode}
+            showGridLines={showGridLines}
+            showAxisLabels={showAxisLabels}
+          />
 
           {/* Canvas Footer Indicators */}
           <div className="flex flex-wrap items-center justify-between text-[11px] font-mono text-gray-400 mt-2 pt-2 border-t border-white/10">
@@ -1303,7 +1640,7 @@ export const RrgToolView: React.FC<RrgToolViewProps> = ({
                 </div>
               </div>
 
-              {/* Minervini SEPA Specifics */}
+              {/* Minervini SEPA Specifics (For Stocks) */}
               {activeItem.stockRef && (
                 <div className="p-3 rounded bg-black/30 border border-white/10 text-xs font-mono my-3 space-y-1.5">
                   <div className="flex justify-between items-center text-[10px] text-gray-400 uppercase font-bold">
@@ -1338,6 +1675,44 @@ export const RrgToolView: React.FC<RrgToolViewProps> = ({
                       </span>
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* Constituent Watchlist Stocks (For Sectors) */}
+              {activeItem.constituentStocks && activeItem.constituentStocks.length > 0 && (
+                <div className="p-3 rounded bg-black/30 border border-white/10 text-xs font-mono my-3 space-y-2">
+                  <div className="flex justify-between items-center text-[10px] text-amber-400 uppercase font-bold border-b border-white/10 pb-1.5">
+                    <span>Constituent Watchlist Stocks ({activeItem.constituentStocks.length})</span>
+                    <span className="text-gray-400">Action</span>
+                  </div>
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                    {activeItem.constituentStocks.map((stk) => (
+                      <div
+                        key={stk.ticker}
+                        className="flex items-center justify-between p-1.5 rounded bg-black/25 hover:bg-black/40 border border-white/5 transition-colors"
+                      >
+                        <div className="flex items-center space-x-2">
+                          <span className="font-bold text-white text-xs">{stk.ticker}</span>
+                          <span className={`text-[10px] ${stk.changePercent >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            {stk.changePercent >= 0 ? '+' : ''}{stk.changePercent.toFixed(1)}%
+                          </span>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <span className="text-[10px] font-bold text-amber-300">RS {stk.rsRating}</span>
+                          <button
+                            onClick={() => {
+                              onSelectStock(stk);
+                              onViewChart(stk);
+                            }}
+                            className="px-2 py-0.5 rounded bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[9px] uppercase cursor-pointer transition-all shadow-xs"
+                            title={`Inspect ${stk.ticker} VCP Chart`}
+                          >
+                            Chart
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 
@@ -1450,8 +1825,25 @@ export const RrgToolView: React.FC<RrgToolViewProps> = ({
             </p>
           </div>
 
-          <div className="text-xs font-mono text-gray-400">
-            Showing <strong className="text-amber-400">{filteredItems.length}</strong> of {rrgItems.length} securities
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="text-xs font-mono text-gray-400">
+              Showing <strong className="text-amber-400">{filteredItems.length}</strong> of {rrgItems.length} securities
+            </div>
+
+            {/* Table Download CSV Button */}
+            <button
+              id="rrg-export-csv-btn-table"
+              onClick={() => handleExportCsv('AUTO')}
+              className={`px-3 py-1.5 rounded-lg border text-xs font-mono font-bold uppercase flex items-center space-x-1.5 transition-all cursor-pointer shadow-xs active:scale-95 ${
+                isExported
+                  ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-black shadow-emerald-500/20 shadow-md'
+                  : 'bg-amber-500 hover:bg-amber-400 text-slate-950 border-amber-400'
+              }`}
+              title="Download complete RRG state and quadrant distribution data as CSV for offline analysis"
+            >
+              {isExported ? <Check className="w-3.5 h-3.5" /> : <Download className="w-3.5 h-3.5" />}
+              <span>{isExported ? 'CSV Exported ✓' : 'Download RRG CSV'}</span>
+            </button>
           </div>
         </div>
 

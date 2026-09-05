@@ -7,7 +7,10 @@ export interface CustomWatchlist {
   description: string;
   tickers: string[];
   isDefault?: boolean;
+  isCustom?: boolean;
   createdAt: string;
+  updatedAt?: number | string;
+  colorTag?: string;
 }
 
 const STORAGE_KEY_WATCHLISTS = 'minervini_sepa_watchlists_v2';

@@ -40,6 +40,10 @@ export interface RrgSecurityData {
   rotationalOutlook: string;
   tailPoints: RrgPoint[];
   stockRef?: MinerviniTradeSetup;
+  constituentStocks?: MinerviniTradeSetup[];
+  isWatchlistSector?: boolean;
+  watchlistCount?: number;
+  totalSectorStockCount?: number;
 }
 
 export interface RrgBenchmarkConfig {
@@ -458,6 +462,10 @@ export function computeSectorsRrg(
       rotationalOutlook,
       tailPoints,
       stockRef: topStock,
+      constituentStocks: sectorStocks,
+      isWatchlistSector: false,
+      watchlistCount: 0,
+      totalSectorStockCount: count,
     });
 
     secIdx++;
@@ -465,3 +473,164 @@ export function computeSectorsRrg(
 
   return results;
 }
+
+/**
+ * Generates RRG Rotational Data for sectors represented in the user's active watchlist.
+ * Evaluates sector rotational strength & momentum relative to the broader market benchmark.
+ */
+export function computeWatchlistSectorsRrg(
+  allStocks: MinerviniTradeSetup[],
+  watchlistTickers: string[] = [],
+  benchmarkId: RrgBenchmark = 'SPY',
+  timeframe: RrgTimeframe = 'WEEKLY',
+  tailLength: number = 5
+): RrgSecurityData[] {
+  if (!allStocks || allStocks.length === 0) return [];
+
+  // Determine stocks that are currently in the watchlist
+  const activeWatchlistStocks = allStocks.filter((s) => watchlistTickers.includes(s.ticker));
+  // If watchlist has no matching stocks, fallback to top setups so the tool always displays actionable data
+  const targetStocks = activeWatchlistStocks.length > 0 ? activeWatchlistStocks : allStocks.slice(0, 10);
+
+  // Group watchlist stocks by sector
+  const watchlistSectorMap = new Map<string, MinerviniTradeSetup[]>();
+  targetStocks.forEach((s) => {
+    const sec = s.sector || 'General Market';
+    if (!watchlistSectorMap.has(sec)) watchlistSectorMap.set(sec, []);
+    watchlistSectorMap.get(sec)!.push(s);
+  });
+
+  const benchConfig = RRG_BENCHMARKS[benchmarkId] || RRG_BENCHMARKS.SPY;
+  const timeScale = timeframe === 'WEEKLY' ? 1.0 : 0.65;
+
+  const results: RrgSecurityData[] = [];
+  let secIdx = 0;
+
+  watchlistSectorMap.forEach((wlStocks, sectorName) => {
+    // All stocks in the broader universe belonging to this sector
+    const allSectorStocks = allStocks.filter((s) => (s.sector || 'General Market') === sectorName);
+    const count = wlStocks.length;
+    const totalInSector = allSectorStocks.length;
+
+    // Averages across the watchlist stocks in this sector
+    const avgRs = wlStocks.reduce((acc, s) => acc + s.rsRating, 0) / count;
+    const avgChange = wlStocks.reduce((acc, s) => acc + s.changePercent, 0) / count;
+    const avgTrend = wlStocks.reduce((acc, s) => acc + s.trendScore, 0) / count;
+    const breakoutCount = wlStocks.filter((s) => s.vcpStage === 'Active Breakout' || s.vcpStage === 'T3').length;
+
+    // Top representative stock in sector from watchlist
+    const topStock = [...wlStocks].sort((a, b) => b.rsRating - a.rsRating)[0] || wlStocks[0];
+
+    // Benchmark differentials (Relative to broader market)
+    const rsDiff = avgRs - benchConfig.baseRs;
+    const changeDiff = avgChange - benchConfig.baseChange;
+    const breakoutBonus = breakoutCount > 0 ? (breakoutCount / count) * 4.5 : 0;
+
+    // RS-Ratio: centered at 100
+    const rawRsRatio = 100 + rsDiff * 0.48 + changeDiff * 2.2 + breakoutBonus;
+    const currentRsRatio = Number(Math.max(86, Math.min(114, rawRsRatio)).toFixed(2));
+
+    // RS-Momentum: centered at 100
+    const rawRsMomentum = 100 + changeDiff * 3.4 + (avgTrend - 4) * 2.5 + (avgRs > 75 ? 3.2 : -1.8);
+    const currentRsMomentum = Number(Math.max(86, Math.min(114, rawRsMomentum)).toFixed(2));
+
+    // Tail generation for historical clockwise rotation
+    const tailPoints: RrgPoint[] = [];
+    const relX = currentRsRatio - 100;
+    const relY = currentRsMomentum - 100;
+    const dist = Math.sqrt(relX * relX + relY * relY) || 1;
+
+    const tangentX = (relY / dist) * 1.85 * timeScale;
+    const tangentY = (-relX / dist) * 1.85 * timeScale;
+    const radialDrift = (avgChange >= 0 ? 0.28 : -0.28) * timeScale;
+
+    for (let step = 0; step < tailLength; step++) {
+      const historyOffset = tailLength - 1 - step;
+      if (historyOffset === 0) {
+        tailPoints.push({
+          step: tailLength - 1,
+          label: 'Current',
+          rsRatio: currentRsRatio,
+          rsMomentum: currentRsMomentum,
+        });
+      } else {
+        const pseudoNoiseX = Math.sin(secIdx * 2.3 + step) * 0.35;
+        const pseudoNoiseY = Math.cos(secIdx * 2.3 + step) * 0.35;
+
+        const histX = Number(
+          (currentRsRatio - historyOffset * tangentX + historyOffset * radialDrift + pseudoNoiseX).toFixed(2)
+        );
+        const histY = Number(
+          (currentRsMomentum - historyOffset * tangentY + historyOffset * radialDrift + pseudoNoiseY).toFixed(2)
+        );
+
+        tailPoints.push({
+          step,
+          label: `T-${historyOffset}`,
+          rsRatio: Number(Math.max(86, Math.min(114, histX)).toFixed(2)),
+          rsMomentum: Number(Math.max(86, Math.min(114, histY)).toFixed(2)),
+        });
+      }
+    }
+
+    const currentPoint = tailPoints[tailLength - 1];
+    const prevPoint = tailPoints[Math.max(0, tailLength - 2)];
+
+    const dx = currentPoint.rsRatio - prevPoint.rsRatio;
+    const dy = currentPoint.rsMomentum - prevPoint.rsMomentum;
+    const velocity = Number(Math.sqrt(dx * dx + dy * dy).toFixed(2));
+    const { angle: headingAngle, direction: headingDirection } = calculateHeading(dx, dy);
+
+    const currentQuadrant = classifyRrgQuadrant(currentPoint.rsRatio, currentPoint.rsMomentum);
+    const prevQuadrant = classifyRrgQuadrant(prevPoint.rsRatio, prevPoint.rsMomentum);
+    const isNewToQuadrant = currentQuadrant !== prevQuadrant;
+
+    const constituentTickers = wlStocks.map((s) => s.ticker).join(', ');
+
+    let rotationalOutlook = '';
+    if (currentQuadrant === 'LEADING') {
+      rotationalOutlook = `Watchlist Leadership: ${sectorName} (${constituentTickers}) is strongly outperforming ${benchConfig.label} with accelerating institutional accumulation.`;
+    } else if (currentQuadrant === 'IMPROVING') {
+      rotationalOutlook = `Watchlist Rotation Pulse: ${sectorName} (${constituentTickers}) is recovering momentum; watch for Stage 2 breakouts into the Leading quadrant.`;
+    } else if (currentQuadrant === 'WEAKENING') {
+      rotationalOutlook = `Watchlist Deceleration: ${sectorName} (${constituentTickers}) maintains strong RS vs ${benchConfig.label}, but momentum is cooling. Protect profits with trailing stops.`;
+    } else {
+      rotationalOutlook = `Watchlist Lagging: ${sectorName} (${constituentTickers}) is underperforming ${benchConfig.label}. Look for sector rotation reversal before entering new positions.`;
+    }
+
+    results.push({
+      id: `wl-sector-${sectorName}`,
+      ticker: sectorName,
+      name: `${sectorName} (${count} Watchlist ${count === 1 ? 'Stock' : 'Stocks'})`,
+      type: 'SECTOR',
+      sector: sectorName,
+      exchange: topStock?.exchange || 'NASDAQ',
+      currentPrice: topStock?.currentPrice || 100,
+      changePercent: Number(avgChange.toFixed(2)),
+      rsRating: Math.round(avgRs),
+      trendScore: Number(avgTrend.toFixed(1)),
+      currentRsRatio: currentPoint.rsRatio,
+      currentRsMomentum: currentPoint.rsMomentum,
+      prevRsRatio: prevPoint.rsRatio,
+      prevRsMomentum: prevPoint.rsMomentum,
+      quadrant: currentQuadrant,
+      prevQuadrant,
+      isNewToQuadrant,
+      velocity,
+      headingAngle,
+      headingDirection,
+      rotationalOutlook,
+      tailPoints,
+      stockRef: topStock,
+      constituentStocks: wlStocks,
+      isWatchlistSector: true,
+      watchlistCount: count,
+      totalSectorStockCount: totalInSector,
+    });
+
+    secIdx++;
+  });
+
+  return results;
+}
+

@@ -1,4 +1,5 @@
 import { PortfolioHolding, MinerviniTradeSetup } from '../types';
+import { RrgSecurityData } from './rrgCalculator';
 
 /**
  * Escapes strings for CSV format to avoid broken formatting when values contain quotes, commas, or line breaks.
@@ -380,5 +381,185 @@ export const exportTradingViewWatchlistText = (stocks: MinerviniTradeSetup[]) =>
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
+};
+
+/**
+ * Exports current RRG state, quadrant distribution breakdown, and rotational metrics to CSV
+ */
+export interface RrgCsvExportParams {
+  universeMode: string;
+  watchlistName?: string;
+  benchmark: string;
+  benchmarkLabel: string;
+  timeframe: string;
+  tailLength: number;
+  filterDescription?: string;
+  quadrantCounts: {
+    LEADING: number;
+    IMPROVING: number;
+    WEAKENING: number;
+    LAGGING: number;
+  };
+  totalCount: number;
+  items: RrgSecurityData[];
+}
+
+export const exportRrgStateToCsv = ({
+  universeMode,
+  watchlistName,
+  benchmark,
+  benchmarkLabel,
+  timeframe,
+  tailLength,
+  filterDescription,
+  quadrantCounts,
+  totalCount,
+  items,
+}: RrgCsvExportParams) => {
+  const total = totalCount || items.length || 1;
+  const leadingPct = ((quadrantCounts.LEADING / total) * 100).toFixed(1);
+  const improvingPct = ((quadrantCounts.IMPROVING / total) * 100).toFixed(1);
+  const weakeningPct = ((quadrantCounts.WEAKENING / total) * 100).toFixed(1);
+  const laggingPct = ((quadrantCounts.LAGGING / total) * 100).toFixed(1);
+
+  // 1. Quadrant Distribution Section
+  const distributionHeaders = [
+    'Quadrant',
+    'Count',
+    'Percentage (%)',
+    'Institutional Phase Definition',
+    'Minervini SEPA Action Guideline'
+  ];
+
+  const distributionRows = [
+    [
+      escapeCsvCell('LEADING'),
+      escapeCsvCell(quadrantCounts.LEADING),
+      escapeCsvCell(`${leadingPct}%`),
+      escapeCsvCell('RS-Ratio >= 100 & RS-Momentum >= 100 (Strong Outperformance & Momentum)'),
+      escapeCsvCell('Primary buying zone for Stage 2 breakout setups; hold leading compounders')
+    ].join(','),
+    [
+      escapeCsvCell('IMPROVING'),
+      escapeCsvCell(quadrantCounts.IMPROVING),
+      escapeCsvCell(`${improvingPct}%`),
+      escapeCsvCell('RS-Ratio < 100 & RS-Momentum >= 100 (Negative Ratio but Accelerating Momentum)'),
+      escapeCsvCell('Early turnaround candidates; watch for VCP pivot crossing into Leading')
+    ].join(','),
+    [
+      escapeCsvCell('WEAKENING'),
+      escapeCsvCell(quadrantCounts.WEAKENING),
+      escapeCsvCell(`${weakeningPct}%`),
+      escapeCsvCell('RS-Ratio >= 100 & RS-Momentum < 100 (Positive Ratio but Decelerating Momentum)'),
+      escapeCsvCell('Tighten trailing stops to 20/50 SMA; defend profits, avoid aggressive new buys')
+    ].join(','),
+    [
+      escapeCsvCell('LAGGING'),
+      escapeCsvCell(quadrantCounts.LAGGING),
+      escapeCsvCell(`${laggingPct}%`),
+      escapeCsvCell('RS-Ratio < 100 & RS-Momentum < 100 (Underperforming with Negative Momentum)'),
+      escapeCsvCell('Avoid entirely / liquidate remaining exposure; strict capital preservation')
+    ].join(','),
+    [
+      escapeCsvCell('TOTAL'),
+      escapeCsvCell(total),
+      escapeCsvCell('100.0%'),
+      escapeCsvCell(`Universe: ${universeMode} | Benchmark: ${benchmarkLabel} (${benchmark})`),
+      escapeCsvCell('Complete rotational cohort distribution')
+    ].join(',')
+  ];
+
+  // 2. Rotational Securities Table
+  const securitiesHeaders = [
+    'Ticker',
+    'Name',
+    'Type',
+    'Sector',
+    'Exchange',
+    'Quadrant',
+    'Previous Quadrant',
+    'New to Quadrant',
+    'Current RS-Ratio',
+    'Current RS-Momentum',
+    'Previous RS-Ratio',
+    'Previous RS-Momentum',
+    'RS-Ratio Delta',
+    'RS-Momentum Delta',
+    'Velocity',
+    'Heading Angle (Deg)',
+    'Heading Direction',
+    'Minervini RS Rating',
+    'Current Price',
+    'Price Change (%)',
+    'Trend Score (/8)',
+    'VCP Stage',
+    'Volume Dry-Up (%)',
+    'Rotational Outlook',
+    'Constituent Stocks (If Sector)'
+  ];
+
+  const securitiesRows = items.map((item) => {
+    const rsRatioDelta = item.currentRsRatio - item.prevRsRatio;
+    const rsMomentumDelta = item.currentRsMomentum - item.prevRsMomentum;
+    const constituents = item.constituentStocks
+      ? item.constituentStocks.map((s) => s.ticker).join('; ')
+      : '';
+
+    return [
+      escapeCsvCell(item.ticker),
+      escapeCsvCell(item.name),
+      escapeCsvCell(item.type),
+      escapeCsvCell(item.sector),
+      escapeCsvCell(item.exchange),
+      escapeCsvCell(item.quadrant),
+      escapeCsvCell(item.prevQuadrant),
+      escapeCsvCell(item.isNewToQuadrant ? 'YES' : 'NO'),
+      escapeCsvCell(item.currentRsRatio.toFixed(2)),
+      escapeCsvCell(item.currentRsMomentum.toFixed(2)),
+      escapeCsvCell(item.prevRsRatio.toFixed(2)),
+      escapeCsvCell(item.prevRsMomentum.toFixed(2)),
+      escapeCsvCell((rsRatioDelta >= 0 ? '+' : '') + rsRatioDelta.toFixed(2)),
+      escapeCsvCell((rsMomentumDelta >= 0 ? '+' : '') + rsMomentumDelta.toFixed(2)),
+      escapeCsvCell(item.velocity.toFixed(2)),
+      escapeCsvCell(`${item.headingAngle}°`),
+      escapeCsvCell(item.headingDirection),
+      escapeCsvCell(item.rsRating),
+      escapeCsvCell(item.currentPrice.toFixed(2)),
+      escapeCsvCell(`${item.changePercent >= 0 ? '+' : ''}${item.changePercent.toFixed(2)}%`),
+      escapeCsvCell(item.trendScore),
+      escapeCsvCell(item.vcpStage || 'N/A'),
+      escapeCsvCell(item.volumeDryUpPercent !== undefined ? `-${item.volumeDryUpPercent}%` : 'N/A'),
+      escapeCsvCell(item.rotationalOutlook || ''),
+      escapeCsvCell(constituents)
+    ].join(',');
+  });
+
+  const fullCsv = [
+    '# ==============================================================================',
+    '# RELATIVE ROTATION GRAPH (RRG) STATE & QUADRANT DISTRIBUTION EXPORT',
+    '# ==============================================================================',
+    `# Export Timestamp: ${new Date().toISOString()}`,
+    `# Universe Target: ${universeMode}`,
+    ...(watchlistName ? [`# Source Watchlist: ${watchlistName}`] : []),
+    `# Benchmark: ${benchmarkLabel} (${benchmark})`,
+    `# Timeframe: ${timeframe}`,
+    `# Trail Length: ${tailLength} periods`,
+    `# Total Securities in Universe: ${total}`,
+    ...(filterDescription ? [`# Filter Applied: ${filterDescription}`] : []),
+    `# Securities Exported in Records Table: ${items.length}`,
+    '# ==============================================================================',
+    '',
+    'QUADRANT DISTRIBUTION BREAKDOWN',
+    distributionHeaders.join(','),
+    ...distributionRows,
+    '',
+    'ROTATIONAL SECURITIES DATA',
+    securitiesHeaders.join(','),
+    ...securitiesRows
+  ].join('\n');
+
+  const dateStr = new Date().toISOString().split('T')[0];
+  const cleanMode = universeMode.toLowerCase().replace(/_/g, '-');
+  downloadCsv(`RRG_${cleanMode}_${benchmark}_${dateStr}.csv`, fullCsv);
 };
 

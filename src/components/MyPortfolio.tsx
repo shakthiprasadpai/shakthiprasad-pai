@@ -4,6 +4,9 @@ import { formatCurrency, getCurrencySymbol } from '../utils/sepaCalculator';
 import { exportPortfolioToCsv } from '../utils/csvExport';
 import { PortfolioRebalancing } from './PortfolioRebalancing';
 import { PortfolioSectorPieChart } from './PortfolioSectorPieChart';
+import { useAuth } from '../context/AuthContext';
+import { db } from '../lib/firebase';
+import { collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
 import {
   Briefcase,
   TrendingUp,
@@ -27,7 +30,8 @@ import {
   Download,
   FileSpreadsheet,
   GripVertical,
-  ListOrdered
+  ListOrdered,
+  Cloud
 } from 'lucide-react';
 
 interface MyPortfolioProps {
@@ -41,7 +45,9 @@ export const MyPortfolio: React.FC<MyPortfolioProps> = ({
   onSelectStock,
   onViewChart,
 }) => {
+  const { user, signIn } = useAuth();
   const [portfolioSubTab, setPortfolioSubTab] = useState<'holdings' | 'rebalancing'>('holdings');
+  const [isCloudSyncing, setIsCloudSyncing] = useState<boolean>(false);
   // Load portfolio from localStorage or provide initial default holdings
   const [holdings, setHoldings] = useState<PortfolioHolding[]>(() => {
     try {
@@ -87,6 +93,63 @@ export const MyPortfolio: React.FC<MyPortfolioProps> = ({
       },
     ];
   });
+
+  // Real-time Cloud Firestore synchronization when user is authenticated
+  useEffect(() => {
+    if (!user) {
+      setIsCloudSyncing(false);
+      return;
+    }
+
+    setIsCloudSyncing(true);
+    const holdingsCol = collection(db, 'users', user.uid, 'portfolio_holdings');
+
+    const unsubscribe = onSnapshot(
+      holdingsCol,
+      async (snapshot) => {
+        if (!snapshot.empty) {
+          const cloudItems: PortfolioHolding[] = [];
+          snapshot.forEach((docSnap) => {
+            const data = docSnap.data();
+            cloudItems.push({
+              id: docSnap.id,
+              ticker: data.ticker || '',
+              stockName: data.stockName || data.ticker || '',
+              exchange: data.exchange || 'NASDAQ',
+              shares: Number(data.shares) || 0,
+              entryPrice: Number(data.entryPrice) || 0,
+              currentPrice: Number(data.currentPrice) || Number(data.entryPrice) || 0,
+              buyDate: data.buyDate || '',
+              stopLossPrice: Number(data.stopLossPrice) || 0,
+              pivotTargetPrice: Number(data.pivotTargetPrice) || 0,
+              notes: data.notes || '',
+              trendScore: Number(data.trendScore) || 8,
+              sma50: Number(data.sma50) || 0,
+              sma200: Number(data.sma200) || 0,
+              vcpStage: data.vcpStage || 'Active Breakout',
+            });
+          });
+          setHoldings(cloudItems);
+        } else {
+          // If Firestore is empty, initialize user's Firestore with current holdings
+          try {
+            for (const item of holdings) {
+              await setDoc(doc(db, 'users', user.uid, 'portfolio_holdings', item.id), item);
+            }
+          } catch (migrateErr) {
+            console.error('Failed to migrate initial holdings to Firestore:', migrateErr);
+          }
+        }
+        setIsCloudSyncing(false);
+      },
+      (error) => {
+        console.error('Firestore portfolio listener error:', error);
+        setIsCloudSyncing(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [user?.uid]);
 
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
   const [editingHoldingId, setEditingHoldingId] = useState<string | null>(null);
@@ -298,21 +361,34 @@ export const MyPortfolio: React.FC<MyPortfolioProps> = ({
     }
 
     if (editingHoldingId) {
+      const updatedHolding: PortfolioHolding = {
+        ...(holdings.find((h) => h.id === editingHoldingId) || {}),
+        id: editingHoldingId,
+        ticker: effectiveTicker,
+        stockName: matchedStock ? matchedStock.name : `${effectiveTicker} Inc.`,
+        exchange: matchedStock ? matchedStock.exchange : 'NASDAQ',
+        shares: sharesNum,
+        entryPrice: entryNum,
+        currentPrice: matchedStock ? matchedStock.currentPrice : entryNum,
+        stopLossPrice: stopNum,
+        pivotTargetPrice: targetNum,
+        buyDate: buyDateInput,
+        notes: notesInput,
+        trendScore: matchedStock ? matchedStock.trendScore : 8,
+        sma50: matchedStock ? matchedStock.sma50 : entryNum * 0.95,
+        sma200: matchedStock ? matchedStock.sma200 : entryNum * 0.85,
+        vcpStage: matchedStock ? matchedStock.vcpStage : 'Active Breakout',
+      };
+
       setHoldings((prev) =>
-        prev.map((h) =>
-          h.id === editingHoldingId
-            ? {
-                ...h,
-                shares: sharesNum,
-                entryPrice: entryNum,
-                stopLossPrice: stopNum,
-                pivotTargetPrice: targetNum,
-                buyDate: buyDateInput,
-                notes: notesInput,
-              }
-            : h
-        )
+        prev.map((h) => (h.id === editingHoldingId ? updatedHolding : h))
       );
+
+      if (user) {
+        setDoc(doc(db, 'users', user.uid, 'portfolio_holdings', editingHoldingId), updatedHolding, {
+          merge: true,
+        }).catch(console.error);
+      }
       setEditingHoldingId(null);
     } else {
       const newHolding: PortfolioHolding = {
@@ -334,6 +410,12 @@ export const MyPortfolio: React.FC<MyPortfolioProps> = ({
       };
 
       setHoldings([newHolding, ...holdings]);
+
+      if (user) {
+        setDoc(doc(db, 'users', user.uid, 'portfolio_holdings', newHolding.id), newHolding).catch(
+          console.error
+        );
+      }
     }
 
     setIsAddModalOpen(false);
@@ -343,6 +425,21 @@ export const MyPortfolio: React.FC<MyPortfolioProps> = ({
   // Delete holding
   const handleDeleteHolding = (id: string) => {
     setHoldings((prev) => prev.filter((h) => h.id !== id));
+    if (user) {
+      deleteDoc(doc(db, 'users', user.uid, 'portfolio_holdings', id)).catch(console.error);
+    }
+  };
+
+  // Apply rebalancing with Firestore sync
+  const handleApplyRebalanceWithCloud = (updated: PortfolioHolding[]) => {
+    setHoldings(updated);
+    if (user) {
+      for (const item of updated) {
+        setDoc(doc(db, 'users', user.uid, 'portfolio_holdings', item.id), item, { merge: true }).catch(
+          console.error
+        );
+      }
+    }
   };
 
   // Edit holding trigger
@@ -437,6 +534,23 @@ export const MyPortfolio: React.FC<MyPortfolioProps> = ({
             <h3 className="text-xl font-serif font-black text-[#1a1a1a] tracking-tight leading-none mt-1">
               My Portfolio & SEPA Rule Alignment Tracker
             </h3>
+            <div className="flex items-center space-x-2 mt-1.5">
+              {user ? (
+                <span className="inline-flex items-center space-x-1.5 px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-300 text-[10px] font-mono font-bold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <Cloud className="w-3 h-3 text-emerald-600" />
+                  <span>Firestore Cloud Active ({user.email?.split('@')[0]})</span>
+                </span>
+              ) : (
+                <button
+                  onClick={signIn}
+                  className="inline-flex items-center space-x-1.5 px-2 py-0.5 rounded bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 text-[10px] font-mono font-bold cursor-pointer transition-colors"
+                >
+                  <Cloud className="w-3 h-3 text-amber-600" />
+                  <span>Local Mode • Click to Sign In & Sync</span>
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -492,7 +606,7 @@ export const MyPortfolio: React.FC<MyPortfolioProps> = ({
         <PortfolioRebalancing
           holdings={holdings}
           stocksList={stocks}
-          onApplyRebalance={(updated) => setHoldings(updated)}
+          onApplyRebalance={handleApplyRebalanceWithCloud}
         />
       ) : (
         <>

@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { TrendingUp, BarChart3, Calculator, BookOpen, SlidersHorizontal, Briefcase, Calendar, Video, Gem, Moon, Sun, Zap, Target, BookMarked, Layers, BellRing, Download, Sparkles, Bot, Cpu, Bookmark, ShieldCheck, CheckSquare, Award, Monitor, FileSpreadsheet, Radio, Menu, X, Compass } from 'lucide-react';
 import { DesktopRemixGuideModal } from './DesktopRemixGuideModal';
 import { MobileNavDrawer } from './MobileNavDrawer';
+import { UserAuthButton } from './UserAuthButton';
 
 export type AppNavTab = 
   | 'daily_review'
@@ -229,10 +230,16 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </div>
               </motion.button>
             )}
+
+            {/* Firebase Google Authentication & Firestore Sync Button */}
+            <UserAuthButton isObsidian={isObsidian} />
           </div>
 
           {/* Mobile Action Controls Header Bar (< md) */}
           <div className="flex md:hidden items-center space-x-2">
+            {/* User Auth in Mobile Header */}
+            <UserAuthButton isObsidian={isObsidian} />
+
             {/* Active Tab Pill Indicator */}
             <div className={`px-2.5 py-1 rounded-full text-[10px] font-mono font-bold tracking-tight uppercase border flex items-center space-x-1.5 ${
               isObsidian

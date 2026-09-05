@@ -1,0 +1,37 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // User profile and private subcollections
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isOwner(userId);
+
+      match /watchlists/{watchlistId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      match /portfolio_holdings/{holdingId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      match /trade_journal/{tradeId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      match /obsidian_notes/{noteId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      match /settings/{settingId} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+  }
+}

@@ -10,11 +10,18 @@ import {
   saveFavoriteTickers, 
   CustomWatchlist 
 } from '../utils/watchlistStorage';
+import { useAuth } from '../context/AuthContext';
+import {
+  subscribeToUserWatchlists,
+  saveUserWatchlistToCloud,
+  deleteUserWatchlistFromCloud,
+  syncLocalWatchlistsToCloud
+} from '../lib/firestoreService';
 import { 
   Bookmark, Star, Plus, Trash2, FileText, Download, TrendingUp, 
   Target, ShieldCheck, Sparkles, Filter, Check, Bot, Eye, Layers, Search,
   Bell, BellRing, Zap, CheckCircle2, AlertTriangle, Activity, Newspaper,
-  Volume2, VolumeX, Volume1
+  Volume2, VolumeX, Volume1, Cloud
 } from 'lucide-react';
 import { playAlertChime, appendTrackerLog } from '../utils/backgroundPriceChecker';
 import { simulateWatchlistMajorNewsAlert } from '../utils/watchlistNewsListener';
@@ -51,6 +58,49 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [filterFavoritesOnly, setFilterFavoritesOnly] = useState(false);
   const [audioSettings, setAudioSettings] = useState<AudioSettings>(() => getAudioSettings());
+  const { user, signIn } = useAuth();
+  const [isCloudSyncing, setIsCloudSyncing] = useState<boolean>(false);
+
+  // Firestore Real-Time Watchlist Synchronization
+  useEffect(() => {
+    if (!user) {
+      setIsCloudSyncing(false);
+      return;
+    }
+
+    setIsCloudSyncing(true);
+    const unsubscribe = subscribeToUserWatchlists(
+      user.uid,
+      async (cloudLists) => {
+        if (cloudLists.length > 0) {
+          setWatchlists(cloudLists);
+          if (!cloudLists.some((wl) => wl.id === activeWatchlistId)) {
+            setActiveWatchlistId(cloudLists[0].id);
+          }
+        } else {
+          // If Firestore is empty for this user, upload initial local watchlists
+          await syncLocalWatchlistsToCloud(user.uid, watchlists);
+        }
+        setIsCloudSyncing(false);
+      },
+      (err) => {
+        console.error('Firestore watchlists sync error:', err);
+        setIsCloudSyncing(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [user?.uid]);
+
+  // Sync state changes to storage and cloud
+  useEffect(() => {
+    saveStoredWatchlists(watchlists);
+    if (user) {
+      for (const wl of watchlists) {
+        saveUserWatchlistToCloud(user.uid, wl).catch(console.error);
+      }
+    }
+  }, [watchlists, user]);
 
   // New Watchlist Form Modal State
   const [isCreatingList, setIsCreatingList] = useState(false);
@@ -316,6 +366,22 @@ export const WatchlistManager: React.FC<WatchlistManagerProps> = ({
             <span className="text-[10px] uppercase font-mono text-emerald-400 font-bold bg-emerald-500/10 px-2.5 py-0.5 rounded border border-emerald-500/20">
               {watchlists.length} Custom Lists Active
             </span>
+            {user ? (
+              <span className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <Cloud className="w-3 h-3 text-emerald-400" />
+                <span>Firestore Synced</span>
+              </span>
+            ) : (
+              <button
+                onClick={signIn}
+                className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 cursor-pointer transition-colors"
+                title="Sign in with Google to enable real-time Firebase Firestore syncing"
+              >
+                <Cloud className="w-3 h-3 text-amber-400" />
+                <span>Local Mode • Sign in to Sync</span>
+              </button>
+            )}
           </div>
 
           <h1 className="text-3xl sm:text-4xl font-serif font-black tracking-tight text-white leading-tight">
