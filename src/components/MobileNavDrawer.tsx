@@ -29,7 +29,8 @@ import {
   Sun,
   Moon,
   Monitor,
-  Compass
+  Compass,
+  Brain
 } from 'lucide-react';
 import { AppNavTab } from './Navbar';
 
@@ -181,6 +182,15 @@ const NAV_ITEMS: NavItemDef[] = [
     icon: Download,
     badge: 'DATA HUB',
     badgeColor: 'bg-emerald-500/25 text-emerald-300 border border-emerald-400',
+  },
+  {
+    id: 'second_brain',
+    title: 'Second Brain & Clipper',
+    subtitle: 'P.A.R.A vault, Chrome Extension & knowledge graph',
+    category: 'tools',
+    icon: Brain,
+    badge: 'CHROME EXT',
+    badgeColor: 'bg-amber-500/25 text-amber-300 border border-amber-400',
   },
   {
     id: 'pattern_library',

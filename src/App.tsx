@@ -16,6 +16,7 @@ import { EarningsCalendar } from './components/EarningsCalendar';
 import { MinerviniVideoMasterclass } from './components/MinerviniVideoMasterclass';
 import { TickerNewsGrounding } from './components/TickerNewsGrounding';
 import { ObsidianIntegration } from './components/ObsidianIntegration';
+import { SecondBrainHub } from './components/SecondBrainHub';
 import { PocketPivotScanner } from './components/PocketPivotScanner';
 import { VcpPatternScanner } from './components/VcpPatternScanner';
 import { TradeJournal } from './components/TradeJournal';
@@ -38,13 +39,14 @@ import { RecentPriceAlertHistory } from './components/RecentPriceAlertHistory';
 import { TradingViewWebhookHub } from './components/TradingViewWebhookHub';
 import { BhavcopyView } from './components/BhavcopyView';
 import { RrgToolView } from './components/RrgToolView';
+import { QuickInsightModal } from './components/QuickInsightModal';
 import { getStoredWatchlists } from './utils/watchlistStorage';
 import { initializeAlertHistory } from './utils/priceAlertHistoryStorage';
 import { DEFAULT_NSE_BHAVCOPY, DEFAULT_BSE_BHAVCOPY } from './data/bhavcopyData';
 import { MOCK_STOCKS } from './data/mockStocks';
 import { MinerviniTradeSetup } from './types';
 import { formatCurrency, formatVolume, getCurrencySymbol, calculateBreakoutProbability } from './utils/sepaCalculator';
-import { TrendingUp, ShieldCheck, Target, Droplets, ArrowUpRight, Flame, BarChart3, Calculator, Sparkles, Gem, Bot, Bell, Keyboard, Command, Search, Zap, History } from 'lucide-react';
+import { TrendingUp, ShieldCheck, Target, Droplets, ArrowUpRight, Flame, BarChart3, Calculator, Sparkles, Gem, Bot, Bell, Keyboard, Command, Search, Zap, History, Brain, Bookmark } from 'lucide-react';
 
 export default function App() {
   const [stocksList, setStocksList] = useState<MinerviniTradeSetup[]>(MOCK_STOCKS);
@@ -52,6 +54,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<AppNavTab>('hermes_agent');
   const [isObsidian, setIsObsidian] = useState<boolean>(true); // Default to Obsidian Dark theme for luxury feel
   const [isDailyScanModalOpen, setIsDailyScanModalOpen] = useState<boolean>(false);
+  const [isQuickInsightModalOpen, setIsQuickInsightModalOpen] = useState<boolean>(false);
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState<boolean>(false);
 
   useEffect(() => {
@@ -263,6 +266,7 @@ export default function App() {
         isObsidian={isObsidian}
         onToggleObsidian={() => setIsObsidian(!isObsidian)}
         onOpenDailyScanner={() => setIsDailyScanModalOpen(true)}
+        onOpenQuickInsight={() => setIsQuickInsightModalOpen(true)}
         isMobileDrawerOpen={isMobileDrawerOpen}
         setIsMobileDrawerOpen={setIsMobileDrawerOpen}
       />
@@ -284,6 +288,21 @@ export default function App() {
         onNavigateToTab={(tab) => {
           setActiveTab(tab as AppNavTab);
           setIsDailyScanModalOpen(false);
+        }}
+      />
+
+      {/* Quick Insight P.A.R.A Second Brain Firestore Vault Modal */}
+      <QuickInsightModal
+        isOpen={isQuickInsightModalOpen}
+        onClose={() => setIsQuickInsightModalOpen(false)}
+        stock={selectedStock}
+        isObsidian={isObsidian}
+        onSavedNote={(_note) => {
+          // Note saved and synced
+        }}
+        onOpenSecondBrainTab={() => {
+          setActiveTab('second_brain');
+          setIsQuickInsightModalOpen(false);
         }}
       />
 
@@ -340,6 +359,20 @@ export default function App() {
                 {calculateBreakoutProbability(selectedStock).score}%
               </strong>
             </div>
+
+            {/* Quick Tag Insight (P.A.R.A) Action Button */}
+            <button
+              id="banner-quick-insight-button"
+              onClick={() => setIsQuickInsightModalOpen(true)}
+              className="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-mono font-bold text-xs p-3 rounded border border-amber-400 shadow-md flex items-center space-x-2 transition-all cursor-pointer hover:scale-[1.02] active:scale-98"
+              title={`Tag and save trading insight for ${selectedStock.ticker} to Second Brain P.A.R.A Firestore Vault`}
+            >
+              <Brain className="w-4 h-4 text-slate-950" />
+              <div className="text-left leading-tight">
+                <div className="font-extrabold text-[11px] uppercase tracking-wider">Tag Insight</div>
+                <div className="text-[9px] font-mono text-slate-900/80">P.A.R.A Cloud Vault</div>
+              </div>
+            </button>
           </div>
         </div>
 
@@ -789,6 +822,29 @@ export default function App() {
                   setSelectedStock(stock);
                   setActiveTab('chart');
                 }}
+              />
+            </motion.div>
+          )}
+
+          {/* TAB: SECOND BRAIN & CHROME EXTENSION WEB CLIPPER */}
+          {activeTab === 'second_brain' && (
+            <motion.div
+              key="second_brain"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.25, ease: 'easeInOut' }}
+              className="space-y-8"
+            >
+              <SecondBrainHub
+                stocks={stocksList}
+                selectedStock={selectedStock}
+                onSelectStock={(stock) => setSelectedStock(stock)}
+                onViewChart={(stock) => {
+                  setSelectedStock(stock);
+                  setActiveTab('chart');
+                }}
+                isObsidian={isObsidian}
               />
             </motion.div>
           )}

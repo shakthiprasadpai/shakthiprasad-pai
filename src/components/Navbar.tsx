@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { TrendingUp, BarChart3, Calculator, BookOpen, SlidersHorizontal, Briefcase, Calendar, Video, Gem, Moon, Sun, Zap, Target, BookMarked, Layers, BellRing, Download, Sparkles, Bot, Cpu, Bookmark, ShieldCheck, CheckSquare, Award, Monitor, FileSpreadsheet, Radio, Menu, X, Compass } from 'lucide-react';
+import { TrendingUp, BarChart3, Calculator, BookOpen, SlidersHorizontal, Briefcase, Calendar, Video, Gem, Moon, Sun, Zap, Target, BookMarked, Layers, BellRing, Download, Sparkles, Bot, Cpu, Bookmark, ShieldCheck, CheckSquare, Award, Monitor, FileSpreadsheet, Radio, Menu, X, Compass, Brain } from 'lucide-react';
 import { DesktopRemixGuideModal } from './DesktopRemixGuideModal';
 import { MobileNavDrawer } from './MobileNavDrawer';
 import { UserAuthButton } from './UserAuthButton';
@@ -19,6 +19,7 @@ export type AppNavTab =
   | 'portfolio' 
   | 'earnings' 
   | 'masterclass' 
+  | 'second_brain'
   | 'obsidian' 
   | 'pocket_pivot' 
   | 'vcp_scanner' 
@@ -44,6 +45,7 @@ export const TAB_LABELS: Record<AppNavTab, string> = {
   portfolio: 'Portfolio',
   earnings: 'Earnings',
   masterclass: 'Masterclass',
+  second_brain: 'Second Brain',
   obsidian: 'Obsidian AI',
   pocket_pivot: 'Pocket Pivots',
   vcp_scanner: 'VCP Scanner',
@@ -65,6 +67,7 @@ interface NavbarProps {
   isObsidian?: boolean;
   onToggleObsidian?: () => void;
   onOpenDailyScanner?: () => void;
+  onOpenQuickInsight?: () => void;
   isMobileDrawerOpen?: boolean;
   setIsMobileDrawerOpen?: (open: boolean) => void;
 }
@@ -79,6 +82,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   isObsidian = false,
   onToggleObsidian,
   onOpenDailyScanner,
+  onOpenQuickInsight,
   isMobileDrawerOpen,
   setIsMobileDrawerOpen,
 }) => {
@@ -161,6 +165,28 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <span>Daily Stage 2 Scan</span>
                 <span className="hidden xl:inline-block bg-black/20 text-slate-950 px-1 py-0.2 rounded text-[9px] font-mono font-extrabold border border-black/20 ml-0.5">
                   ⌘K
+                </span>
+              </motion.button>
+            )}
+
+            {/* Quick Tag Insight to Second Brain P.A.R.A Button */}
+            {onOpenQuickInsight && (
+              <motion.button
+                id="header-quick-insight-btn"
+                onClick={onOpenQuickInsight}
+                whileHover={{ scale: 1.04 }}
+                whileTap={{ scale: 0.96 }}
+                className={`px-3 py-1.5 rounded text-[11px] font-bold uppercase tracking-wider font-mono flex items-center space-x-1.5 border shadow-sm cursor-pointer transition-colors ${
+                  isObsidian
+                    ? 'bg-[#181f2c] border-amber-500/40 text-amber-400 hover:bg-amber-500/20'
+                    : 'bg-amber-50 border-amber-300 text-amber-800 hover:bg-amber-100'
+                }`}
+                title="Tag & Save Trading Insight to Second Brain P.A.R.A Firestore Vault"
+              >
+                <Brain className="w-3.5 h-3.5 text-amber-400" />
+                <span className="hidden lg:inline">Tag Insight</span>
+                <span className="text-[9px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  P.A.R.A
                 </span>
               </motion.button>
             )}
@@ -249,6 +275,23 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
               <span className="truncate max-w-[80px]">{TAB_LABELS[activeTab] || activeTab}</span>
             </div>
+
+            {/* Quick Tag Insight 1-Tap Trigger */}
+            {onOpenQuickInsight && (
+              <button
+                id="mobile-header-quick-insight"
+                type="button"
+                onClick={onOpenQuickInsight}
+                className={`p-2 rounded-lg border text-xs cursor-pointer transition-all ${
+                  isObsidian
+                    ? 'bg-[#161b22] border-amber-500/40 text-amber-400 hover:bg-[#1f2633]'
+                    : 'bg-amber-50 border-amber-300 text-amber-700 hover:bg-amber-100'
+                }`}
+                title="Tag & Save Trading Insight (P.A.R.A)"
+              >
+                <Brain className="w-4 h-4" />
+              </button>
+            )}
 
             {/* Quick Export 1-Tap Trigger */}
             <button
@@ -488,6 +531,24 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <Video className="w-3.5 h-3.5 text-emerald-600" />
               <span className="hidden sm:inline">3C Masterclass</span>
+            </button>
+
+            <button
+              id="nav-tab-second-brain"
+              onClick={() => setActiveTab('second_brain')}
+              className={`flex items-center space-x-1.5 py-2 px-2.5 rounded transition-all border-b-2 font-bold cursor-pointer ${
+                activeTab === 'second_brain'
+                  ? 'bg-amber-500/15 border-amber-400 text-amber-400 shadow-xs'
+                  : 'border-transparent text-amber-500/80 hover:text-amber-400 hover:border-amber-400'
+              }`}
+            >
+              <Brain className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+              <span className="flex items-center space-x-1">
+                <span className="font-bold">Second Brain</span>
+                <span className="px-1 py-0.2 bg-amber-500/20 text-amber-400 text-[8px] font-mono rounded font-black">
+                  CLIPPER
+                </span>
+              </span>
             </button>
 
             <button

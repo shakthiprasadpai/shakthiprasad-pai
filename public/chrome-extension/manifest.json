@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "Minervini SEPA Second Brain & Web Clipper",
+  "version": "1.0.0",
+  "description": "1-Click clip stock charts, tweets, news, and setups from TradingView, Finviz, and Yahoo Finance directly into your Minervini SEPA Second Brain.",
+  "permissions": [
+    "activeTab",
+    "contextMenus",
+    "storage",
+    "clipboardRead"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Clip to Minervini Second Brain",
+    "default_icon": {
+      "16": "icon16.png",
+      "48": "icon48.png",
+      "128": "icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"]
+    }
+  ],
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  }
+}

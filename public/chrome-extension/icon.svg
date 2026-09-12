@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#020617" />
+    </linearGradient>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fbbf24" />
+      <stop offset="100%" stop-color="#d97706" />
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="url(#bg)" stroke="#f59e0b" stroke-width="4"/>
+  <!-- Brain shape / VCP Contraction waves -->
+  <path d="M40 76c-6-6-8-16-3-24 5-8 15-10 22-5 3-7 11-11 19-9 8 2 13 9 13 17 6 2 11 8 11 15 0 8-6 15-14 16h-42c-3 0-5-2-6-5z" fill="none" stroke="url(#gold)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Neural / VCP breakout impulse spark -->
+  <circle cx="64" cy="58" r="4" fill="#fbbf24" />
+  <circle cx="48" cy="66" r="3.5" fill="#f59e0b" />
+  <circle cx="80" cy="66" r="3.5" fill="#f59e0b" />
+  <path d="M48 66 L64 58 L80 66" stroke="#fbbf24" stroke-width="2.5" stroke-dasharray="3,3" />
+  <path d="M78 40 L96 22 M86 22 L96 22 L96 32" stroke="#10b981" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" />
+  <text x="64" y="106" fill="#f8fafc" font-size="14" font-weight="900" font-family="sans-serif" text-anchor="middle" letter-spacing="1">SEPA BRAIN</text>
+</svg>

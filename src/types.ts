@@ -649,4 +649,67 @@ export interface TradingViewWebhookConfig {
   desktopNotification: boolean;
 }
 
+// ---------------------------------------------------------------------------
+// SECOND BRAIN & CHROME EXTENSION TYPES
+// ---------------------------------------------------------------------------
+export type SecondBrainCategory = 'PROJECTS' | 'AREAS' | 'RESOURCES' | 'ARCHIVES';
+
+export type SepaRatingTier = 'ELITE' | 'LEADER' | 'WATCH' | 'AVOID';
+
+export interface SecondBrainNote {
+  id: string;
+  title: string;
+  category: SecondBrainCategory;
+  ticker?: string;
+  patternType?: string;
+  tags: string[];
+  content: string; // Markdown supported
+  createdAt: string;
+  updatedAt: string;
+  sourceUrl?: string;
+  sourceType?: 'CHROME_EXTENSION' | 'MANUAL' | 'GEMINI_AI' | 'OBSIDIAN_SYNC' | 'SCREENER';
+  isPinned?: boolean;
+  sepaRating?: SepaRatingTier;
+  wikilinks?: string[]; // e.g. ["[[NVDA]]", "[[VCP_Pattern]]"]
+  aiSummary?: string;
+}
+
+export interface SecondBrainClip {
+  id: string;
+  title: string;
+  url: string;
+  ticker?: string;
+  source: string; // e.g. "TradingView", "Finviz", "Twitter / X", "Yahoo Finance", "Web"
+  content: string;
+  summary?: string;
+  tags: string[];
+  category: SecondBrainCategory;
+  timestamp: string;
+  status: 'UNPROCESSED' | 'PROCESSED' | 'FAVORITE';
+}
+
+export interface SecondBrainGraphNode {
+  id: string;
+  label: string;
+  type: 'TICKER' | 'CONCEPT' | 'NOTE' | 'SECTOR' | 'RULE';
+  category?: SecondBrainCategory;
+  group?: string;
+  val: number; // visual node weight
+  x?: number;
+  y?: number;
+}
+
+export interface SecondBrainGraphLink {
+  source: string;
+  target: string;
+  relationship?: string;
+}
+
+export interface ChromeExtensionConfig {
+  serverUrl: string;
+  autoSync: boolean;
+  defaultCategory: SecondBrainCategory;
+  apiKey?: string;
+}
+
 

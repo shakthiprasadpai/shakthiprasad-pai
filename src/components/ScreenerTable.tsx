@@ -1,14 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MinerviniTradeSetup } from '../types';
 import { formatCurrency, calculateTrendStrengthMeter, getCurrencySymbol, calculateTrendReadinessScore, calculateDailyPivotPoints, calculateDailyVolatilityMetrics } from '../utils/sepaCalculator';
 import { exportTradePlansToCsv } from '../utils/csvExport';
 import { SectorStrengthView } from './SectorStrengthView';
 import { SectorPerformanceWidget } from './SectorPerformanceWidget';
+import { SectorHeatmap } from './SectorHeatmap';
 import { RefinedSepaScreenerModal } from './RefinedSepaScreenerModal';
 import { RiskAdjustedTableView } from './RiskAdjustedTableView';
 import { PositionRiskCalculator } from './PositionRiskCalculator';
 import { evaluateRefinedSepaScreener } from '../utils/refinedSepaScreener';
+import { buildUniverseVolatilityRankMap, calculateStockVolatilityRank } from '../utils/volatilityRankCalculator';
 import {
   Search,
   Droplets,
@@ -63,6 +65,7 @@ export interface VcpHeatmapInfo {
 
 export type SortField =
   | 'VCP_INTENSITY'
+  | 'VOLATILITY_RANK'
   | 'TREND_SLOPE'
   | 'DRY_UP'
   | 'SEPA_SCORE'
@@ -87,6 +90,13 @@ export const SORT_FIELD_LABELS: Record<
     defaultOrder: 'desc',
     descText: '99 → 1 (Highest First)',
     ascText: '1 → 99 (Lowest First)',
+  },
+  VOLATILITY_RANK: {
+    short: 'Vol Rank',
+    full: 'Historical Volatility vs Market Index (1-99)',
+    defaultOrder: 'desc',
+    descText: 'High Volatility First (99 → 1)',
+    ascText: 'Low Volatility / Coiled First (1 → 99)',
   },
   PCT_OFF_HIGH: {
     short: '% Off High',
@@ -228,7 +238,7 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
 }) => {
   const [search, setSearch] = useState<string>('');
   const [filterCategory, setFilterCategory] = useState<string>('ALL');
-  const [viewMode, setViewMode] = useState<'table' | 'risk_adjusted' | 'heatmap' | 'sector_strength'>('table');
+  const [viewMode, setViewMode] = useState<'table' | 'risk_adjusted' | 'sector_heatmap' | 'heatmap' | 'sector_strength'>('table');
   const [highlightRows, setHighlightRows] = useState<boolean>(true);
   const [sortCriteria, setSortCriteria] = useState<SortCriterion[]>([...DEFAULT_MULTI_SORT]);
   const [isMultiSortMode, setIsMultiSortMode] = useState<boolean>(true);
@@ -236,6 +246,9 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
   const [copiedTicker, setCopiedTicker] = useState<string | null>(null);
   const [exportToast, setExportToast] = useState<string | null>(null);
   const [riskCalcModalStock, setRiskCalcModalStock] = useState<MinerviniTradeSetup | null>(null);
+
+  // Pre-calculate volatility metrics relative to broader market index
+  const volatilityMap = useMemo(() => buildUniverseVolatilityRankMap(stocks), [stocks]);
 
   const handleCopyTicker = (ticker: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
@@ -261,6 +274,13 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
 
     if (field === 'RS_RATING') {
       diff = b.rsRating - a.rsRating; // desc = highest RS rating first
+      return order === 'desc' ? diff : -diff;
+    }
+
+    if (field === 'VOLATILITY_RANK') {
+      const volA = volatilityMap.get(a.ticker)?.volatilityRank ?? 50;
+      const volB = volatilityMap.get(b.ticker)?.volatilityRank ?? 50;
+      diff = volB - volA; // desc = highest volatility rank first (99 -> 1)
       return order === 'desc' ? diff : -diff;
     }
 
@@ -417,6 +437,23 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
     if (filterCategory === 'PERFECT') return stock.trendScore === 8;
     if (filterCategory === 'ULTRA_TIGHT') return stock.volumeDryUpPercent <= -60 || stock.isTightVolume;
     if (filterCategory === 'TIGHT_VOL') return stock.isTightVolume || stock.volumeDryUpPercent <= -45;
+    if (filterCategory === 'VOL_LOW_COIL') {
+      const vol = volatilityMap.get(stock.ticker);
+      return (vol?.volatilityRank ?? 50) <= 35;
+    }
+    if (filterCategory === 'VOL_HIGH_BETA') {
+      const vol = volatilityMap.get(stock.ticker);
+      return (vol?.volatilityRank ?? 50) >= 70;
+    }
+    if (filterCategory === 'VOL_EXTREME') {
+      const vol = volatilityMap.get(stock.ticker);
+      return (vol?.volatilityRank ?? 50) >= 90;
+    }
+    if (filterCategory === 'VOL_MODERATE') {
+      const vol = volatilityMap.get(stock.ticker);
+      const rank = vol?.volatilityRank ?? 50;
+      return rank > 35 && rank < 70;
+    }
     if (filterCategory === 'NSE') return stock.exchange === 'NSE' || stock.exchange === 'BSE';
     if (filterCategory === 'US') return stock.exchange === 'NASDAQ' || stock.exchange === 'NYSE';
     if (filterCategory === 'PENDING') return stock.vcpStage === 'Breakout Pending';
@@ -500,6 +537,17 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
                 <span>Risk Adjusted</span>
                 <span className="bg-amber-400 text-black text-[9px] font-black px-1 rounded-2xs">R:R</span>
+              </button>
+              <button
+                id="btn-screener-sector-heatmap"
+                onClick={() => setViewMode('sector_heatmap')}
+                className={`px-3 py-1 text-xs font-bold uppercase tracking-wider flex items-center space-x-1.5 transition-all ${
+                  viewMode === 'sector_heatmap' ? 'bg-[#1a1a1a] text-amber-300' : 'text-gray-600 hover:text-black'
+                }`}
+                title="Visual Sector Heatmap: color stocks by sector performance, relative strength, and volatility rank"
+              >
+                <Flame className="w-3.5 h-3.5 text-amber-400" />
+                <span>Sector Heatmap</span>
               </button>
               <button
                 onClick={() => setViewMode('heatmap')}
@@ -628,6 +676,34 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
               </button>
 
               <button
+                onClick={() =>
+                  setSortCriteria([
+                    { field: 'VOLATILITY_RANK', order: 'asc' },
+                    { field: 'RS_RATING', order: 'desc' },
+                    { field: 'DRY_UP', order: 'desc' },
+                  ])
+                }
+                className="px-2.5 py-1 bg-gray-800 hover:bg-gray-700 text-teal-300 text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer"
+                title="Low-Vol Squeeze: 1st Lowest Vol Rank (Coils) | 2nd RS Rating | 3rd Volume Dry-Up"
+              >
+                <span>Low-Vol Squeeze</span>
+              </button>
+
+              <button
+                onClick={() =>
+                  setSortCriteria([
+                    { field: 'VOLATILITY_RANK', order: 'desc' },
+                    { field: 'RS_RATING', order: 'desc' },
+                    { field: 'CHANGE_PERCENT', order: 'desc' },
+                  ])
+                }
+                className="px-2.5 py-1 bg-gray-800 hover:bg-gray-700 text-purple-300 text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer"
+                title="High-Beta Vol: 1st Vol Rank Desc (Beta Leaders) | 2nd RS Rating | 3rd Daily % Change"
+              >
+                <span>High-Beta Vol</span>
+              </button>
+
+              <button
                 onClick={() => setSortCriteria([{ field: 'RS_RATING', order: 'desc' }])}
                 className="px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white text-[10px] uppercase font-bold transition-all cursor-pointer"
                 title="Reset to Single Column Sort"
@@ -752,6 +828,9 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
             { id: 'ALL', label: `All Candidates (${stocks.length})` },
             { id: 'RS_80_PLUS', label: '🏆 RS ≥ 80 (Elite Leaders)' },
             { id: 'RS_70_PLUS', label: '🎯 RS ≥ 70 (Trend Continuation)' },
+            { id: 'VOL_LOW_COIL', label: '🛡️ Low-Vol Coils (≤35)' },
+            { id: 'VOL_HIGH_BETA', label: '🚀 High-Beta Vol (≥70)' },
+            { id: 'VOL_EXTREME', label: '⚡ Extreme Vol (≥90)' },
             { id: 'TIER_1_POWER', label: '⚡ Tier-1 Power Slope' },
             { id: 'ULTRA_TIGHT', label: '🔥 Ultra Tight (-60%+)' },
             { id: 'PERFECT', label: '⭐ Perfect 8/8 SEPA' },
@@ -777,7 +856,18 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
       </div>
 
       {/* VIEW MODE CONDITIONAL RENDERING */}
-      {viewMode === 'sector_strength' ? (
+      {viewMode === 'sector_heatmap' ? (
+        <SectorHeatmap
+          stocks={stocks}
+          selectedTicker={selectedTicker}
+          onSelectStock={onSelectStock}
+          onViewChart={onViewChart}
+          onFilterBySector={(sec) => {
+            setSearch(sec);
+            setViewMode('table');
+          }}
+        />
+      ) : viewMode === 'sector_strength' ? (
         <SectorStrengthView
           stocks={stocks}
           onSelectStock={onSelectStock}
@@ -808,6 +898,7 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
                 {renderSortHeader('200MA Trend', 'TREND_SLOPE', 'center')}
                 <th className="py-3 px-2.5">Pattern / Stage</th>
                 {renderSortHeader('VCP Heatmap', 'VCP_INTENSITY', 'center')}
+                {renderSortHeader('Vol Rank', 'VOLATILITY_RANK', 'center')}
                 <th className="py-3 px-2.5">Pivot Entry</th>
                 <th className="py-3 px-2.5">Stop Loss</th>
                 <th className="py-3 px-2.5">Target (+20%)</th>
@@ -818,7 +909,7 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
             <tbody className="divide-y divide-[#e5e4e1] text-xs">
               {filteredStocks.length === 0 ? (
                 <tr>
-                  <td colSpan={14} className="py-8 text-center text-gray-500 font-serif italic text-sm">
+                  <td colSpan={15} className="py-8 text-center text-gray-500 font-serif italic text-sm">
                     No growth setups match the selected search or SEPA filter criteria.
                   </td>
                 </tr>
@@ -1031,6 +1122,45 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
                             Intensity: {heatmap.score}/100
                           </span>
                         </div>
+                      </td>
+
+                      {/* Volatility Rank vs Market Index Column */}
+                      <td className="py-3.5 px-2.5 text-center font-mono">
+                        {(() => {
+                          const vol = volatilityMap.get(stock.ticker) || calculateStockVolatilityRank(stock);
+                          return (
+                            <div className="flex flex-col items-center space-y-1">
+                              <span
+                                className={`px-2 py-0.5 text-xs font-bold border inline-flex items-center space-x-1 ${vol.badgeBg} ${vol.badgeText} ${vol.badgeBorder}`}
+                                title={`Annualized Historical Volatility (HV): ${vol.stockHvAnnualized}%\nMarket Benchmark: ${vol.marketBenchmark} (${vol.marketHvAnnualized}%)\nRelative Volatility Ratio: ${vol.relativeVolatilityRatio}x\nTier: ${vol.volatilityTier}\n${vol.description}`}
+                              >
+                                <Gauge className="w-3 h-3 text-amber-500 shrink-0" />
+                                <span>#{vol.volatilityRank}</span>
+                                <span className="text-[10px] opacity-80">({vol.relativeVolatilityRatio}x)</span>
+                              </span>
+
+                              {/* Volatility Rank Meter Bar */}
+                              <div className="w-20 bg-gray-200 h-1.5 overflow-hidden border border-gray-300">
+                                <div
+                                  className={`h-full ${
+                                    vol.volatilityTier === 'LOW_VOL'
+                                      ? 'bg-emerald-500'
+                                      : vol.volatilityTier === 'MODERATE_VOL'
+                                      ? 'bg-blue-500'
+                                      : vol.volatilityTier === 'HIGH_VOL'
+                                      ? 'bg-amber-500'
+                                      : 'bg-purple-600'
+                                  } transition-all duration-500`}
+                                  style={{ width: `${vol.volatilityRank}%` }}
+                                />
+                              </div>
+
+                              <span className="text-[9px] text-gray-500 font-sans font-bold">
+                                {vol.stockHvAnnualized}% HV ({vol.marketBenchmark.includes('NIFTY') ? 'Nifty' : 'SPY'})
+                              </span>
+                            </div>
+                          );
+                        })()}
                       </td>
 
                       {/* Pivot Entry Price & Daily Pivots / Volatility */}

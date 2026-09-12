@@ -1,0 +1,258 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile containing authentication and account metadata",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Unique Firebase Authentication user ID",
+          "maxLength": 128
+        },
+        "email": {
+          "type": "string",
+          "description": "Primary user email address",
+          "maxLength": 256
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Display name of the trader",
+          "maxLength": 100
+        },
+        "photoURL": {
+          "type": "string",
+          "description": "Avatar image URL",
+          "maxLength": 1024
+        },
+        "lastLoginAt": {
+          "type": "string",
+          "description": "Timestamp of most recent login"
+        }
+      },
+      "required": ["uid"]
+    },
+    "UserWatchlist": {
+      "title": "UserWatchlist",
+      "description": "Custom trading watchlist with target tickers",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique watchlist identifier",
+          "maxLength": 128
+        },
+        "name": {
+          "type": "string",
+          "description": "Name of the watchlist",
+          "maxLength": 100
+        },
+        "description": {
+          "type": "string",
+          "description": "Watchlist description or thesis",
+          "maxLength": 500
+        },
+        "tickers": {
+          "type": "array",
+          "description": "List of stock ticker symbols"
+        },
+        "colorTag": {
+          "type": "string",
+          "description": "Hex color code for visual identification",
+          "maxLength": 30
+        }
+      },
+      "required": ["id", "name"]
+    },
+    "PortfolioHolding": {
+      "title": "PortfolioHolding",
+      "description": "Individual stock position held in trader portfolio",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique holding identifier",
+          "maxLength": 128
+        },
+        "ticker": {
+          "type": "string",
+          "description": "Stock ticker symbol",
+          "maxLength": 20
+        },
+        "companyName": {
+          "type": "string",
+          "description": "Company legal or trade name",
+          "maxLength": 120
+        },
+        "shares": {
+          "type": "number",
+          "description": "Number of shares held"
+        },
+        "avgBuyPrice": {
+          "type": "number",
+          "description": "Average execution cost basis"
+        },
+        "currentPrice": {
+          "type": "number",
+          "description": "Latest market price"
+        },
+        "targetAllocationPct": {
+          "type": "number",
+          "description": "Target allocation percentage"
+        }
+      },
+      "required": ["id", "ticker", "shares", "avgBuyPrice"]
+    },
+    "SecondBrainNote": {
+      "title": "SecondBrainNote",
+      "description": "Second Brain P.A.R.A knowledge note or trading insight",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique note identifier",
+          "maxLength": 128
+        },
+        "title": {
+          "type": "string",
+          "description": "Title of the research note or campaign",
+          "maxLength": 200
+        },
+        "category": {
+          "type": "string",
+          "description": "P.A.R.A taxonomy classification",
+          "enum": ["PROJECTS", "AREAS", "RESOURCES", "ARCHIVES"]
+        },
+        "content": {
+          "type": "string",
+          "description": "Markdown body with SEPA thesis, invalidation rules, and wikilinks",
+          "maxLength": 50000
+        },
+        "ticker": {
+          "type": "string",
+          "description": "Associated stock ticker symbol",
+          "maxLength": 20
+        },
+        "patternType": {
+          "type": "string",
+          "description": "Minervini setup or pattern type (e.g., VCP, Cup & Handle)",
+          "maxLength": 80
+        },
+        "tags": {
+          "type": "array",
+          "description": "Hashtags and thematic labels"
+        },
+        "sourceType": {
+          "type": "string",
+          "description": "Origin source of note",
+          "maxLength": 50
+        },
+        "isPinned": {
+          "type": "boolean",
+          "description": "Whether the note is pinned in vault"
+        },
+        "sepaRating": {
+          "type": "string",
+          "description": "SEPA rating tier",
+          "enum": ["ELITE", "LEADER", "SPECULATIVE", "WATCHLIST", "AVOID"]
+        },
+        "wikilinks": {
+          "type": "array",
+          "description": "Array of [[Wikilinks]] connected to this note"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "ISO timestamp of creation"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "ISO timestamp of last update"
+        }
+      },
+      "required": ["id", "title", "category", "content"]
+    },
+    "SecondBrainClip": {
+      "title": "SecondBrainClip",
+      "description": "Web clipping captured from Chrome Extension or in-app clipper",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique clip identifier",
+          "maxLength": 128
+        },
+        "title": {
+          "type": "string",
+          "description": "Title of the clipped article or chart note",
+          "maxLength": 250
+        },
+        "url": {
+          "type": "string",
+          "description": "Source website URL",
+          "maxLength": 2048
+        },
+        "ticker": {
+          "type": "string",
+          "description": "Associated stock ticker symbol",
+          "maxLength": 20
+        },
+        "source": {
+          "type": "string",
+          "description": "Source application or platform",
+          "maxLength": 100
+        },
+        "content": {
+          "type": "string",
+          "description": "Extracted text or commentary",
+          "maxLength": 25000
+        },
+        "summary": {
+          "type": "string",
+          "description": "AI summary or condensed takeaways",
+          "maxLength": 2000
+        },
+        "tags": {
+          "type": "array",
+          "description": "Tags assigned to this clip"
+        },
+        "category": {
+          "type": "string",
+          "description": "P.A.R.A category assignment",
+          "enum": ["PROJECTS", "AREAS", "RESOURCES", "ARCHIVES"]
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "ISO timestamp when clipped"
+        },
+        "status": {
+          "type": "string",
+          "description": "Processing status of the clip",
+          "enum": ["UNPROCESSED", "PROCESSED", "FAVORITE", "ARCHIVED"]
+        }
+      },
+      "required": ["id", "title", "content"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profile document and account metadata"
+    },
+    "/users/{userId}/watchlists/{watchlistId}": {
+      "schema": "UserWatchlist",
+      "description": "User customized watchlists"
+    },
+    "/users/{userId}/portfolio_holdings/{holdingId}": {
+      "schema": "PortfolioHolding",
+      "description": "User portfolio equity positions"
+    },
+    "/users/{userId}/second_brain_notes/{noteId}": {
+      "schema": "SecondBrainNote",
+      "description": "User Second Brain P.A.R.A knowledge notes and trading insights"
+    },
+    "/users/{userId}/second_brain_clips/{clipId}": {
+      "schema": "SecondBrainClip",
+      "description": "Web clips synced from Chrome extension or in-app clipper"
+    }
+  }
+}

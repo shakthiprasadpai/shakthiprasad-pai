@@ -1591,6 +1591,222 @@ tags:
       serverTime: new Date().toISOString()
     });
   });
+
+  // -------------------------------------------------------------------------
+  // SECOND BRAIN & CHROME EXTENSION WEB CLIPPER API
+  // -------------------------------------------------------------------------
+  interface StoredSecondBrainClip {
+    id: string;
+    title: string;
+    url: string;
+    ticker?: string;
+    source: string;
+    content: string;
+    summary?: string;
+    tags: string[];
+    category: 'PROJECTS' | 'AREAS' | 'RESOURCES' | 'ARCHIVES';
+    timestamp: string;
+    status: 'UNPROCESSED' | 'PROCESSED' | 'FAVORITE';
+  }
+
+  const secondBrainClipsStore: StoredSecondBrainClip[] = [
+    {
+      id: 'clip-seed-1',
+      title: 'TradingView: NVDA Daily High Tight Flag with Volume Contraction',
+      url: 'https://www.tradingview.com/chart/?symbol=NASDAQ:NVDA',
+      ticker: 'NVDA',
+      source: 'TradingView',
+      content: 'NVDA tested rising 21-day EMA at $128 and bounced on institutional buying. Contraction depth -4.2% on declining volume. Ready for pivot breakout above $138.50.',
+      summary: 'Consolidation base resting directly on rising 21-day EMA. Volume dried up to 48M shares vs 75M 20-day average.',
+      tags: ['#tradingview', '#nvda', '#high-tight-flag', '#ema21'],
+      category: 'PROJECTS',
+      timestamp: new Date(Date.now() - 3600000 * 4).toISOString(),
+      status: 'FAVORITE'
+    },
+    {
+      id: 'clip-seed-2',
+      title: 'Finviz: Semiconductor Sector Relative Strength Breadth Surge',
+      url: 'https://finviz.com/groups.ashx?g=industry&v=110',
+      source: 'Finviz',
+      content: 'Semiconductor group gained +3.8% week-over-week. Leading stocks include NVDA, TSM, AVGO with RS ratings consistently above 85.',
+      summary: 'Sector breadth expanding with 82% of semiconductor equities trading above 50-day SMA.',
+      tags: ['#finviz', '#semiconductors', '#relative-strength', '#breadth'],
+      category: 'RESOURCES',
+      timestamp: new Date(Date.now() - 3600000 * 18).toISOString(),
+      status: 'PROCESSED'
+    },
+    {
+      id: 'clip-seed-3',
+      title: 'X / Twitter: Mark Minervini on Progressive Exposure & Capital Risk',
+      url: 'https://x.com/markminervini/status/1789201940',
+      source: 'Twitter / X',
+      content: 'Do not finance new risk with hope. Finance new risk with profits from previous winning trades. If your first 2 trades in a breakout cluster fail, downshift immediately to cash.',
+      summary: 'Progressive exposure protects liquid capital during false breakout market environments.',
+      tags: ['#minervini', '#twitter', '#risk-discipline', '#progressive-exposure'],
+      category: 'AREAS',
+      timestamp: new Date(Date.now() - 3600000 * 32).toISOString(),
+      status: 'FAVORITE'
+    }
+  ];
+
+  // CORS middleware for Chrome Extension calls
+  app.use('/api/second-brain', (req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+    if (req.method === 'OPTIONS') {
+      return res.sendStatus(200);
+    }
+    next();
+  });
+
+  // GET all clips
+  app.get('/api/second-brain/clips', (req, res) => {
+    res.json({
+      success: true,
+      clips: secondBrainClipsStore
+    });
+  });
+
+  // POST new clip (from Chrome Extension or in-app clipper)
+  app.post('/api/second-brain/clip', (req, res) => {
+    try {
+      const body = req.body || {};
+      const newClip: StoredSecondBrainClip = {
+        id: body.id || 'clip-' + Date.now(),
+        title: body.title || 'Untitled Research Note',
+        url: body.url || '',
+        ticker: body.ticker ? String(body.ticker).toUpperCase() : undefined,
+        source: body.source || 'Chrome Extension Clipper',
+        content: body.content || '',
+        summary: body.summary || '',
+        tags: Array.isArray(body.tags) ? body.tags : ['#web-clip', '#second-brain'],
+        category: body.category || 'PROJECTS',
+        timestamp: body.timestamp || new Date().toISOString(),
+        status: body.status || 'UNPROCESSED'
+      };
+
+      secondBrainClipsStore.unshift(newClip);
+      if (secondBrainClipsStore.length > 300) {
+        secondBrainClipsStore.pop();
+      }
+
+      res.status(201).json({
+        success: true,
+        message: 'Clipped successfully to Minervini Second Brain',
+        clip: newClip
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to save clip: ' + err.message });
+    }
+  });
+
+  // DELETE a clip
+  app.delete('/api/second-brain/clip/:id', (req, res) => {
+    const id = req.params.id;
+    const index = secondBrainClipsStore.findIndex(c => c.id === id);
+    if (index !== -1) {
+      secondBrainClipsStore.splice(index, 1);
+      return res.json({ success: true, message: 'Clip removed' });
+    }
+    res.status(404).json({ error: 'Clip not found' });
+  });
+
+  // POST synthesize raw clip/idea into structured Second Brain Note with Gemini AI
+  app.post('/api/second-brain/synthesize', async (req, res) => {
+    try {
+      const { text, ticker, category, title, source } = req.body || {};
+      if (!text && !title) {
+        return res.status(400).json({ error: 'Missing text content to synthesize' });
+      }
+
+      const ai = getGeminiClient();
+      const targetTicker = (ticker || 'GROWTH').toUpperCase();
+      const targetCategory = category || 'PROJECTS';
+
+      if (!ai) {
+        // High quality offline fallback
+        const offlineDossier = {
+          title: title || `${targetTicker} Minervini Second Brain Synthesis`,
+          category: targetCategory,
+          ticker: targetTicker,
+          tags: ['#second-brain', `#${targetCategory.toLowerCase()}`, targetTicker !== 'GROWTH' ? `#${targetTicker.toLowerCase()}` : '#setup', '#sepa-analysis'],
+          summary: `Synthesized research for ${targetTicker}. Assesses Stage 2 alignment, volatility contraction cycles, and risk containment.`,
+          wikilinks: [`[[${targetTicker}]]`, '[[Trend Template]]', '[[VCP]]', '[[Risk Management]]'],
+          markdown: `## 🧠 Synthesized Second Brain Note: ${targetTicker}
+> [!info] Source: ${source || 'Web Clip'} | Category: ${targetCategory}
+
+### 🎯 Core Thesis & Setup Overview
+${text}
+
+### 📐 Minervini SEPA Evaluation
+- **Trend Posture**: Price action must satisfy 50 SMA > 150 SMA > 200 SMA criteria.
+- **Contraction Dynamic**: Observe consecutive reductions in price spread alongside volume dry-up.
+- **Tactical Directives**:
+  - Keep entry strictly within 1-2% of verified pivot level.
+  - Enforce initial hard stop loss between 5% and 8%.
+  - Add exposure only after first position shows profit (Progressive Exposure).
+
+---
+**Wikilinks**: [[${targetTicker}]] • [[Trend Template]] • [[VCP]] • [[Risk Management]]`
+        };
+        return res.json({ success: true, note: offlineDossier, isAiGrounded: false });
+      }
+
+      const prompt = `You are Mark Minervini's Senior Trading Second Brain Synthesizer and Knowledge Architect.
+Analyze the following raw trade idea, web clipping, or market thesis:
+"""
+Title: ${title || 'Untitled'}
+Ticker: ${targetTicker}
+Category: ${targetCategory}
+Source: ${source || 'Web'}
+Content: ${text}
+"""
+
+Format this as a structured, production-ready Second Brain Note conforming to Mark Minervini's Specific Entry Point Analysis (SEPA) and Tiago Forte's P.A.R.A framework.
+Return a clean JSON object with the following fields:
+{
+  "title": "Clear high-impact title",
+  "category": "${targetCategory}",
+  "ticker": "${targetTicker}",
+  "tags": ["#tag1", "#tag2", "#tag3"],
+  "summary": "2-sentence executive summary of the setup and tactical implications",
+  "wikilinks": ["[[Ticker]]", "[[Pattern]]", "[[Rule]]"],
+  "markdown": "Complete Markdown body with headings, callouts (> [!tip]), bullet points, and execution levels"
+}
+Respond with valid JSON only.`;
+
+      const response = await generateContentWithFallback(ai, {
+        model: 'gemini-3.7-flash',
+        contents: prompt,
+        config: {
+          responseMimeType: 'application/json'
+        }
+      });
+
+      const parsed = JSON.parse(response.text || '{}');
+      res.json({
+        success: true,
+        note: parsed,
+        isAiGrounded: true
+      });
+    } catch (err: any) {
+      console.error('Error synthesizing second brain note:', err);
+      res.json({
+        success: true,
+        note: {
+          title: req.body?.title || 'Synthesized Note',
+          category: req.body?.category || 'PROJECTS',
+          ticker: req.body?.ticker || 'STOCK',
+          tags: ['#second-brain', '#sepa-rules'],
+          summary: 'Synthesized research note based on provided text.',
+          wikilinks: ['[[Watchlist]]', '[[VCP]]', '[[Trend Template]]'],
+          markdown: `## 🧠 Second Brain Note\n\n${req.body?.text || ''}\n\n**Linked**: [[Watchlist]] • [[Trend Template]]`
+        },
+        isAiGrounded: false
+      });
+    }
+  });
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },

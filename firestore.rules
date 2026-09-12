@@ -29,6 +29,14 @@ service cloud.firestore {
         allow read, write: if isOwner(userId);
       }
 
+      match /second_brain_notes/{noteId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      match /second_brain_clips/{clipId} {
+        allow read, write: if isOwner(userId);
+      }
+
       match /settings/{settingId} {
         allow read, write: if isOwner(userId);
       }
