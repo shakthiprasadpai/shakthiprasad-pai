@@ -712,4 +712,108 @@ export interface ChromeExtensionConfig {
   apiKey?: string;
 }
 
+// ---------------------------------------------------------------------------
+// 5PAISA TRADING ACCOUNT TYPES
+// ---------------------------------------------------------------------------
+export interface FivePaisaCredentials {
+  clientCode: string;
+  appName?: string;
+  appSource?: string;
+  userKey?: string;
+  encryptionKey?: string;
+  passwordPin?: string;
+  totpSecret?: string;
+  accessToken?: string;
+  isSimulated?: boolean;
+}
+
+export interface FivePaisaAccountMargin {
+  clientCode: string;
+  accountType: 'EQUITY_CASH' | 'DERIVATIVES' | 'COMMODITY';
+  availableCashMargin: number; // e.g. ₹3,85,420
+  usedMargin: number; // e.g. ₹65,000
+  collateralMargin: number; // e.g. ₹2,10,000
+  totalPurchasingPower: number; // availableCash + collateral
+  unrealizedMtm: number; // Day P&L
+  realizedPnl: number;
+  grossHoldingValue: number;
+  lastUpdated: string;
+  isConnected: boolean;
+  isSimulated: boolean;
+}
+
+export interface FivePaisaHolding {
+  scripCode: number | string;
+  symbol: string;
+  companyName: string;
+  exchange: 'NSE' | 'BSE';
+  quantity: number;
+  poolQuantity: number;
+  averagePrice: number;
+  currentPrice: number;
+  dayChange: number;
+  dayChangePercent: number;
+  pnl: number;
+  pnlPercent: number;
+  marketValue: number;
+  sepaStage?: string;
+  isTightVolume?: boolean;
+  rsRating?: number;
+}
+
+export interface FivePaisaPosition {
+  scripCode: number | string;
+  symbol: string;
+  exchange: 'NSE' | 'BSE';
+  productType: 'CNC' | 'MIS'; // Delivery vs Intraday
+  buyQty: number;
+  buyAvgPrice: number;
+  sellQty: number;
+  sellAvgPrice: number;
+  netQty: number;
+  currentPrice: number;
+  mtm: number;
+  status: 'OPEN' | 'CLOSED';
+}
+
+export interface FivePaisaOrder {
+  orderId: string;
+  clientCode: string;
+  exchange: 'NSE' | 'BSE';
+  symbol: string;
+  transactionType: 'BUY' | 'SELL';
+  orderType: 'LIMIT' | 'MARKET' | 'STOP_LOSS';
+  productType: 'CNC' | 'MIS';
+  quantity: number;
+  price: number;
+  triggerPrice?: number;
+  stopLossPrice?: number;
+  targetPrice?: number;
+  orderStatus: 'Executed' | 'Pending' | 'Rejected' | 'Cancelled';
+  rejectionReason?: string;
+  placedTime: string;
+  minerviniSetupTag?: string;
+}
+
+export interface FivePaisaOrderRequest {
+  symbol: string;
+  exchange: 'NSE' | 'BSE';
+  transactionType: 'BUY' | 'SELL';
+  orderType: 'LIMIT' | 'MARKET';
+  productType: 'CNC' | 'MIS';
+  quantity: number;
+  price: number;
+  stopLossPrice?: number;
+  targetPrice?: number;
+  minerviniSetupTag?: string;
+}
+
+export interface FivePaisaAccountStatus {
+  isConnected: boolean;
+  isSimulated: boolean;
+  clientCode: string;
+  lastSynced: string;
+  brokerName: string;
+}
+
 

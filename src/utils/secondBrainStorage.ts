@@ -345,8 +345,8 @@ export const buildSecondBrainGraphData = (
     }
 
     // Extract wikilinks and build graph edges
-    const wikilinkMatches = note.content.match(/\[\[(.*?)\]\]/g) || [];
-    wikilinkMatches.forEach((match) => {
+    const wikilinkMatches: string[] = note.content.match(/\[\[(.*?)\]\]/g) || [];
+    wikilinkMatches.forEach((match: string) => {
       const cleanConcept = match.replace(/\[\[|\]\]/g, '').trim();
       const conceptId = `CONCEPT_${cleanConcept.replace(/\s+/g, '_')}`;
       if (!nodesMap.has(conceptId)) {

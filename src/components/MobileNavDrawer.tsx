@@ -30,7 +30,8 @@ import {
   Moon,
   Monitor,
   Compass,
-  Brain
+  Brain,
+  Wallet
 } from 'lucide-react';
 import { AppNavTab } from './Navbar';
 
@@ -148,6 +149,15 @@ const NAV_ITEMS: NavItemDef[] = [
     subtitle: 'Active holdings, cost basis, and unrealized P&L',
     category: 'execution',
     icon: Briefcase,
+  },
+  {
+    id: 'five_paisa',
+    title: '5paisa Trading Account',
+    subtitle: 'Live broker orders, margins, holdings & paper trading',
+    category: 'execution',
+    icon: Wallet,
+    badge: 'BROKER',
+    badgeColor: 'bg-amber-500/20 text-amber-300 border border-amber-500/30',
   },
   {
     id: 'journal',

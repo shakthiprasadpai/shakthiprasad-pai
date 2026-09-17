@@ -29,7 +29,8 @@ export type AppNavTab =
   | 'tradingview_webhook'
   | 'pattern_library'
   | 'export_data'
-  | 'security_shield';
+  | 'security_shield'
+  | 'five_paisa';
 
 export const TAB_LABELS: Record<AppNavTab, string> = {
   daily_review: 'Daily Review',
@@ -56,6 +57,7 @@ export const TAB_LABELS: Record<AppNavTab, string> = {
   pattern_library: 'Pattern Library',
   export_data: 'Export Data',
   security_shield: 'Security Shield',
+  five_paisa: '5paisa Trading',
 };
 
 interface NavbarProps {
@@ -479,6 +481,26 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <Briefcase className="w-3.5 h-3.5" />
               <span>My Portfolio</span>
+            </button>
+
+            <button
+              id="nav-tab-five-paisa"
+              onClick={() => setActiveTab('five_paisa')}
+              className={`flex items-center space-x-1.5 py-2 px-2.5 rounded transition-all border-b-2 font-bold cursor-pointer ${
+                activeTab === 'five_paisa'
+                  ? 'bg-amber-500/10 border-amber-500 text-amber-500 shadow-xs'
+                  : 'border-transparent text-gray-500 hover:text-amber-500 hover:border-amber-300'
+              }`}
+            >
+              <div className="w-3.5 h-3.5 bg-amber-500 text-black font-mono font-black text-[9px] flex items-center justify-center rounded-xs">
+                5P
+              </div>
+              <span className="flex items-center space-x-1 font-mono tracking-wider font-extrabold">
+                <span>5PAISA</span>
+                <span className="px-1 py-0.2 bg-emerald-500/20 text-emerald-400 text-[8px] font-mono rounded font-black">
+                  BROKER
+                </span>
+              </span>
             </button>
 
             <button

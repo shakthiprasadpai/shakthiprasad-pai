@@ -284,7 +284,7 @@ export const PortfolioSectorPieChart: React.FC<PortfolioSectorPieChartProps> = (
         const [x, y] = d3.pointer(event, containerRef.current);
         setTooltipPos({ x, y });
 
-        d3.select(event.currentTarget)
+        d3.select(event.currentTarget as d3.BaseType)
           .transition()
           .duration(200)
           .attr('d', hoverArc as any)
@@ -300,7 +300,7 @@ export const PortfolioSectorPieChart: React.FC<PortfolioSectorPieChartProps> = (
         setTooltipPos(null);
 
         const isSelected = selectedSector && selectedSector === d.data.sector;
-        d3.select(event.currentTarget)
+        d3.select(event.currentTarget as d3.BaseType)
           .transition()
           .duration(200)
           .attr('d', (isSelected ? hoverArc : arc) as any)

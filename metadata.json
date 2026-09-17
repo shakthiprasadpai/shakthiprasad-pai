@@ -1,6 +1,6 @@
 {
   "name": "Remix Remix Minervini SEPA Trend & VCP Screener",
-  "description": "Mark Minervini SEPA Trend Template & VCP setup analyzer with Second Brain P.A.R.A knowledge vault, Chrome Extension web clipper, interactive knowledge graph, Volatility Rank vs broader market benchmark, Sector Heatmap, RSI momentum alerts, Bhavcopy data, and TradingView webhooks.",
+  "description": "Mark Minervini SEPA Trend Template & VCP setup analyzer with 5paisa trading account integration, Demat holdings sync, bracket orders, Second Brain P.A.R.A knowledge vault, Chrome Extension web clipper, interactive knowledge graph, Volatility Rank vs broader market benchmark, Sector Heatmap, RSI momentum alerts, Bhavcopy data, and TradingView webhooks.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

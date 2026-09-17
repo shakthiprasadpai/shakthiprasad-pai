@@ -14,6 +14,7 @@ import { TrailingStopCalculatorPanel } from './TrailingStopCalculatorPanel';
 import { VolatilitySlippageAlert } from './VolatilitySlippageAlert';
 import { SimplePositionSizingCalculator } from './SimplePositionSizingCalculator';
 import { VolatilityPriceTargetsPanel } from './VolatilityPriceTargetsPanel';
+import { FivePaisaOrderModal } from './FivePaisaOrderModal';
 import { Target, ShieldAlert, ArrowUpRight, Droplets, DollarSign, Calculator, Layers, Flame, Zap, Sparkles, TrendingUp, BarChart3, ShieldCheck, FileText, Save, Check, Trash2, Clock, StickyNote, FileSpreadsheet, LogOut, AlertTriangle, ArrowRightCircle, Sliders, CheckCircle2, RefreshCw, Bell, BellRing, BellOff, ChevronDown, ChevronUp, Printer, BookMarked, BookmarkCheck } from 'lucide-react';
 
 function getArcPath(cx: number, cy: number, r: number, startAngleDeg: number, endAngleDeg: number) {
@@ -3430,6 +3431,7 @@ export const TradePlanCard: React.FC<TradePlanCardProps> = ({ stock, onNavigateT
   const [desiredRRR, setDesiredRRR] = useState<number>(3.0); // User-defined RRR target (e.g. 1:2, 1:3)
   const [customEntryPrice, setCustomEntryPrice] = useState<number>(stock.pivotPrice);
   const [customStopPrice, setCustomStopPrice] = useState<number>(stock.stopLossPrice);
+  const [isFivePaisaModalOpen, setIsFivePaisaModalOpen] = useState<boolean>(false);
 
   // Persistent Trade Size State (Shares or Dollar Amount)
   const [tradeSizeMode, setTradeSizeMode] = useState<'SHARES' | 'DOLLAR'>('SHARES');
@@ -3783,6 +3785,17 @@ export const TradePlanCard: React.FC<TradePlanCardProps> = ({ stock, onNavigateT
           >
             <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 group-hover:text-amber-400" />
             <span>Export Plan CSV</span>
+          </button>
+
+          {/* 5paisa 1-Click Order Button */}
+          <button
+            type="button"
+            onClick={() => setIsFivePaisaModalOpen(true)}
+            className="bg-amber-500 hover:bg-amber-400 text-black border border-amber-600 text-[10px] uppercase tracking-[0.15em] px-3 py-1 font-bold flex items-center space-x-1.5 transition-all shadow-xs cursor-pointer group"
+            title="Execute bracket order with 5paisa live trading account"
+          >
+            <Zap className="w-3.5 h-3.5 fill-black" />
+            <span>5paisa Order</span>
           </button>
 
           {/* Tight Volume Badge */}
@@ -4599,6 +4612,13 @@ export const TradePlanCard: React.FC<TradePlanCardProps> = ({ stock, onNavigateT
           </div>
         </div>
       </div>
+
+      {/* 5paisa 1-Click Order Execution Modal */}
+      <FivePaisaOrderModal
+        isOpen={isFivePaisaModalOpen}
+        onClose={() => setIsFivePaisaModalOpen(false)}
+        stock={stock}
+      />
 
     </motion.div>
   );

@@ -31,8 +31,10 @@ import {
   FileSpreadsheet,
   GripVertical,
   ListOrdered,
-  Cloud
+  Cloud,
+  Zap
 } from 'lucide-react';
+import { fetchFivePaisaHoldings, sync5paisaToMinerviniPortfolio } from '../utils/fivePaisaService';
 
 interface MyPortfolioProps {
   stocks: MinerviniTradeSetup[];
@@ -48,6 +50,7 @@ export const MyPortfolio: React.FC<MyPortfolioProps> = ({
   const { user, signIn } = useAuth();
   const [portfolioSubTab, setPortfolioSubTab] = useState<'holdings' | 'rebalancing'>('holdings');
   const [isCloudSyncing, setIsCloudSyncing] = useState<boolean>(false);
+  const [fivePaisaSyncStatus, setFivePaisaSyncStatus] = useState<string | null>(null);
   // Load portfolio from localStorage or provide initial default holdings
   const [holdings, setHoldings] = useState<PortfolioHolding[]>(() => {
     try {
@@ -550,6 +553,12 @@ export const MyPortfolio: React.FC<MyPortfolioProps> = ({
                   <span>Local Mode • Click to Sign In & Sync</span>
                 </button>
               )}
+              {fivePaisaSyncStatus && (
+                <span className="inline-flex items-center space-x-1.5 px-2 py-0.5 rounded bg-amber-500 text-black text-[10px] font-mono font-bold animate-pulse">
+                  <Zap className="w-3 h-3 fill-black" />
+                  <span>{fivePaisaSyncStatus}</span>
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -579,6 +588,33 @@ export const MyPortfolio: React.FC<MyPortfolioProps> = ({
               <span>Portfolio Rebalancer</span>
             </button>
           </div>
+
+          <button
+            type="button"
+            onClick={async () => {
+              setFivePaisaSyncStatus('Fetching 5paisa holdings...');
+              try {
+                const fpHoldings = await fetchFivePaisaHoldings();
+                const updated = sync5paisaToMinerviniPortfolio(fpHoldings, holdings);
+                setHoldings(updated);
+                if (user) {
+                  for (const h of updated) {
+                    setDoc(doc(db, 'users', user.uid, 'portfolio_holdings', h.id), h).catch(console.error);
+                  }
+                }
+                setFivePaisaSyncStatus(`Synced ${fpHoldings.length} stocks from 5paisa!`);
+                setTimeout(() => setFivePaisaSyncStatus(null), 4000);
+              } catch (e) {
+                setFivePaisaSyncStatus('5paisa sync failed');
+                setTimeout(() => setFivePaisaSyncStatus(null), 3000);
+              }
+            }}
+            className="bg-amber-500 hover:bg-amber-400 text-black font-bold px-3 py-2 text-xs uppercase tracking-wider flex items-center space-x-1.5 transition-all border border-amber-600 shadow-xs cursor-pointer"
+            title="Import Demat holdings directly from 5paisa Trading Account"
+          >
+            <Zap className="w-3.5 h-3.5 fill-black" />
+            <span className="hidden sm:inline">Sync 5paisa</span>
+          </button>
 
           <button
             onClick={() => exportPortfolioToCsv(holdings)}

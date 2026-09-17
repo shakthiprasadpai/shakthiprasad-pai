@@ -39,6 +39,7 @@ import { RecentPriceAlertHistory } from './components/RecentPriceAlertHistory';
 import { TradingViewWebhookHub } from './components/TradingViewWebhookHub';
 import { BhavcopyView } from './components/BhavcopyView';
 import { RrgToolView } from './components/RrgToolView';
+import { FivePaisaTradingView } from './components/FivePaisaTradingView';
 import { QuickInsightModal } from './components/QuickInsightModal';
 import { getStoredWatchlists } from './utils/watchlistStorage';
 import { initializeAlertHistory } from './utils/priceAlertHistoryStorage';
@@ -751,6 +752,29 @@ export default function App() {
                   setSelectedStock(stock);
                   setActiveTab('chart');
                 }}
+              />
+            </motion.div>
+          )}
+
+          {/* TAB: 5PAISA TRADING ACCOUNT */}
+          {activeTab === 'five_paisa' && (
+            <motion.div
+              key="five_paisa"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.25, ease: 'easeInOut' }}
+              className="space-y-8"
+            >
+              <FivePaisaTradingView
+                stocks={stocksList}
+                onSelectStock={(stock) => setSelectedStock(stock)}
+                onViewChart={(stock) => {
+                  setSelectedStock(stock);
+                  setActiveTab('chart');
+                }}
+                onNavigateToPortfolio={() => setActiveTab('portfolio')}
+                isObsidian={isObsidian}
               />
             </motion.div>
           )}
