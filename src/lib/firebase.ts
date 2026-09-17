@@ -27,8 +27,9 @@ export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfi
 export const auth = getAuth(app);
 
 // Initialize Cloud Firestore using the provisioned database ID
-export const db: Firestore = firebaseConfig.firestoreDatabaseId
-  ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
+const firestoreDbId = (firebaseConfig as Record<string, any>).firestoreDatabaseId;
+export const db: Firestore = firestoreDbId
+  ? getFirestore(app, firestoreDbId)
   : getFirestore(app);
 
 // Validate connection to Firestore on boot

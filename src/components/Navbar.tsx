@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { TrendingUp, BarChart3, Calculator, BookOpen, SlidersHorizontal, Briefcase, Calendar, Video, Gem, Moon, Sun, Zap, Target, BookMarked, Layers, BellRing, Download, Sparkles, Bot, Cpu, Bookmark, ShieldCheck, CheckSquare, Award, Monitor, FileSpreadsheet, Radio, Menu, X, Compass, Brain } from 'lucide-react';
+import { TrendingUp, BarChart3, Calculator, BookOpen, SlidersHorizontal, Briefcase, Calendar, Video, Gem, Moon, Sun, Zap, Target, BookMarked, Layers, BellRing, Download, Sparkles, Bot, Cpu, Bookmark, ShieldCheck, CheckSquare, Award, Monitor, FileSpreadsheet, Radio, Menu, X, Compass, Brain, HardDrive } from 'lucide-react';
 import { DesktopRemixGuideModal } from './DesktopRemixGuideModal';
 import { MobileNavDrawer } from './MobileNavDrawer';
 import { UserAuthButton } from './UserAuthButton';
@@ -30,7 +30,8 @@ export type AppNavTab =
   | 'pattern_library'
   | 'export_data'
   | 'security_shield'
-  | 'five_paisa';
+  | 'five_paisa'
+  | 'google_drive';
 
 export const TAB_LABELS: Record<AppNavTab, string> = {
   daily_review: 'Daily Review',
@@ -58,6 +59,7 @@ export const TAB_LABELS: Record<AppNavTab, string> = {
   export_data: 'Export Data',
   security_shield: 'Security Shield',
   five_paisa: '5paisa Trading',
+  google_drive: 'Google Drive',
 };
 
 interface NavbarProps {
@@ -691,6 +693,24 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <Download className="w-3.5 h-3.5 text-emerald-400" />
               <span className="font-bold">Export Trade Data</span>
+            </button>
+
+            <button
+              id="nav-tab-google-drive"
+              onClick={() => setActiveTab('google_drive')}
+              className={`flex items-center space-x-1.5 py-2 px-2.5 rounded transition-all border-b-2 font-bold cursor-pointer ${
+                activeTab === 'google_drive'
+                  ? 'bg-amber-500/10 border-amber-500 text-amber-500 shadow-xs'
+                  : 'border-transparent text-gray-500 hover:text-amber-400 hover:border-amber-300'
+              }`}
+            >
+              <HardDrive className="w-3.5 h-3.5 text-amber-400" />
+              <span className="flex items-center space-x-1 font-mono tracking-wider font-extrabold">
+                <span>GOOGLE DRIVE</span>
+                <span className="px-1 py-0.2 bg-amber-500/20 text-amber-400 text-[8px] font-mono rounded font-black">
+                  VAULT
+                </span>
+              </span>
             </button>
 
             <button

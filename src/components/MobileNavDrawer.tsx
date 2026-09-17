@@ -31,7 +31,8 @@ import {
   Monitor,
   Compass,
   Brain,
-  Wallet
+  Wallet,
+  HardDrive
 } from 'lucide-react';
 import { AppNavTab } from './Navbar';
 
@@ -184,6 +185,15 @@ const NAV_ITEMS: NavItemDef[] = [
   },
 
   // Category: Data Export & Tools
+  {
+    id: 'google_drive',
+    title: 'Google Drive Vault',
+    subtitle: 'Cloud backups, SEPA reports export & Drive sync',
+    category: 'tools',
+    icon: HardDrive,
+    badge: 'WORKSPACE',
+    badgeColor: 'bg-amber-500/25 text-amber-300 border border-amber-400',
+  },
   {
     id: 'export_data',
     title: 'Export Trade Data Hub',

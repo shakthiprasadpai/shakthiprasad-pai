@@ -5,6 +5,7 @@ import { getStoredWatchlists } from '../utils/watchlistStorage';
 import { DEFAULT_NSE_BHAVCOPY, DEFAULT_BSE_BHAVCOPY } from '../data/bhavcopyData';
 import { exportRiskAdjustedScreenerPdf, generateSepaPdfReport } from '../utils/pdfExporter';
 import { exportBrokerageWatchlistToCsv } from '../utils/csvExport';
+import { uploadFileToDrive, getOrCreateSepaFolder } from '../utils/googleDriveService';
 import {
   Download,
   FileSpreadsheet,
@@ -473,6 +474,51 @@ alertcondition(vcpPrimed, title="Minervini VCP Primed Alert", message="VCP Volat
     navigator.clipboard.writeText(result.content);
     setCopiedStatus(true);
     setTimeout(() => setCopiedStatus(false), 2500);
+  };
+
+  const [isSavingToDrive, setIsSavingToDrive] = useState<boolean>(false);
+  const [driveSuccessMsg, setDriveSuccessMsg] = useState<string | null>(null);
+
+  const handleSaveToDrive = async () => {
+    setIsSavingToDrive(true);
+    setDriveSuccessMsg(null);
+    try {
+      let result = { content: '', filename: '' };
+      let mimeType = 'text/plain';
+
+      if (exportFormat === 'CSV' || exportFormat === 'PDF_REPORT') {
+        result = generateCSV();
+        mimeType = 'text/csv';
+      } else if (exportFormat === 'JSON') {
+        result = generateJSON();
+        mimeType = 'application/json';
+      } else if (exportFormat === 'TRADINGVIEW') {
+        result = generateTradingViewText();
+        mimeType = 'text/plain';
+      } else if (exportFormat === 'OBSIDIAN_MD') {
+        result = generateObsidianMD();
+        mimeType = 'text/markdown';
+      } else if (exportFormat === 'PINESCRIPT') {
+        result = generatePineScript();
+        mimeType = 'text/plain';
+      }
+
+      const folder = await getOrCreateSepaFolder();
+      const uploaded = await uploadFileToDrive({
+        name: result.filename,
+        content: result.content,
+        mimeType,
+        folderId: folder.id,
+        description: `Exported from Minervini SEPA Data Hub (${exportType})`
+      });
+
+      setDriveSuccessMsg(`Saved "${uploaded.name}" to Google Drive in SEPA Vault!`);
+      setTimeout(() => setDriveSuccessMsg(null), 5000);
+    } catch (err: any) {
+      alert(err.message || 'Failed to save to Google Drive. Please make sure you are signed in.');
+    } finally {
+      setIsSavingToDrive(false);
+    }
   };
 
   // Preview Data Items
@@ -1002,15 +1048,35 @@ alertcondition(vcpPrimed, title="Minervini VCP Primed Alert", message="VCP Volat
               </span>
             </div>
 
-            <button
-              type="button"
-              onClick={handleExport}
-              className="bg-emerald-600 hover:bg-emerald-500 text-white font-mono text-xs font-black uppercase tracking-wider py-2 px-4 rounded-xs shadow-md flex items-center space-x-2 transition-all cursor-pointer"
-            >
-              <Download className="w-4 h-4" />
-              <span>Export {exportFormat}</span>
-            </button>
+            <div className="flex items-center space-x-2">
+              <button
+                type="button"
+                onClick={handleSaveToDrive}
+                disabled={isSavingToDrive}
+                className="bg-amber-600 hover:bg-amber-500 text-slate-950 font-mono text-xs font-black uppercase tracking-wider py-2 px-3 rounded-xs shadow-md flex items-center space-x-1.5 transition-all cursor-pointer disabled:opacity-50"
+                title="Upload file directly to your SEPA Vault on Google Drive"
+              >
+                <HardDrive className="w-3.5 h-3.5" />
+                <span>{isSavingToDrive ? 'Uploading...' : 'Save to Drive'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleExport}
+                className="bg-emerald-600 hover:bg-emerald-500 text-white font-mono text-xs font-black uppercase tracking-wider py-2 px-4 rounded-xs shadow-md flex items-center space-x-2 transition-all cursor-pointer"
+              >
+                <Download className="w-4 h-4" />
+                <span>Export {exportFormat}</span>
+              </button>
+            </div>
           </div>
+
+          {driveSuccessMsg && (
+            <div className="p-2 bg-emerald-950/70 border border-emerald-500/50 text-emerald-300 text-xs font-mono rounded flex items-center space-x-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>{driveSuccessMsg}</span>
+            </div>
+          )}
         </div>
 
       </div>

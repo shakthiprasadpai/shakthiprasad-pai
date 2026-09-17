@@ -40,6 +40,7 @@ import { TradingViewWebhookHub } from './components/TradingViewWebhookHub';
 import { BhavcopyView } from './components/BhavcopyView';
 import { RrgToolView } from './components/RrgToolView';
 import { FivePaisaTradingView } from './components/FivePaisaTradingView';
+import { GoogleDriveView } from './components/GoogleDriveView';
 import { QuickInsightModal } from './components/QuickInsightModal';
 import { getStoredWatchlists } from './utils/watchlistStorage';
 import { initializeAlertHistory } from './utils/priceAlertHistoryStorage';
@@ -774,6 +775,23 @@ export default function App() {
                   setActiveTab('chart');
                 }}
                 onNavigateToPortfolio={() => setActiveTab('portfolio')}
+                isObsidian={isObsidian}
+              />
+            </motion.div>
+          )}
+
+          {/* TAB: GOOGLE DRIVE TRADING VAULT & CLOUD BACKUP */}
+          {activeTab === 'google_drive' && (
+            <motion.div
+              key="google_drive"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.25, ease: 'easeInOut' }}
+              className="space-y-8"
+            >
+              <GoogleDriveView
+                stocks={stocksList}
                 isObsidian={isObsidian}
               />
             </motion.div>
