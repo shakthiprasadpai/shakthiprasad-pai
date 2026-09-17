@@ -32,7 +32,8 @@ import {
   Compass,
   Brain,
   Wallet,
-  HardDrive
+  HardDrive,
+  Mail
 } from 'lucide-react';
 import { AppNavTab } from './Navbar';
 
@@ -193,6 +194,24 @@ const NAV_ITEMS: NavItemDef[] = [
     icon: HardDrive,
     badge: 'WORKSPACE',
     badgeColor: 'bg-amber-500/25 text-amber-300 border border-amber-400',
+  },
+  {
+    id: 'google_sheets',
+    title: 'Google Sheets Hub',
+    subtitle: '2-way watchlist & trade journal synchronization',
+    category: 'tools',
+    icon: FileSpreadsheet,
+    badge: 'WORKSPACE',
+    badgeColor: 'bg-emerald-500/25 text-emerald-300 border border-emerald-400',
+  },
+  {
+    id: 'gmail',
+    title: 'Gmail Alerts Dispatcher',
+    subtitle: 'SEPA breakout alerts & morning briefings via Gmail',
+    category: 'tools',
+    icon: Mail,
+    badge: 'WORKSPACE',
+    badgeColor: 'bg-rose-500/25 text-rose-300 border border-rose-400',
   },
   {
     id: 'export_data',

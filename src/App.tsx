@@ -41,6 +41,8 @@ import { BhavcopyView } from './components/BhavcopyView';
 import { RrgToolView } from './components/RrgToolView';
 import { FivePaisaTradingView } from './components/FivePaisaTradingView';
 import { GoogleDriveView } from './components/GoogleDriveView';
+import { GoogleSheetsView } from './components/GoogleSheetsView';
+import { GmailAlertsView } from './components/GmailAlertsView';
 import { QuickInsightModal } from './components/QuickInsightModal';
 import { getStoredWatchlists } from './utils/watchlistStorage';
 import { initializeAlertHistory } from './utils/priceAlertHistoryStorage';
@@ -791,6 +793,40 @@ export default function App() {
               className="space-y-8"
             >
               <GoogleDriveView
+                stocks={stocksList}
+                isObsidian={isObsidian}
+              />
+            </motion.div>
+          )}
+
+          {/* TAB: GOOGLE SHEETS 2-WAY SYNC HUB */}
+          {activeTab === 'google_sheets' && (
+            <motion.div
+              key="google_sheets"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.25, ease: 'easeInOut' }}
+              className="space-y-8"
+            >
+              <GoogleSheetsView
+                stocks={stocksList}
+                isObsidian={isObsidian}
+              />
+            </motion.div>
+          )}
+
+          {/* TAB: GMAIL ALERTS & BRIEFING DISPATCHER */}
+          {activeTab === 'gmail' && (
+            <motion.div
+              key="gmail"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.25, ease: 'easeInOut' }}
+              className="space-y-8"
+            >
+              <GmailAlertsView
                 stocks={stocksList}
                 isObsidian={isObsidian}
               />

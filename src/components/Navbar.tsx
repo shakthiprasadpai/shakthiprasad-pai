@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { TrendingUp, BarChart3, Calculator, BookOpen, SlidersHorizontal, Briefcase, Calendar, Video, Gem, Moon, Sun, Zap, Target, BookMarked, Layers, BellRing, Download, Sparkles, Bot, Cpu, Bookmark, ShieldCheck, CheckSquare, Award, Monitor, FileSpreadsheet, Radio, Menu, X, Compass, Brain, HardDrive } from 'lucide-react';
+import { TrendingUp, BarChart3, Calculator, BookOpen, SlidersHorizontal, Briefcase, Calendar, Video, Gem, Moon, Sun, Zap, Target, BookMarked, Layers, BellRing, Download, Sparkles, Bot, Cpu, Bookmark, ShieldCheck, CheckSquare, Award, Monitor, FileSpreadsheet, Radio, Menu, X, Compass, Brain, HardDrive, Mail } from 'lucide-react';
 import { DesktopRemixGuideModal } from './DesktopRemixGuideModal';
 import { MobileNavDrawer } from './MobileNavDrawer';
 import { UserAuthButton } from './UserAuthButton';
@@ -31,7 +31,9 @@ export type AppNavTab =
   | 'export_data'
   | 'security_shield'
   | 'five_paisa'
-  | 'google_drive';
+  | 'google_drive'
+  | 'google_sheets'
+  | 'gmail';
 
 export const TAB_LABELS: Record<AppNavTab, string> = {
   daily_review: 'Daily Review',
@@ -60,6 +62,8 @@ export const TAB_LABELS: Record<AppNavTab, string> = {
   security_shield: 'Security Shield',
   five_paisa: '5paisa Trading',
   google_drive: 'Google Drive',
+  google_sheets: 'Google Sheets',
+  gmail: 'Gmail Alerts',
 };
 
 interface NavbarProps {
@@ -709,6 +713,42 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <span>GOOGLE DRIVE</span>
                 <span className="px-1 py-0.2 bg-amber-500/20 text-amber-400 text-[8px] font-mono rounded font-black">
                   VAULT
+                </span>
+              </span>
+            </button>
+
+            <button
+              id="nav-tab-google-sheets"
+              onClick={() => setActiveTab('google_sheets')}
+              className={`flex items-center space-x-1.5 py-2 px-2.5 rounded transition-all border-b-2 font-bold cursor-pointer ${
+                activeTab === 'google_sheets'
+                  ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400 shadow-xs'
+                  : 'border-transparent text-gray-500 hover:text-emerald-400 hover:border-emerald-300'
+              }`}
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="flex items-center space-x-1 font-mono tracking-wider font-extrabold">
+                <span>GOOGLE SHEETS</span>
+                <span className="px-1 py-0.2 bg-emerald-500/20 text-emerald-400 text-[8px] font-mono rounded font-black">
+                  SYNC
+                </span>
+              </span>
+            </button>
+
+            <button
+              id="nav-tab-gmail"
+              onClick={() => setActiveTab('gmail')}
+              className={`flex items-center space-x-1.5 py-2 px-2.5 rounded transition-all border-b-2 font-bold cursor-pointer ${
+                activeTab === 'gmail'
+                  ? 'bg-rose-500/10 border-rose-500 text-rose-400 shadow-xs'
+                  : 'border-transparent text-gray-500 hover:text-rose-400 hover:border-rose-300'
+              }`}
+            >
+              <Mail className="w-3.5 h-3.5 text-rose-400" />
+              <span className="flex items-center space-x-1 font-mono tracking-wider font-extrabold">
+                <span>GMAIL ALERTS</span>
+                <span className="px-1 py-0.2 bg-rose-500/20 text-rose-400 text-[8px] font-mono rounded font-black">
+                  DISPATCH
                 </span>
               </span>
             </button>
