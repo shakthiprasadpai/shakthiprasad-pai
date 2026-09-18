@@ -15,18 +15,29 @@ import {
   Zap,
   Info,
   ExternalLink,
-  ChevronDown
+  ChevronDown,
+  Bell,
+  BellRing,
+  Sliders,
+  Gauge,
+  TrendingUp,
+  ShieldAlert,
+  Volume2,
+  Activity
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   MinerviniTradeSetup,
   SecondBrainNote,
   SecondBrainCategory,
-  SepaRatingTier
+  SepaRatingTier,
+  PriceAlert
 } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { saveSecondBrainNoteToCloud } from '../lib/firestoreService';
 import { getSecondBrainNotes, saveSecondBrainNotes } from '../utils/secondBrainStorage';
+import { getStoredAlerts, saveStoredAlerts } from '../utils/backgroundPriceChecker';
+import { formatCurrency, getCurrencySymbol } from '../utils/sepaCalculator';
 
 interface QuickInsightModalProps {
   isOpen: boolean;
@@ -108,13 +119,34 @@ export const QuickInsightModal: React.FC<QuickInsightModalProps> = ({
   const [savedSuccess, setSavedSuccess] = useState<boolean>(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
+  // Price Threshold & Sensitivity Slider States
+  const currentPrice = stock?.currentPrice || (stock as any)?.price || 100;
+  const [targetPrice, setTargetPrice] = useState<number>(stock?.pivotPrice || currentPrice * 1.03);
+  const [stopLossPrice, setStopLossPrice] = useState<number>(stock?.stopLossPrice || currentPrice * 0.95);
+  const [targetProfitPrice, setTargetProfitPrice] = useState<number>(stock?.target1Price || currentPrice * 1.20);
+  const [sensitivityPct, setSensitivityPct] = useState<number>(1.5);
+  const [triggerMode, setTriggerMode] = useState<'SOFT' | 'HARD'>('SOFT');
+  const [registerActiveAlert, setRegisterActiveAlert] = useState<boolean>(true);
+  const [isAlertSectionExpanded, setIsAlertSectionExpanded] = useState<boolean>(true);
+
   // Auto-fill defaults when stock prop changes or modal opens
   useEffect(() => {
     if (isOpen) {
       const activeTicker = stock?.ticker || '';
       setTicker(activeTicker);
+      const curr = stock?.currentPrice || (stock as any)?.price || 100;
+      const piv = stock?.pivotPrice || Number((curr * 1.03).toFixed(2));
+      const stp = stock?.stopLossPrice || Number((curr * 0.95).toFixed(2));
+      const tgt = stock?.target1Price || Number((curr * 1.20).toFixed(2));
+      setTargetPrice(piv);
+      setStopLossPrice(stp);
+      setTargetProfitPrice(tgt);
+      setSensitivityPct(1.5);
+      setTriggerMode('SOFT');
+      setRegisterActiveAlert(true);
+
       if (stock) {
-        setTitle(`${stock.ticker} — ${stock.companyName} (${stock.patternType || 'VCP Setup'})`);
+        setTitle(`${stock.ticker} — ${stock.name || (stock as any).companyName || 'Growth Setup'} (${stock.patternType || 'VCP Setup'})`);
         setPatternType(stock.patternType || 'VCP (3 Contractions)');
         setSepaRating(stock.trendScore >= 8 ? 'ELITE' : stock.trendScore >= 6 ? 'LEADER' : 'SPECULATIVE');
 
@@ -124,14 +156,18 @@ export const QuickInsightModal: React.FC<QuickInsightModalProps> = ({
         setTags(Array.from(new Set(initialTags)));
 
         setContent(`## 🎯 ${stock.ticker} SEPA Setup Thesis
-- **Company**: ${stock.companyName} (${stock.sector || 'Growth'})
-- **Current Price**: $${stock.price?.toFixed(2) || '—'}
+- **Company**: ${stock.name || (stock as any).companyName || stock.ticker} (${stock.sector || 'Growth'})
+- **Current Price**: $${curr.toFixed(2)}
 - **Pattern**: ${stock.patternType || 'VCP'}
 - **Trend Score**: ${stock.trendScore || 7}/8 Criteria Passing
-- **Volume Dry-Up**: ${stock.volumeDryUpPercent || 48}% below 20-day average
-- **Pivot Buy Level**: $${stock.pivotPrice?.toFixed(2) || (stock.price * 1.03).toFixed(2)}
-- **Initial Stop Loss**: $${stock.stopLossPrice?.toFixed(2) || (stock.price * 0.95).toFixed(2)} (-5.0%)
-- **Target 1**: $${(stock.price * 1.2).toFixed(2)} (+20.0%)
+- **Volume Dry-Up**: ${stock.volumeDryUpPercent || -48}% below 20-day average
+- **Pivot Buy Level**: $${piv.toFixed(2)}
+- **Initial Stop Loss**: $${stp.toFixed(2)} (${(((stp - curr) / curr) * 100).toFixed(1)}%)
+- **Target 1**: $${tgt.toFixed(2)} (+${(((tgt - curr) / curr) * 100).toFixed(1)}%)
+
+### 🔔 Price Trigger & Sensitivity Specification
+- **Trigger Type**: Soft Proximity Alert (±1.5% sensitivity window)
+- **Execution Threshold**: $${piv.toFixed(2)}
 
 ### 📝 Strategic Trading Notes
 - Consolidation is tightening with decreasing volatility.
@@ -149,6 +185,15 @@ export const QuickInsightModal: React.FC<QuickInsightModalProps> = ({
   }, [isOpen, stock]);
 
   if (!isOpen) return null;
+
+  const handleSensitivityChange = (val: number) => {
+    setSensitivityPct(val);
+    if (val <= 0.5) {
+      setTriggerMode('HARD');
+    } else {
+      setTriggerMode('SOFT');
+    }
+  };
 
   const handleAddTag = (newTag: string) => {
     let clean = newTag.trim();
@@ -218,6 +263,32 @@ export const QuickInsightModal: React.FC<QuickInsightModalProps> = ({
         setStatusMessage('Saved to Firestore Cloud Vault & Synced!');
       } else {
         setStatusMessage('Saved locally in Second Brain. Sign in anytime to sync to Cloud!');
+      }
+
+      // 3. If registerActiveAlert is selected, register in background price radar
+      if (registerActiveAlert && ticker) {
+        try {
+          const effectiveTicker = ticker.trim().toUpperCase();
+          const newAlert: PriceAlert = {
+            id: `alert-insight-${effectiveTicker}-${Date.now()}`,
+            ticker: effectiveTicker,
+            stockName: stock?.name || title,
+            targetType: 'PIVOT_ENTRY',
+            targetPrice: Number(targetPrice),
+            triggerProximityPercent: Number(sensitivityPct),
+            currentPrice: Number(currentPrice),
+            status: 'ACTIVE',
+            createdAt: new Date().toLocaleDateString(),
+            exchange: stock?.exchange || 'NASDAQ',
+            notes: `${triggerMode === 'HARD' ? '🎯 Hard Price Trigger' : '⚡ Soft Price Proximity Alert'} (±${sensitivityPct}% sensitivity). Stop @ $${Number(stopLossPrice).toFixed(2)}, Target @ $${Number(targetProfitPrice).toFixed(2)}.`,
+          };
+          const existingAlerts = getStoredAlerts();
+          const filtered = existingAlerts.filter(a => !(a.ticker === newAlert.ticker && a.targetType === 'PIVOT_ENTRY'));
+          saveStoredAlerts([newAlert, ...filtered]);
+          window.dispatchEvent(new Event('minervini_alerts_updated'));
+        } catch (alertErr) {
+          console.warn('Failed to register active price alert:', alertErr);
+        }
       }
 
       setSavedSuccess(true);

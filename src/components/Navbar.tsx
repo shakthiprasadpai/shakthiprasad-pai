@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { TrendingUp, BarChart3, Calculator, BookOpen, SlidersHorizontal, Briefcase, Calendar, Video, Gem, Moon, Sun, Zap, Target, BookMarked, Layers, BellRing, Download, Sparkles, Bot, Cpu, Bookmark, ShieldCheck, CheckSquare, Award, Monitor, FileSpreadsheet, Radio, Menu, X, Compass, Brain, HardDrive, Mail } from 'lucide-react';
+import { TrendingUp, BarChart3, Calculator, BookOpen, SlidersHorizontal, Briefcase, Calendar, Video, Gem, Moon, Sun, Zap, Target, BookMarked, Layers, BellRing, Download, Sparkles, Bot, Cpu, Bookmark, ShieldCheck, CheckSquare, Award, Monitor, FileSpreadsheet, Radio, Menu, X, Compass, Brain, HardDrive, Mail, ExternalLink } from 'lucide-react';
 import { DesktopRemixGuideModal } from './DesktopRemixGuideModal';
 import { MobileNavDrawer } from './MobileNavDrawer';
 import { UserAuthButton } from './UserAuthButton';
@@ -26,7 +26,6 @@ export type AppNavTab =
   | 'journal'
   | 'sector_heatmap'
   | 'alert_history'
-  | 'tradingview_webhook'
   | 'pattern_library'
   | 'export_data'
   | 'security_shield'
@@ -56,7 +55,6 @@ export const TAB_LABELS: Record<AppNavTab, string> = {
   journal: 'Trade Journal',
   sector_heatmap: 'Sector Heatmap',
   alert_history: 'Alert History',
-  tradingview_webhook: 'Webhooks',
   pattern_library: 'Pattern Library',
   export_data: 'Export Data',
   security_shield: 'Security Shield',
@@ -657,21 +655,18 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span className="font-bold">Price Alert History</span>
             </button>
 
-            <button
-              id="nav-tab-tradingview-webhook"
-              onClick={() => setActiveTab('tradingview_webhook')}
-              className={`flex items-center space-x-1.5 py-2 transition-all border-b-2 ${
-                activeTab === 'tradingview_webhook'
-                  ? 'border-emerald-500 text-emerald-500 font-bold'
-                  : 'border-transparent text-gray-500 hover:text-emerald-500 hover:border-emerald-300'
-              }`}
+            <a
+              id="nav-tab-chart-link"
+              href={`https://www.tradingview.com/chart/?symbol=${selectedStockTicker || 'NVDA'}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center space-x-1.5 py-2 transition-all border-b-2 border-transparent text-gray-500 hover:text-blue-500 hover:border-blue-400"
+              title={`Open Live TradingView Chart for ${selectedStockTicker || 'NVDA'} in a new tab`}
             >
-              <Radio className="w-3.5 h-3.5 text-emerald-500 animate-pulse" />
-              <span className="font-bold">TradingView Webhook</span>
-              <span className="px-1.5 py-0.2 rounded text-[9px] font-black bg-emerald-500/20 text-emerald-500 border border-emerald-500/30 tracking-wider">
-                LIVE
-              </span>
-            </button>
+              <BarChart3 className="w-3.5 h-3.5 text-blue-500" />
+              <span className="font-bold">Chart Link ({selectedStockTicker || 'NVDA'})</span>
+              <ExternalLink className="w-3 h-3 text-blue-400" />
+            </a>
 
             <button
               id="nav-tab-pattern-library"

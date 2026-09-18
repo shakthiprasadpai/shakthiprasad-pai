@@ -84,7 +84,8 @@ import {
   Flame,
   Thermometer,
   Gauge,
-  Compass
+  Compass,
+  ExternalLink
 } from 'lucide-react';
 
 interface VcpChartProps {
@@ -1682,6 +1683,20 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
             <TrendingUp className="w-3.5 h-3.5" />
             <span>Interactive VCP Candlestick</span>
           </button>
+
+          {/* Direct TradingView Live Chart Link */}
+          <a
+            id="vcp-chart-tradingview-link"
+            href={`https://www.tradingview.com/chart/?symbol=${stock.ticker}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-3.5 py-1.5 font-bold uppercase tracking-wider flex items-center space-x-1.5 transition cursor-pointer bg-blue-700 hover:bg-blue-600 text-white shadow-xs ml-auto border border-blue-600"
+            title={`Open Live TradingView Chart for ${stock.ticker} in a new tab`}
+          >
+            <BarChart3 className="w-3.5 h-3.5 text-blue-200" />
+            <span>TradingView Chart Link ({stock.ticker})</span>
+            <ExternalLink className="w-3.5 h-3.5 text-blue-200" />
+          </a>
 
           <button
             onClick={() => setChartSubTab('technical_pro')}

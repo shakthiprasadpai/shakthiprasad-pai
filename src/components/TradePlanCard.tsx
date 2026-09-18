@@ -15,7 +15,7 @@ import { VolatilitySlippageAlert } from './VolatilitySlippageAlert';
 import { SimplePositionSizingCalculator } from './SimplePositionSizingCalculator';
 import { VolatilityPriceTargetsPanel } from './VolatilityPriceTargetsPanel';
 import { FivePaisaOrderModal } from './FivePaisaOrderModal';
-import { Target, ShieldAlert, ArrowUpRight, Droplets, DollarSign, Calculator, Layers, Flame, Zap, Sparkles, TrendingUp, BarChart3, ShieldCheck, FileText, Save, Check, Trash2, Clock, StickyNote, FileSpreadsheet, LogOut, AlertTriangle, ArrowRightCircle, Sliders, CheckCircle2, RefreshCw, Bell, BellRing, BellOff, ChevronDown, ChevronUp, Printer, BookMarked, BookmarkCheck } from 'lucide-react';
+import { Target, ShieldAlert, ArrowUpRight, Droplets, DollarSign, Calculator, Layers, Flame, Zap, Sparkles, TrendingUp, BarChart3, ShieldCheck, FileText, Save, Check, Trash2, Clock, StickyNote, FileSpreadsheet, LogOut, AlertTriangle, ArrowRightCircle, Sliders, CheckCircle2, RefreshCw, Bell, BellRing, BellOff, ChevronDown, ChevronUp, Printer, BookMarked, BookmarkCheck, ExternalLink } from 'lucide-react';
 
 function getArcPath(cx: number, cy: number, r: number, startAngleDeg: number, endAngleDeg: number) {
   const rad1 = (startAngleDeg * Math.PI) / 180;
@@ -3689,6 +3689,19 @@ export const TradePlanCard: React.FC<TradePlanCardProps> = ({ stock, onNavigateT
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* Chart Link (TradingView Live Chart) */}
+          <a
+            href={`https://www.tradingview.com/chart/?symbol=${stock.ticker}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="bg-blue-700 hover:bg-blue-600 text-white border border-blue-600 text-[10px] uppercase tracking-[0.15em] px-3 py-1 font-bold flex items-center space-x-1.5 transition-all shadow-2xs cursor-pointer"
+            title={`Open Live TradingView Chart Link for ${stock.ticker}`}
+          >
+            <BarChart3 className="w-3.5 h-3.5 text-blue-200" />
+            <span>Chart Link</span>
+            <ExternalLink className="w-3 h-3 text-blue-300" />
+          </a>
+
           {/* One-Click Save to Trade Journal Button */}
           <button
             onClick={handleSaveToTradeJournal}

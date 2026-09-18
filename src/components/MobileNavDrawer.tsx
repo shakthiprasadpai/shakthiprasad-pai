@@ -175,15 +175,6 @@ const NAV_ITEMS: NavItemDef[] = [
     category: 'execution',
     icon: BellRing,
   },
-  {
-    id: 'tradingview_webhook',
-    title: 'TradingView Webhooks',
-    subtitle: 'Real-time alert receiver & automated triggers',
-    category: 'execution',
-    icon: Radio,
-    badge: 'WEBHOOK',
-    badgeColor: 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30',
-  },
 
   // Category: Data Export & Tools
   {

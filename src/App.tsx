@@ -36,7 +36,6 @@ import { SectorCorrelationLeadershipCard } from './components/SectorCorrelationL
 import { PositionRiskCalculator } from './components/PositionRiskCalculator';
 import { DailyStage2ScannerModal } from './components/DailyStage2ScannerModal';
 import { RecentPriceAlertHistory } from './components/RecentPriceAlertHistory';
-import { TradingViewWebhookHub } from './components/TradingViewWebhookHub';
 import { BhavcopyView } from './components/BhavcopyView';
 import { RrgToolView } from './components/RrgToolView';
 import { FivePaisaTradingView } from './components/FivePaisaTradingView';
@@ -50,7 +49,7 @@ import { DEFAULT_NSE_BHAVCOPY, DEFAULT_BSE_BHAVCOPY } from './data/bhavcopyData'
 import { MOCK_STOCKS } from './data/mockStocks';
 import { MinerviniTradeSetup } from './types';
 import { formatCurrency, formatVolume, getCurrencySymbol, calculateBreakoutProbability } from './utils/sepaCalculator';
-import { TrendingUp, ShieldCheck, Target, Droplets, ArrowUpRight, Flame, BarChart3, Calculator, Sparkles, Gem, Bot, Bell, Keyboard, Command, Search, Zap, History, Brain, Bookmark } from 'lucide-react';
+import { TrendingUp, ShieldCheck, Target, Droplets, ArrowUpRight, Flame, BarChart3, Calculator, Sparkles, Gem, Bot, Bell, Keyboard, Command, Search, Zap, History, Brain, Bookmark, ExternalLink, Activity, BellRing } from 'lucide-react';
 
 export default function App() {
   const [stocksList, setStocksList] = useState<MinerviniTradeSetup[]>(MOCK_STOCKS);
@@ -377,6 +376,59 @@ export default function App() {
                 <div className="text-[9px] font-mono text-slate-900/80">P.A.R.A Cloud Vault</div>
               </div>
             </button>
+
+            {/* Set Trend-Line Alert Button */}
+            <button
+              id="banner-set-trendline-alert-button"
+              onClick={() => {
+                setActiveTab('chart');
+                setTimeout(() => {
+                  const chartTrendBtn = document.getElementById('chart-set-trendline-alert-button');
+                  if (chartTrendBtn) chartTrendBtn.click();
+                }, 150);
+              }}
+              className="bg-emerald-700 hover:bg-emerald-600 text-white font-mono font-bold text-xs p-3 rounded border border-emerald-600 shadow-md flex items-center space-x-2 transition-all cursor-pointer hover:scale-[1.02] active:scale-98"
+              title={`Set Trend-Line Alert & Price Sensitivity for ${selectedStock.ticker}`}
+            >
+              <BellRing className="w-4 h-4 text-emerald-200" />
+              <div className="text-left leading-tight">
+                <div className="font-extrabold text-[11px] uppercase tracking-wider">Set Trend-Line Alert</div>
+                <div className="text-[9px] font-mono text-emerald-100">Price Trigger</div>
+              </div>
+            </button>
+
+            {/* Direct Chart Link Button */}
+            <div className="flex items-center space-x-1">
+              <a
+                id="banner-chart-link-button"
+                href={`https://www.tradingview.com/chart/?symbol=${selectedStock.ticker}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="bg-blue-700 hover:bg-blue-600 text-white font-mono font-bold text-xs p-3 rounded-l border border-blue-600 shadow-md flex items-center space-x-2 transition-all cursor-pointer hover:scale-[1.02] active:scale-98"
+                title={`Open real-time TradingView Chart Link for ${selectedStock.ticker}`}
+              >
+                <BarChart3 className="w-4 h-4 text-blue-200" />
+                <div className="text-left leading-tight">
+                  <div className="font-extrabold text-[11px] uppercase tracking-wider flex items-center gap-1">
+                    <span>Chart Link</span>
+                    <ExternalLink className="w-3 h-3 text-blue-300" />
+                  </div>
+                  <div className="text-[9px] font-mono text-blue-100">TradingView Live</div>
+                </div>
+              </a>
+              <button
+                id="banner-vcp-chart-button"
+                onClick={() => setActiveTab('chart')}
+                className="bg-[#1a1a1a] hover:bg-black text-white font-mono font-bold text-xs p-3 rounded-r border border-black shadow-md flex items-center space-x-1.5 transition-all cursor-pointer hover:scale-[1.02] active:scale-98"
+                title={`Open interactive VCP Pattern Chart for ${selectedStock.ticker}`}
+              >
+                <Activity className="w-4 h-4 text-emerald-400" />
+                <div className="text-left leading-tight">
+                  <div className="font-extrabold text-[11px] uppercase tracking-wider">VCP Chart</div>
+                  <div className="text-[9px] font-mono text-gray-300">Stage 2 Analysis</div>
+                </div>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -1046,32 +1098,6 @@ export default function App() {
                 stocks={stocksList}
                 selectedStock={selectedStock}
                 onSelectStock={(stock) => setSelectedStock(stock)}
-              />
-            </motion.div>
-          )}
-
-          {/* TAB: TRADINGVIEW WEBHOOK INTEGRATION HUB */}
-          {activeTab === 'tradingview_webhook' && (
-            <motion.div
-              key="tradingview_webhook"
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -12 }}
-              transition={{ duration: 0.25, ease: 'easeInOut' }}
-              className="space-y-8"
-            >
-              <TradingViewWebhookHub
-                stocks={stocksList}
-                selectedStock={selectedStock}
-                onSelectStock={(stock) => setSelectedStock(stock)}
-                onViewChart={(stock) => {
-                  setSelectedStock(stock);
-                  setActiveTab('chart');
-                }}
-                onOpenCalculator={(stock) => {
-                  setSelectedStock(stock);
-                  setActiveTab('calculator');
-                }}
               />
             </motion.div>
           )}
