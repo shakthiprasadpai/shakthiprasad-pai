@@ -1452,7 +1452,7 @@ ${note.content}
               </div>
 
               <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded text-xs text-amber-300">
-                <strong>💡 Automatic Detection:</strong> When you browse TradingView, Finviz, Yahoo Finance, or Twitter/X, clicking the extension auto-detects the ticker, extracts highlighted text, and posts directly to this Second Brain!
+                <strong>💡 Automatic Detection:</strong> When you browse ChartLink, Finviz, Yahoo Finance, or Twitter/X, clicking the extension auto-detects the ticker, extracts highlighted text, and posts directly to this Second Brain!
               </div>
             </div>
 
@@ -1481,7 +1481,7 @@ ${note.content}
                         isObsidian ? 'bg-[#181f2c] border-[#2b374d] text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
                       }`}
                     >
-                      <option value="TradingView">TradingView Chart</option>
+                      <option value="ChartLink">ChartLink Chart</option>
                       <option value="Finviz">Finviz Screener</option>
                       <option value="Twitter / X">Twitter / X Post</option>
                       <option value="Yahoo Finance">Yahoo Finance</option>

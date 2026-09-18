@@ -466,6 +466,213 @@ export const QuickInsightModal: React.FC<QuickInsightModalProps> = ({
             </div>
           </div>
 
+          {/* Price-Level Alert Radar & Sensitivity Slider Panel */}
+          <div className={`p-4 rounded-xl border transition-all ${
+            isObsidian ? 'bg-[#181f2c]/80 border-amber-500/30 shadow-inner' : 'bg-amber-50/50 border-amber-200 shadow-xs'
+          }`}>
+            <div className="flex items-center justify-between pb-3 border-b border-amber-500/20">
+              <div className="flex items-center space-x-2">
+                <div className="p-1.5 rounded-md bg-amber-500/20 text-amber-400">
+                  <BellRing className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-xs font-bold font-mono uppercase tracking-wider text-amber-400">
+                      Price Trigger Radar & Sensitivity
+                    </span>
+                    <span className={`px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase ${
+                      triggerMode === 'HARD'
+                        ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                        : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                    }`}>
+                      {triggerMode === 'HARD' ? 'HARD TRIGGER' : `SOFT RADAR (±${sensitivityPct.toFixed(1)}%)`}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-gray-400">
+                    Live proximity monitoring with background audio chime & radar log
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsAlertSectionExpanded(!isAlertSectionExpanded)}
+                className="text-xs font-mono text-gray-400 hover:text-amber-400 transition-colors p-1"
+                title="Toggle Alert Parameters"
+              >
+                <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isAlertSectionExpanded ? 'rotate-180' : ''}`} />
+              </button>
+            </div>
+
+            {isAlertSectionExpanded && (
+              <div className="mt-4 space-y-4">
+                {/* Visual Price Continuum Scale */}
+                <div className="space-y-1.5">
+                  <div className="flex justify-between items-center text-[10px] font-mono text-gray-400">
+                    <span className="text-rose-400 font-bold">Stop: ${Number(stopLossPrice).toFixed(2)}</span>
+                    <span className="text-blue-400 font-bold">Current: ${Number(currentPrice).toFixed(2)}</span>
+                    <span className="text-amber-400 font-bold">Target Pivot: ${Number(targetPrice).toFixed(2)}</span>
+                    <span className="text-emerald-400 font-bold">Profit: ${Number(targetProfitPrice).toFixed(2)}</span>
+                  </div>
+
+                  <div className="relative w-full h-7 bg-slate-900/90 rounded-lg p-1 border border-slate-700/60 overflow-hidden flex items-center">
+                    {/* Stop Loss Zone */}
+                    <div className="h-full bg-rose-950/70 border-r border-rose-500/50 flex items-center justify-start px-2 text-[9px] font-mono text-rose-400 font-bold w-[22%]">
+                      STOP
+                    </div>
+
+                    {/* Channel between Stop and Target */}
+                    <div className="relative h-full flex-1 bg-slate-800/40 flex items-center justify-center">
+                      {/* Sensitivity Band around Pivot */}
+                      <div
+                        className="absolute right-0 h-full bg-amber-500/25 border-l border-r border-amber-400/60 transition-all"
+                        style={{ width: `${Math.min(Math.max(sensitivityPct * 6, 12), 48)}%` }}
+                        title={`Proximity Trigger Buffer: ±${sensitivityPct}% around $${Number(targetPrice).toFixed(2)}`}
+                      />
+
+                      {/* Current Price Marker */}
+                      <div className="absolute left-[38%] flex flex-col items-center z-10">
+                        <div className="w-2.5 h-2.5 rounded-full bg-sky-400 ring-2 ring-sky-200 shadow-md animate-pulse" />
+                      </div>
+                    </div>
+
+                    {/* Target Profit Zone */}
+                    <div className="h-full bg-emerald-950/70 border-l border-emerald-500/50 flex items-center justify-end px-2 text-[9px] font-mono text-emerald-400 font-bold w-[25%]">
+                      TARGET
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between text-[9px] font-mono text-gray-500">
+                    <span>Risk Containment</span>
+                    <span className="text-amber-300">
+                      Window: ${(Number(targetPrice) * (1 - sensitivityPct / 100)).toFixed(2)} — ${(Number(targetPrice) * (1 + sensitivityPct / 100)).toFixed(2)}
+                    </span>
+                    <span>Reward Expansion</span>
+                  </div>
+                </div>
+
+                {/* Price Input Controls */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-mono font-bold uppercase text-amber-400 mb-1">
+                      Pivot Trigger Price ($)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.05"
+                      value={targetPrice}
+                      onChange={(e) => setTargetPrice(parseFloat(e.target.value) || 0)}
+                      className={`w-full px-3 py-1.5 rounded-lg border text-xs font-mono font-bold ${
+                        isObsidian ? 'bg-[#0f1218] border-amber-500/40 text-amber-300' : 'bg-white border-amber-300 text-amber-900'
+                      }`}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-mono font-bold uppercase text-rose-400 mb-1">
+                      Hard Stop Loss ($)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.05"
+                      value={stopLossPrice}
+                      onChange={(e) => setStopLossPrice(parseFloat(e.target.value) || 0)}
+                      className={`w-full px-3 py-1.5 rounded-lg border text-xs font-mono font-bold ${
+                        isObsidian ? 'bg-[#0f1218] border-rose-500/40 text-rose-300' : 'bg-white border-rose-300 text-rose-900'
+                      }`}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-mono font-bold uppercase text-emerald-400 mb-1">
+                      Target Profit 1 ($)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.05"
+                      value={targetProfitPrice}
+                      onChange={(e) => setTargetProfitPrice(parseFloat(e.target.value) || 0)}
+                      className={`w-full px-3 py-1.5 rounded-lg border text-xs font-mono font-bold ${
+                        isObsidian ? 'bg-[#0f1218] border-emerald-500/40 text-emerald-300' : 'bg-white border-emerald-300 text-emerald-900'
+                      }`}
+                    />
+                  </div>
+                </div>
+
+                {/* Sensitivity Slider */}
+                <div className="space-y-2 pt-2 border-t border-amber-500/20">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-1.5">
+                      <Sliders className="w-3.5 h-3.5 text-amber-400" />
+                      <label className="text-xs font-mono font-bold uppercase tracking-wider text-gray-300">
+                        Proximity Sensitivity Range
+                      </label>
+                    </div>
+
+                    <div className="flex items-center space-x-2">
+                      <button
+                        type="button"
+                        onClick={() => handleSensitivityChange(0.2)}
+                        className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase transition-all ${
+                          triggerMode === 'HARD'
+                            ? 'bg-rose-500 text-black'
+                            : 'bg-white/10 text-gray-400 hover:text-white'
+                        }`}
+                      >
+                        Hard (0.2%)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSensitivityChange(1.5)}
+                        className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase transition-all ${
+                          triggerMode === 'SOFT' && sensitivityPct === 1.5
+                            ? 'bg-amber-400 text-black'
+                            : 'bg-white/10 text-gray-400 hover:text-white'
+                        }`}
+                      >
+                        Standard (1.5%)
+                      </button>
+                      <span className="text-xs font-mono font-bold text-amber-300 px-2 py-0.5 rounded bg-amber-500/20 border border-amber-500/30">
+                        ±{sensitivityPct.toFixed(1)}%
+                      </span>
+                    </div>
+                  </div>
+
+                  <input
+                    type="range"
+                    min="0.1"
+                    max="5.0"
+                    step="0.1"
+                    value={sensitivityPct}
+                    onChange={(e) => handleSensitivityChange(parseFloat(e.target.value))}
+                    className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-400"
+                  />
+
+                  <div className="flex justify-between text-[10px] font-mono text-gray-400">
+                    <span>0.1% (Hard Breakout Touch)</span>
+                    <span className="text-gray-300 font-semibold">
+                      {triggerMode === 'HARD' ? '🎯 Hard Price Trigger' : '⚡ Proximity Warning Zone'}
+                    </span>
+                    <span>5.0% (Early Base Radar)</span>
+                  </div>
+                </div>
+
+                {/* Auto-register background alert checkbox */}
+                <label className="flex items-center space-x-2 pt-1 cursor-pointer select-none text-xs font-mono">
+                  <input
+                    type="checkbox"
+                    checked={registerActiveAlert}
+                    onChange={(e) => setRegisterActiveAlert(e.target.checked)}
+                    className="rounded border-gray-300 text-amber-500 focus:ring-amber-400"
+                  />
+                  <span className="text-gray-200">
+                    Auto-register in <strong className="text-amber-300">Background Price Radar</strong> (Triggers notification &amp; chime on breakout)
+                  </span>
+                </label>
+              </div>
+            )}
+          </div>
+
           {/* Pattern & SEPA Rating */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>

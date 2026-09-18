@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MinerviniTradeSetup } from '../types';
 import { formatCurrency, calculateTrendStrengthMeter, getCurrencySymbol, calculateTrendReadinessScore, calculateDailyPivotPoints, calculateDailyVolatilityMetrics } from '../utils/sepaCalculator';
+import { getChartLinkUrl } from '../utils/chartLinkHelper';
 import { exportTradePlansToCsv } from '../utils/csvExport';
 import { SectorStrengthView } from './SectorStrengthView';
 import { SectorPerformanceWidget } from './SectorPerformanceWidget';
@@ -1238,15 +1239,15 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
                           </button>
 
                           <a
-                            href={`https://www.tradingview.com/chart/?symbol=${stock.ticker}`}
+                            href={getChartLinkUrl(stock)}
                             target="_blank"
                             rel="noopener noreferrer"
                             onClick={(e) => e.stopPropagation()}
                             className="bg-blue-50 hover:bg-blue-100 text-blue-800 font-bold px-2 py-1.5 text-xs transition-all flex items-center space-x-1 border border-blue-300 shadow-2xs cursor-pointer"
-                            title={`Open Live TradingView Chart Link for ${stock.ticker}`}
+                            title={`Open Live ChartLink for ${stock.ticker}`}
                           >
                             <ExternalLink className="w-3.5 h-3.5 text-blue-600" />
-                            <span className="hidden xl:inline">Chart Link</span>
+                            <span className="hidden xl:inline">ChartLink</span>
                           </a>
 
                           <button
@@ -1453,15 +1454,15 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
                     </button>
 
                     <a
-                      href={`https://www.tradingview.com/chart/?symbol=${stock.ticker}`}
+                      href={getChartLinkUrl(stock)}
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={(e) => e.stopPropagation()}
                       className="bg-blue-50 hover:bg-blue-100 text-blue-800 font-bold py-2 px-2 text-xs uppercase tracking-wider flex items-center justify-center space-x-1 border border-blue-300 transition-all cursor-pointer shadow-2xs"
-                      title={`Open Live TradingView Chart for ${stock.ticker}`}
+                      title={`Open Live ChartLink for ${stock.ticker}`}
                     >
                       <ExternalLink className="w-3.5 h-3.5 text-blue-600" />
-                      <span>Chart Link</span>
+                      <span>ChartLink</span>
                     </a>
 
                     <button

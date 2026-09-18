@@ -140,7 +140,7 @@ google-chrome --app="${appUrl}" --window-size=1440,900
             { id: 'DESKTOP_APP' as const, label: '💻 Desktop PWA App', icon: Laptop },
             { id: 'REMIX_EXPORT' as const, label: '⚡ Remix & Fork Code', icon: Share2 },
             { id: 'CHROME_PWA' as const, label: '🚀 Standalone Window Mode', icon: Monitor },
-            { id: 'TRADINGVIEW' as const, label: '📊 PineScript & Obsidian Sync', icon: FileCode }
+            { id: 'TRADINGVIEW' as const, label: '📊 ChartLink & Obsidian Sync', icon: FileCode }
           ].map(tab => (
             <button
               key={tab.id}
@@ -313,7 +313,7 @@ google-chrome --app="${appUrl}" --window-size=1440,900
               <div className="p-3 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-300 dark:border-emerald-800/40 text-emerald-950 dark:text-emerald-300 text-xs font-mono space-y-1">
                 <span className="font-bold block">💡 Pro Trader Tip:</span>
                 <p className="font-sans text-[11px] leading-normal">
-                  Pin this window to your second monitor next to TradingView or Zerodha/Charles Schwab for live SEPA alerts while watching intraday volume dry-ups!
+                  Pin this window to your second monitor next to ChartLink or Zerodha/5paisa for live SEPA alerts while watching intraday volume dry-ups!
                 </p>
               </div>
             </div>
@@ -323,13 +323,13 @@ google-chrome --app="${appUrl}" --window-size=1440,900
             <div className="space-y-4 font-sans text-xs">
               <div className="p-4 bg-[#f9f8f5] dark:bg-[#151921] border border-[#e5e4e1] dark:border-slate-800 space-y-2">
                 <h4 className="font-serif font-bold text-sm text-[#1a1a1a] dark:text-white">
-                  Sync with Desktop Trading Tools (TradingView, Obsidian & Excel)
+                  Sync with Desktop Trading Tools (ChartLink, Obsidian & Excel)
                 </h4>
                 <p className="text-gray-600 dark:text-gray-400 text-xs leading-relaxed">
                   Use the built-in <strong>Export Trade Data</strong> tab in the navigation bar to export:
                 </p>
                 <ul className="list-disc list-inside space-y-1 text-gray-700 dark:text-gray-300 font-mono text-[11px]">
-                  <li><strong>PineScript v6:</strong> Copy the pre-built PineScript indicator directly into TradingView Pine Editor on desktop.</li>
+                  <li><strong>ChartLink Lists:</strong> Open and scan live technical charts directly on ChartLink.</li>
                   <li><strong>Obsidian Markdown:</strong> Export daily research notes directly into your local Obsidian trading vault.</li>
                   <li><strong>CSV / JSON:</strong> Export qualified setups for Google Sheets or Excel backtesting.</li>
                 </ul>

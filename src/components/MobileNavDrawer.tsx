@@ -207,7 +207,7 @@ const NAV_ITEMS: NavItemDef[] = [
   {
     id: 'export_data',
     title: 'Export Trade Data Hub',
-    subtitle: 'CSV, PDF reports, JSON, TradingView & Obsidian',
+    subtitle: 'CSV, PDF reports, JSON, ChartLink & Obsidian',
     category: 'tools',
     icon: Download,
     badge: 'DATA HUB',

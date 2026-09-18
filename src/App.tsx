@@ -49,6 +49,7 @@ import { DEFAULT_NSE_BHAVCOPY, DEFAULT_BSE_BHAVCOPY } from './data/bhavcopyData'
 import { MOCK_STOCKS } from './data/mockStocks';
 import { MinerviniTradeSetup } from './types';
 import { formatCurrency, formatVolume, getCurrencySymbol, calculateBreakoutProbability } from './utils/sepaCalculator';
+import { getChartLinkUrl } from './utils/chartLinkHelper';
 import { TrendingUp, ShieldCheck, Target, Droplets, ArrowUpRight, Flame, BarChart3, Calculator, Sparkles, Gem, Bot, Bell, Keyboard, Command, Search, Zap, History, Brain, Bookmark, ExternalLink, Activity, BellRing } from 'lucide-react';
 
 export default function App() {
@@ -401,19 +402,19 @@ export default function App() {
             <div className="flex items-center space-x-1">
               <a
                 id="banner-chart-link-button"
-                href={`https://www.tradingview.com/chart/?symbol=${selectedStock.ticker}`}
+                href={getChartLinkUrl(selectedStock)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="bg-blue-700 hover:bg-blue-600 text-white font-mono font-bold text-xs p-3 rounded-l border border-blue-600 shadow-md flex items-center space-x-2 transition-all cursor-pointer hover:scale-[1.02] active:scale-98"
-                title={`Open real-time TradingView Chart Link for ${selectedStock.ticker}`}
+                title={`Open real-time ChartLink for ${selectedStock.ticker} in a new tab`}
               >
                 <BarChart3 className="w-4 h-4 text-blue-200" />
                 <div className="text-left leading-tight">
                   <div className="font-extrabold text-[11px] uppercase tracking-wider flex items-center gap-1">
-                    <span>Chart Link</span>
+                    <span>ChartLink</span>
                     <ExternalLink className="w-3 h-3 text-blue-300" />
                   </div>
-                  <div className="text-[9px] font-mono text-blue-100">TradingView Live</div>
+                  <div className="text-[9px] font-mono text-blue-100">Live Chart</div>
                 </div>
               </a>
               <button

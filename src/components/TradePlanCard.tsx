@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MinerviniTradeSetup, TradeJournalNote } from '../types';
 import { calculatePositionSize, calculateBreakoutProbability, formatCurrency, formatVolume, getCurrencySymbol, calculateDailyVolatilityMetrics } from '../utils/sepaCalculator';
+import { getChartLinkUrl } from '../utils/chartLinkHelper';
 import { exportTradePlansToCsv, exportDetailedTradeParametersToCsv } from '../utils/csvExport';
 import { generateSepaPdfReport } from '../utils/pdfExporter';
 import { getStoredJournalNotes, saveStoredJournalNotes } from '../utils/tradeJournalStorage';
@@ -3689,16 +3690,16 @@ export const TradePlanCard: React.FC<TradePlanCardProps> = ({ stock, onNavigateT
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {/* Chart Link (TradingView Live Chart) */}
+          {/* ChartLink Live Chart */}
           <a
-            href={`https://www.tradingview.com/chart/?symbol=${stock.ticker}`}
+            href={getChartLinkUrl(stock)}
             target="_blank"
             rel="noopener noreferrer"
             className="bg-blue-700 hover:bg-blue-600 text-white border border-blue-600 text-[10px] uppercase tracking-[0.15em] px-3 py-1 font-bold flex items-center space-x-1.5 transition-all shadow-2xs cursor-pointer"
-            title={`Open Live TradingView Chart Link for ${stock.ticker}`}
+            title={`Open Live ChartLink for ${stock.ticker}`}
           >
             <BarChart3 className="w-3.5 h-3.5 text-blue-200" />
-            <span>Chart Link</span>
+            <span>ChartLink</span>
             <ExternalLink className="w-3 h-3 text-blue-300" />
           </a>
 

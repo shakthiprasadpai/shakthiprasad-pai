@@ -4,6 +4,7 @@ import { TrendingUp, BarChart3, Calculator, BookOpen, SlidersHorizontal, Briefca
 import { DesktopRemixGuideModal } from './DesktopRemixGuideModal';
 import { MobileNavDrawer } from './MobileNavDrawer';
 import { UserAuthButton } from './UserAuthButton';
+import { getChartLinkUrl } from '../utils/chartLinkHelper';
 
 export type AppNavTab = 
   | 'daily_review'
@@ -657,14 +658,14 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             <a
               id="nav-tab-chart-link"
-              href={`https://www.tradingview.com/chart/?symbol=${selectedStockTicker || 'NVDA'}`}
+              href={getChartLinkUrl(selectedStockTicker || 'RELIANCE')}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center space-x-1.5 py-2 transition-all border-b-2 border-transparent text-gray-500 hover:text-blue-500 hover:border-blue-400"
-              title={`Open Live TradingView Chart for ${selectedStockTicker || 'NVDA'} in a new tab`}
+              title={`Open Live ChartLink for ${selectedStockTicker || 'RELIANCE'} in a new tab`}
             >
               <BarChart3 className="w-3.5 h-3.5 text-blue-500" />
-              <span className="font-bold">Chart Link ({selectedStockTicker || 'NVDA'})</span>
+              <span className="font-bold">ChartLink ({selectedStockTicker || 'RELIANCE'})</span>
               <ExternalLink className="w-3 h-3 text-blue-400" />
             </a>
 

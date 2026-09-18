@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { MinerviniTradeSetup, PricePoint, CustomTrendline, TradeJournalNote, EmotionalState, TradeStatus, DetectedRsiDivergence } from '../types';
 import { formatCurrency, formatVolume, getCurrencySymbol, evaluateTrendTemplate } from '../utils/sepaCalculator';
+import { getChartLinkUrl } from '../utils/chartLinkHelper';
 import { getStoredJournalNotes, saveStoredJournalNotes } from '../utils/tradeJournalStorage';
 import { PineScriptExporter } from './PineScriptExporter';
 import { LorentzianClassification } from './LorentzianClassification';
@@ -1684,17 +1685,17 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
             <span>Interactive VCP Candlestick</span>
           </button>
 
-          {/* Direct TradingView Live Chart Link */}
+          {/* Direct ChartLink Live Chart Link */}
           <a
-            id="vcp-chart-tradingview-link"
-            href={`https://www.tradingview.com/chart/?symbol=${stock.ticker}`}
+            id="vcp-chart-chartlink-link"
+            href={getChartLinkUrl(stock)}
             target="_blank"
             rel="noopener noreferrer"
             className="px-3.5 py-1.5 font-bold uppercase tracking-wider flex items-center space-x-1.5 transition cursor-pointer bg-blue-700 hover:bg-blue-600 text-white shadow-xs ml-auto border border-blue-600"
-            title={`Open Live TradingView Chart for ${stock.ticker} in a new tab`}
+            title={`Open Live ChartLink for ${stock.ticker} in a new tab`}
           >
             <BarChart3 className="w-3.5 h-3.5 text-blue-200" />
-            <span>TradingView Chart Link ({stock.ticker})</span>
+            <span>ChartLink ({stock.ticker})</span>
             <ExternalLink className="w-3.5 h-3.5 text-blue-200" />
           </a>
 

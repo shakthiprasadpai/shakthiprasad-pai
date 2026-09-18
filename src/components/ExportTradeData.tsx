@@ -286,7 +286,7 @@ export const ExportTradeData: React.FC<ExportTradeDataProps> = ({ stocks, isObsi
     return { content, filename: `minervini_${filenamePrefix}_export_${today}.json` };
   };
 
-  // Generate TradingView formatted text list
+  // Generate ChartLink formatted text list
   const generateTradingViewText = (): { content: string; filename: string } => {
     const today = new Date().toISOString().slice(0, 10);
     let tickersList: string[] = [];
@@ -303,7 +303,7 @@ export const ExportTradeData: React.FC<ExportTradeDataProps> = ({ stocks, isObsi
     }
 
     const content = tickersList.join(',\n');
-    return { content, filename: `TradingView_Watchlist_${today}.txt` };
+    return { content, filename: `ChartLink_Watchlist_${today}.txt` };
   };
 
   // Generate Obsidian Markdown content
@@ -975,7 +975,7 @@ alertcondition(vcpPrimed, title="Minervini VCP Primed Alert", message="VCP Volat
               </div>
             </button>
 
-            {/* TradingView Ticker List */}
+            {/* ChartLink Ticker List */}
             <button
               type="button"
               onClick={() => setExportFormat('TRADINGVIEW')}
@@ -989,8 +989,8 @@ alertcondition(vcpPrimed, title="Minervini VCP Primed Alert", message="VCP Volat
             >
               <Radio className="w-5 h-5 text-sky-400" />
               <div>
-                <strong className="block text-xs">TradingView</strong>
-                <span className="text-[10px] text-gray-400">Comma list for TV</span>
+                <strong className="block text-xs">ChartLink</strong>
+                <span className="text-[10px] text-gray-400">Comma list for ChartLink</span>
               </div>
             </button>
 
