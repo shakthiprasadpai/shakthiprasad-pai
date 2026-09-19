@@ -905,13 +905,14 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
                 <th className="py-3 px-2.5">Stop Loss</th>
                 <th className="py-3 px-2.5">Target (+20%)</th>
                 <th className="py-3 px-2.5 text-center">R/R</th>
+                <th className="py-3 px-2.5 text-center">Chart</th>
                 <th className="py-3 px-2.5 text-right">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#e5e4e1] text-xs">
               {filteredStocks.length === 0 ? (
                 <tr>
-                  <td colSpan={15} className="py-8 text-center text-gray-500 font-serif italic text-sm">
+                  <td colSpan={16} className="py-8 text-center text-gray-500 font-serif italic text-sm">
                     No growth setups match the selected search or SEPA filter criteria.
                   </td>
                 </tr>
@@ -1220,6 +1221,22 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
                         <span className="bg-white px-2 py-1 border border-[#e5e4e1]">
                           {stock.riskRewardRatio.toFixed(1)}x
                         </span>
+                      </td>
+
+                      {/* Chart */}
+                      <td className="py-3.5 px-2.5 text-center">
+                        <a
+                          href={getChartLinkUrl(stock)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="inline-flex items-center justify-center space-x-1 bg-blue-50 hover:bg-blue-100 text-blue-800 font-bold px-2 py-1.5 text-[10px] uppercase tracking-wider border border-blue-300 transition-all cursor-pointer"
+                          title={`Open live chart for ${stock.ticker} (${stock.exchange})`}
+                          aria-label={`Open live chart for ${stock.ticker} on ${stock.exchange}`}
+                        >
+                          <ExternalLink className="w-3.5 h-3.5 text-blue-600" />
+                          <span>Chart</span>
+                        </a>
                       </td>
 
                       {/* Action */}
