@@ -10,7 +10,7 @@ interface StageIdentifierPanelProps {
 
 export const StageIdentifierPanel: React.FC<StageIdentifierPanelProps> = ({
   stock,
-  currencySymbol = '$',
+  currencySymbol = getCurrencySymbol(stock.exchange),
 }) => {
   const [isExpanded, setIsExpanded] = useState<boolean>(true);
 
