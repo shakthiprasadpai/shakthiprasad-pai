@@ -27,10 +27,8 @@ export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfi
 export const auth = getAuth(app);
 
 // Initialize Cloud Firestore using the provisioned database ID
-const firestoreDbId = (firebaseConfig as Record<string, any>).firestoreDatabaseId;
-export const db: Firestore = firestoreDbId
-  ? getFirestore(app, firestoreDbId)
-  : getFirestore(app);
+const firestoreDbId = (firebaseConfig as Record<string, any>).firestoreDatabaseId || 'ai-studio-remixremixminerv-43af08a6-e4aa-4a7f-a5a5-ec42a00dc33b';
+export const db: Firestore = getFirestore(app, firestoreDbId);
 
 // Validate connection to Firestore on boot
 async function testConnection() {
