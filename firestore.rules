@@ -8,6 +8,11 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
+    // Health / connectivity test document
+    match /test/{testId} {
+      allow read: if true;
+    }
+
     // User profile and private subcollections
     match /users/{userId} {
       allow read: if isAuthenticated();
