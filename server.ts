@@ -1,5 +1,6 @@
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 
@@ -1696,12 +1697,13 @@ Respond with valid JSON only.`;
       res.status(500).json({ success: false, message: err.message });
     }
   });
-  const isProduction =
-    process.env.NODE_ENV === 'production' ||
-    Boolean(process.env.K_SERVICE) ||
-    (typeof __filename !== 'undefined' && __filename.endsWith('.cjs')) ||
-    process.argv.includes('--production') ||
-    process.env.npm_lifecycle_event === 'start';
+  const distPath = path.join(process.cwd(), 'dist');
+  const distIndexHtml = path.join(distPath, 'index.html');
+  const hasDist = fs.existsSync(distIndexHtml);
+
+  // In AI Studio / Cloud Run, K_SERVICE is always set (even in dev: ais-dev-*).
+  // Only serve static pre-built assets when in production AND dist/index.html exists.
+  const isProduction = process.env.NODE_ENV === 'production' && hasDist;
 
   const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
@@ -1711,11 +1713,27 @@ Respond with valid JSON only.`;
       appType: 'spa'
     });
     app.use(vite.middlewares);
+
+    app.get('*', async (req, res, next) => {
+      const url = req.originalUrl;
+      try {
+        const indexPath = path.join(process.cwd(), 'index.html');
+        let template = fs.readFileSync(indexPath, 'utf-8');
+        template = await vite.transformIndexHtml(url, template);
+        res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
+      } catch (e) {
+        vite.ssrFixStacktrace(e as Error);
+        next(e);
+      }
+    });
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+      if (fs.existsSync(distIndexHtml)) {
+        res.sendFile(distIndexHtml);
+      } else {
+        res.status(404).send('Application build in progress. Please refresh momentarily.');
+      }
     });
   }
 
