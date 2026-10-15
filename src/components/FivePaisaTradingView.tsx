@@ -739,7 +739,13 @@ export const FivePaisaTradingView: React.FC<FivePaisaTradingViewProps> = ({
                     <td className="py-3 px-3 text-right font-bold text-slate-900 dark:text-white">{o.quantity}</td>
                     <td className="py-3 px-3 text-right font-bold text-slate-900 dark:text-white">₹{o.price.toLocaleString('en-IN')}</td>
                     <td className="py-3 px-3 text-right text-rose-600 dark:text-rose-400">
-                      {o.stopLossPrice ? `₹${o.stopLossPrice.toLocaleString('en-IN')}` : '—'}
+                      <div>{o.stopLossPrice ? `₹${o.stopLossPrice.toLocaleString('en-IN')}` : '—'}</div>
+                      {o.isTrailingStopEnabled && (
+                        <div className="text-[10px] text-amber-600 dark:text-amber-400 font-bold flex items-center justify-end space-x-0.5 mt-0.5">
+                          <ShieldCheck className="w-2.5 h-2.5 shrink-0" />
+                          <span>Trail: {o.trailingStopPrice ? `₹${o.trailingStopPrice.toLocaleString('en-IN')}` : 'ON'}</span>
+                        </div>
+                      )}
                     </td>
                     <td className="py-3 px-3">
                       <span className={`px-2 py-0.5 text-[10px] font-bold ${
@@ -819,9 +825,12 @@ export const FivePaisaTradingView: React.FC<FivePaisaTradingViewProps> = ({
                     </div>
                   </div>
                   <div className="p-2 bg-white/50 dark:bg-black/30 border border-gray-200 dark:border-gray-800">
-                    <div className="text-[10px] text-gray-500">Stop Loss</div>
+                    <div className="text-[10px] text-gray-500">Stop Loss / Trail</div>
                     <div className="font-bold text-rose-600 dark:text-rose-400">
                       ₹{stk.stopLossPrice.toLocaleString('en-IN')}
+                    </div>
+                    <div className="text-[9px] text-amber-600 dark:text-amber-400 font-bold mt-0.5">
+                      Trail: ₹{(stk.currentPrice * 0.92).toFixed(2)} (-8%)
                     </div>
                   </div>
                 </div>

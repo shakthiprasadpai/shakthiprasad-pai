@@ -3,6 +3,7 @@ import { MinerviniTradeSetup } from '../types';
 import { formatCurrency, getCurrencySymbol } from '../utils/sepaCalculator';
 import {
   ShieldAlert,
+  ShieldCheck,
   Target,
   LogOut,
   AlertTriangle,
@@ -35,6 +36,8 @@ export const ExitSignals: React.FC<ExitSignalsProps> = ({ stock }) => {
   const target1 = stock.target1Price;
   const target2 = stock.target2Price;
   const breakevenTrigger = Number((pivotEntry * 1.08).toFixed(2)); // +8% gain trigger
+  const peakPrice = Math.max(stock.high52w, stock.currentPrice);
+  const trailingStopPrice = Number((peakPrice * 0.92).toFixed(2)); // Standard 8% trailing stop from peak
 
   // Gain/Loss percent calculations relative to pivot entry
   const currentGainPercent = ((stock.currentPrice - pivotEntry) / pivotEntry) * 100;
@@ -53,6 +56,17 @@ export const ExitSignals: React.FC<ExitSignalsProps> = ({ stock }) => {
         detail: `Price (${formatCurrency(price, currencySymbol)}) has breached your maximum risk threshold of ${formatCurrency(stopLoss, currencySymbol)} (-${stock.stopLossPercent}%). Cut the loss with zero hesitation. Capital preservation is priority #1.`,
         suggestedSharesToSellPct: 100,
         stopLevelStr: formatCurrency(stopLoss, currencySymbol)
+      };
+    } else if (price <= trailingStopPrice && trailingStopPrice > pivotEntry && (stock.currentPrice >= pivotEntry * 1.10 || testPrice >= pivotEntry * 1.10 || gainPct >= 8)) {
+      return {
+        badge: '🛡️ DYNAMIC TRAILING STOP TRIGGERED',
+        badgeBg: 'bg-amber-950 text-amber-300 border-amber-600',
+        cardBg: 'bg-amber-50/90 border-amber-400',
+        actionTitle: 'ACTION: EXIT RUNNER SHARES — LOCK IN PROFIT',
+        actionColor: 'text-amber-900',
+        detail: `Price (${formatCurrency(price, currencySymbol)}) has pulled back to your dynamic trailing stop level of ${formatCurrency(trailingStopPrice, currencySymbol)} (-8.0% from peak ${formatCurrency(peakPrice, currencySymbol)}). Liquidate remaining runner shares to lock in compounded alpha.`,
+        suggestedSharesToSellPct: 100,
+        stopLevelStr: `${formatCurrency(trailingStopPrice, currencySymbol)} (Trailing SL)`
       };
     } else if (price < pivotEntry) {
       return {
@@ -205,7 +219,7 @@ export const ExitSignals: React.FC<ExitSignalsProps> = ({ stock }) => {
           </h4>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-xs font-sans">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 text-xs font-sans">
           
           {/* Pillar 1: 5% - 10% Initial Hard Stop Loss */}
           <div className="bg-white border border-[#e5e4e1] p-4 space-y-2 relative group hover:border-rose-300 transition-all">
@@ -291,6 +305,27 @@ export const ExitSignals: React.FC<ExitSignalsProps> = ({ stock }) => {
             </ul>
           </div>
 
+          {/* Pillar 5: Dynamic Trailing Stop Loss (Protecting Runners) */}
+          <div className="bg-white border border-[#e5e4e1] p-4 space-y-2 relative group hover:border-amber-400 transition-all">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+              <span className="font-mono text-[11px] font-extrabold text-amber-800 flex items-center space-x-1">
+                <ShieldCheck className="w-3.5 h-3.5 text-amber-600" />
+                <span>5. Dynamic Trailing Stop</span>
+              </span>
+              <span className="text-[9px] font-mono font-bold bg-amber-50 text-amber-900 px-1.5 py-0.5 border border-amber-300">
+                -8% Peak / 20 EMA
+              </span>
+            </div>
+            <div className="font-mono text-xs">
+              Trailing SL: <strong className="text-amber-800 font-bold text-sm">{formatCurrency(trailingStopPrice, currencySymbol)}</strong>
+            </div>
+            <ul className="text-[11px] text-gray-600 space-y-1 list-disc pl-4 leading-normal">
+              <li><strong>Protect Runners:</strong> Once stock advances +15%+, ratchet stop to 8% below peak or rising 20d EMA.</li>
+              <li>"Never allow a double-digit gain to turn into a loss."</li>
+              <li>Eliminates emotional doubt while giving champions room to compound.</li>
+            </ul>
+          </div>
+
         </div>
       </div>
 
@@ -313,7 +348,7 @@ export const ExitSignals: React.FC<ExitSignalsProps> = ({ stock }) => {
           <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold">
             Select Preset Scenario Price Point:
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 text-xs">
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 text-xs">
             <button
               type="button"
               onClick={() => setTestPrice(stopLoss)}
@@ -351,6 +386,19 @@ export const ExitSignals: React.FC<ExitSignalsProps> = ({ stock }) => {
             >
               <span className="text-[9px] block text-blue-700 uppercase">+8% Breakeven</span>
               <span>{formatCurrency(breakevenTrigger, currencySymbol)}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setTestPrice(trailingStopPrice)}
+              className={`p-2 border text-center transition-all cursor-pointer ${
+                testPrice === trailingStopPrice
+                  ? 'bg-amber-900 text-white border-amber-900 font-bold'
+                  : 'bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100'
+              }`}
+            >
+              <span className="text-[9px] block text-amber-700 uppercase">Trailing SL (-8%)</span>
+              <span>{formatCurrency(trailingStopPrice, currencySymbol)}</span>
             </button>
 
             <button

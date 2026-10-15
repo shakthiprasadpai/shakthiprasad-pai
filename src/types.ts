@@ -371,6 +371,12 @@ export interface PortfolioHolding {
   sma50?: number;
   sma200?: number;
   vcpStage?: string;
+  // Trailing Stop Loss
+  isTrailingStopEnabled?: boolean;
+  trailingStopPrice?: number;
+  trailingStopPercent?: number;
+  trailingPeakPrice?: number;
+  trailingStopType?: 'PERCENT' | 'ATR' | 'EMA20' | 'SMA50' | 'BREAKEVEN';
 }
 
 export interface MinerviniVideoLesson {
@@ -793,6 +799,9 @@ export interface FivePaisaOrder {
   rejectionReason?: string;
   placedTime: string;
   minerviniSetupTag?: string;
+  isTrailingStopEnabled?: boolean;
+  trailingStopDistance?: number;
+  trailingStopPrice?: number;
 }
 
 export interface FivePaisaOrderRequest {
@@ -806,6 +815,9 @@ export interface FivePaisaOrderRequest {
   stopLossPrice?: number;
   targetPrice?: number;
   minerviniSetupTag?: string;
+  isTrailingStopEnabled?: boolean;
+  trailingStopDistance?: number;
+  trailingStopPrice?: number;
 }
 
 export interface FivePaisaAccountStatus {

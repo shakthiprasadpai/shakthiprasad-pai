@@ -1610,6 +1610,9 @@ Respond with valid JSON only.`;
         triggerPrice: parsedPrice,
         stopLossPrice: stopLossPrice ? parseFloat(stopLossPrice) : undefined,
         targetPrice: targetPrice ? parseFloat(targetPrice) : undefined,
+        isTrailingStopEnabled: Boolean(req.body.isTrailingStopEnabled),
+        trailingStopDistance: req.body.trailingStopDistance ? parseFloat(req.body.trailingStopDistance) : undefined,
+        trailingStopPrice: req.body.trailingStopPrice ? parseFloat(req.body.trailingStopPrice) : undefined,
         orderStatus: isExecuted ? 'Executed' : 'Pending',
         placedTime: new Date().toLocaleTimeString() + ' IST',
         minerviniSetupTag: minerviniSetupTag || 'Minervini SEPA Breakout'

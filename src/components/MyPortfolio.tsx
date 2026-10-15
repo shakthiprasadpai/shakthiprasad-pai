@@ -16,6 +16,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   ShieldAlert,
+  ShieldCheck,
   Target,
   BarChart3,
   DollarSign,
@@ -32,7 +33,10 @@ import {
   GripVertical,
   ListOrdered,
   Cloud,
-  Zap
+  Zap,
+  Lock,
+  Sliders,
+  Check
 } from 'lucide-react';
 import { fetchFivePaisaHoldings, sync5paisaToMinerviniPortfolio } from '../utils/fivePaisaService';
 
@@ -76,6 +80,11 @@ export const MyPortfolio: React.FC<MyPortfolioProps> = ({
         sma50: 121.5,
         sma200: 105.0,
         vcpStage: 'Active Breakout',
+        isTrailingStopEnabled: true,
+        trailingStopPrice: 128.5,
+        trailingStopPercent: 5.0,
+        trailingPeakPrice: 135.2,
+        trailingStopType: 'BREAKEVEN',
       },
       {
         id: 'hold-2',
@@ -93,6 +102,11 @@ export const MyPortfolio: React.FC<MyPortfolioProps> = ({
         sma50: 12400.0,
         sma200: 10800.0,
         vcpStage: 'Active Breakout',
+        isTrailingStopEnabled: true,
+        trailingStopPrice: 12742.0,
+        trailingStopPercent: 8.0,
+        trailingPeakPrice: 13850.0,
+        trailingStopType: 'PERCENT',
       },
     ];
   });
@@ -130,6 +144,11 @@ export const MyPortfolio: React.FC<MyPortfolioProps> = ({
               sma50: Number(data.sma50) || 0,
               sma200: Number(data.sma200) || 0,
               vcpStage: data.vcpStage || 'Active Breakout',
+              isTrailingStopEnabled: Boolean(data.isTrailingStopEnabled),
+              trailingStopPrice: data.trailingStopPrice ? Number(data.trailingStopPrice) : undefined,
+              trailingStopPercent: data.trailingStopPercent ? Number(data.trailingStopPercent) : undefined,
+              trailingPeakPrice: data.trailingPeakPrice ? Number(data.trailingPeakPrice) : undefined,
+              trailingStopType: data.trailingStopType || 'PERCENT',
             });
           });
           setHoldings(cloudItems);
@@ -280,6 +299,14 @@ export const MyPortfolio: React.FC<MyPortfolioProps> = ({
   );
   const [notesInput, setNotesInput] = useState<string>('');
 
+  // Trailing Stop Loss Form & Quick Modal State
+  const [isTrailingEnabledInput, setIsTrailingEnabledInput] = useState<boolean>(false);
+  const [trailingPercentInput, setTrailingPercentInput] = useState<string>('8.0');
+  const [trailingTypeInput, setTrailingTypeInput] = useState<'PERCENT' | 'ATR' | 'BREAKEVEN'>('PERCENT');
+
+  const [trailModalHolding, setTrailModalHolding] = useState<PortfolioHolding | null>(null);
+  const [quickTrailPercent, setQuickTrailPercent] = useState<number>(8.0);
+
   const calculateDaysHeld = (dateStr: string): number | null => {
     if (!dateStr) return null;
     const entryDateObj = new Date(dateStr + 'T00:00:00');
@@ -291,7 +318,7 @@ export const MyPortfolio: React.FC<MyPortfolioProps> = ({
     return Math.max(0, diffDays);
   };
 
-  // Sync current prices and saved trade entry dates from live stock feed & localStorage
+  // Sync current prices and saved trade entry dates from live stock feed & localStorage with auto-ratchet for trailing stops
   useEffect(() => {
     setHoldings((prevHoldings) =>
       prevHoldings.map((h) => {
@@ -304,20 +331,36 @@ export const MyPortfolio: React.FC<MyPortfolioProps> = ({
         } catch (e) {}
 
         const liveStock = stocks.find((s) => s.ticker === h.ticker);
-        if (liveStock) {
-          return {
-            ...h,
-            buyDate: syncedDate,
-            currentPrice: liveStock.currentPrice,
-            trendScore: liveStock.trendScore,
-            sma50: liveStock.sma50,
-            sma200: liveStock.sma200,
-            vcpStage: liveStock.vcpStage,
-          };
+        const currentP = liveStock ? liveStock.currentPrice : h.currentPrice;
+
+        // Auto-ratchet peak price and trailing stop upward only
+        const newPeak = Math.max(h.trailingPeakPrice || h.entryPrice, currentP);
+        let newTrailPrice = h.trailingStopPrice;
+
+        if (h.isTrailingStopEnabled) {
+          if (h.trailingStopType === 'BREAKEVEN') {
+            newTrailPrice = h.entryPrice;
+          } else if (h.trailingStopType === 'ATR') {
+            const atrVal = liveStock?.atr14 || (h.entryPrice * 0.03);
+            const rawTrail = Number((newPeak - 2 * atrVal).toFixed(2));
+            newTrailPrice = Math.max(h.stopLossPrice, Math.max(h.trailingStopPrice || 0, rawTrail));
+          } else {
+            const pct = h.trailingStopPercent || 8.0;
+            const rawTrail = Number((newPeak * (1 - pct / 100)).toFixed(2));
+            newTrailPrice = Math.max(h.stopLossPrice, Math.max(h.trailingStopPrice || 0, rawTrail));
+          }
         }
+
         return {
           ...h,
           buyDate: syncedDate,
+          currentPrice: currentP,
+          trendScore: liveStock ? liveStock.trendScore : h.trendScore,
+          sma50: liveStock ? liveStock.sma50 : h.sma50,
+          sma200: liveStock ? liveStock.sma200 : h.sma200,
+          vcpStage: liveStock ? liveStock.vcpStage : h.vcpStage,
+          trailingPeakPrice: newPeak,
+          trailingStopPrice: newTrailPrice,
         };
       })
     );
@@ -341,6 +384,7 @@ export const MyPortfolio: React.FC<MyPortfolioProps> = ({
       setEntryPriceInput(matched.pivotPrice.toString());
       setStopLossInput(matched.stopLossPrice.toString());
       setTargetPriceInput(matched.target1Price.toString());
+      setTrailingPercentInput('8.0');
     }
   };
 
@@ -363,6 +407,22 @@ export const MyPortfolio: React.FC<MyPortfolioProps> = ({
       console.error(err);
     }
 
+    const currentLivePrice = matchedStock ? matchedStock.currentPrice : entryNum;
+    const peakPrice = Math.max(currentLivePrice, entryNum);
+
+    let trailPriceCalculated: number | undefined = undefined;
+    if (isTrailingEnabledInput) {
+      if (trailingTypeInput === 'BREAKEVEN') {
+        trailPriceCalculated = entryNum;
+      } else if (trailingTypeInput === 'ATR') {
+        const atr = matchedStock?.atr14 || (entryNum * 0.03);
+        trailPriceCalculated = Math.max(stopNum, Number((peakPrice - 2 * atr).toFixed(2)));
+      } else {
+        const pct = parseFloat(trailingPercentInput) || 8.0;
+        trailPriceCalculated = Math.max(stopNum, Number((peakPrice * (1 - pct / 100)).toFixed(2)));
+      }
+    }
+
     if (editingHoldingId) {
       const updatedHolding: PortfolioHolding = {
         ...(holdings.find((h) => h.id === editingHoldingId) || {}),
@@ -372,7 +432,7 @@ export const MyPortfolio: React.FC<MyPortfolioProps> = ({
         exchange: matchedStock ? matchedStock.exchange : 'NASDAQ',
         shares: sharesNum,
         entryPrice: entryNum,
-        currentPrice: matchedStock ? matchedStock.currentPrice : entryNum,
+        currentPrice: currentLivePrice,
         stopLossPrice: stopNum,
         pivotTargetPrice: targetNum,
         buyDate: buyDateInput,
@@ -381,6 +441,11 @@ export const MyPortfolio: React.FC<MyPortfolioProps> = ({
         sma50: matchedStock ? matchedStock.sma50 : entryNum * 0.95,
         sma200: matchedStock ? matchedStock.sma200 : entryNum * 0.85,
         vcpStage: matchedStock ? matchedStock.vcpStage : 'Active Breakout',
+        isTrailingStopEnabled: isTrailingEnabledInput,
+        trailingStopType: isTrailingEnabledInput ? trailingTypeInput : undefined,
+        trailingStopPercent: isTrailingEnabledInput ? parseFloat(trailingPercentInput) || 8.0 : undefined,
+        trailingPeakPrice: peakPrice,
+        trailingStopPrice: trailPriceCalculated,
       };
 
       setHoldings((prev) =>
@@ -401,7 +466,7 @@ export const MyPortfolio: React.FC<MyPortfolioProps> = ({
         exchange: matchedStock ? matchedStock.exchange : 'NASDAQ',
         shares: sharesNum,
         entryPrice: entryNum,
-        currentPrice: matchedStock ? matchedStock.currentPrice : entryNum,
+        currentPrice: currentLivePrice,
         buyDate: buyDateInput,
         stopLossPrice: stopNum,
         pivotTargetPrice: targetNum,
@@ -410,6 +475,11 @@ export const MyPortfolio: React.FC<MyPortfolioProps> = ({
         sma50: matchedStock ? matchedStock.sma50 : entryNum * 0.95,
         sma200: matchedStock ? matchedStock.sma200 : entryNum * 0.85,
         vcpStage: matchedStock ? matchedStock.vcpStage : 'Active Breakout',
+        isTrailingStopEnabled: isTrailingEnabledInput,
+        trailingStopType: isTrailingEnabledInput ? trailingTypeInput : undefined,
+        trailingStopPercent: isTrailingEnabledInput ? parseFloat(trailingPercentInput) || 8.0 : undefined,
+        trailingPeakPrice: peakPrice,
+        trailingStopPrice: trailPriceCalculated,
       };
 
       setHoldings([newHolding, ...holdings]);
@@ -445,6 +515,65 @@ export const MyPortfolio: React.FC<MyPortfolioProps> = ({
     }
   };
 
+  // Quick 1-click Trailing Stop preset applier
+  const handleApplyQuickTrail = (
+    holdingId: string,
+    type: 'PERCENT' | 'ATR' | 'BREAKEVEN' | 'DISABLE',
+    customPct?: number
+  ) => {
+    const targetHolding = holdings.find((h) => h.id === holdingId);
+    if (!targetHolding) return;
+
+    const matchedStock = stocks.find((s) => s.ticker === targetHolding.ticker);
+    const peak = Math.max(targetHolding.trailingPeakPrice || targetHolding.entryPrice, targetHolding.currentPrice);
+
+    let isEnabled = true;
+    let newTrailPrice: number | undefined = undefined;
+    let chosenType: 'PERCENT' | 'ATR' | 'BREAKEVEN' = 'PERCENT';
+    let chosenPct = customPct !== undefined ? customPct : quickTrailPercent;
+
+    if (type === 'DISABLE') {
+      isEnabled = false;
+    } else if (type === 'BREAKEVEN') {
+      chosenType = 'BREAKEVEN';
+      newTrailPrice = targetHolding.entryPrice;
+      chosenPct = 0;
+    } else if (type === 'ATR') {
+      chosenType = 'ATR';
+      const atr = matchedStock?.atr14 || (targetHolding.entryPrice * 0.03);
+      newTrailPrice = Math.max(targetHolding.stopLossPrice, Number((peak - 2 * atr).toFixed(2)));
+      chosenPct = Number(((2 * atr / peak) * 100).toFixed(1));
+    } else {
+      chosenType = 'PERCENT';
+      newTrailPrice = Math.max(targetHolding.stopLossPrice, Number((peak * (1 - chosenPct / 100)).toFixed(2)));
+    }
+
+    const updated: PortfolioHolding = {
+      ...targetHolding,
+      isTrailingStopEnabled: isEnabled,
+      trailingStopType: isEnabled ? chosenType : undefined,
+      trailingStopPercent: isEnabled ? chosenPct : undefined,
+      trailingPeakPrice: peak,
+      trailingStopPrice: isEnabled ? newTrailPrice : undefined,
+    };
+
+    setHoldings((prev) => prev.map((h) => (h.id === holdingId ? updated : h)));
+
+    if (user) {
+      setDoc(doc(db, 'users', user.uid, 'portfolio_holdings', holdingId), updated, { merge: true }).catch(
+        console.error
+      );
+    }
+
+    setReorderNotification(
+      isEnabled
+        ? `Activated Trailing Stop for ${targetHolding.ticker} at ${formatCurrency(newTrailPrice || 0, getCurrencySymbol(targetHolding.exchange))}`
+        : `Disabled Trailing Stop for ${targetHolding.ticker}`
+    );
+    setTimeout(() => setReorderNotification(null), 3500);
+    setTrailModalHolding(null);
+  };
+
   // Edit holding trigger
   const handleOpenEdit = (holding: PortfolioHolding) => {
     setEditingHoldingId(holding.id);
@@ -455,6 +584,9 @@ export const MyPortfolio: React.FC<MyPortfolioProps> = ({
     setTargetPriceInput(holding.pivotTargetPrice.toString());
     setBuyDateInput(holding.buyDate);
     setNotesInput(holding.notes || '');
+    setIsTrailingEnabledInput(Boolean(holding.isTrailingStopEnabled));
+    setTrailingPercentInput((holding.trailingStopPercent || 8.0).toString());
+    setTrailingTypeInput((holding.trailingStopType as any) || 'PERCENT');
     setIsAddModalOpen(true);
   };
 
@@ -469,6 +601,10 @@ export const MyPortfolio: React.FC<MyPortfolioProps> = ({
     let totalLosers = 0;
 
     let sepaViolations = 0;
+    let trailingEnabledCount = 0;
+    let trailingViolations = 0;
+    let profitProtectedUsd = 0;
+    let profitProtectedNse = 0;
 
     holdings.forEach((h) => {
       const cost = h.shares * h.entryPrice;
@@ -491,6 +627,23 @@ export const MyPortfolio: React.FC<MyPortfolioProps> = ({
       if (h.currentPrice <= h.stopLossPrice || (h.sma200 && h.currentPrice < h.sma200)) {
         sepaViolations++;
       }
+
+      // Trailing stop metrics
+      if (h.isTrailingStopEnabled) {
+        trailingEnabledCount++;
+        const effectiveTrail = h.trailingStopPrice || h.stopLossPrice;
+        if (h.currentPrice <= effectiveTrail) {
+          trailingViolations++;
+        }
+        if (effectiveTrail > h.entryPrice) {
+          const lockedGain = (effectiveTrail - h.entryPrice) * h.shares;
+          if (h.exchange === 'NSE' || h.exchange === 'BSE') {
+            profitProtectedNse += lockedGain;
+          } else {
+            profitProtectedUsd += lockedGain;
+          }
+        }
+      }
     });
 
     const pnlUsd = totalValueUsd - totalCostBasisUsd;
@@ -511,6 +664,10 @@ export const MyPortfolio: React.FC<MyPortfolioProps> = ({
       totalGainers,
       totalLosers,
       sepaViolations,
+      trailingEnabledCount,
+      trailingViolations,
+      profitProtectedUsd,
+      profitProtectedNse,
     };
   };
 
@@ -788,19 +945,19 @@ export const MyPortfolio: React.FC<MyPortfolioProps> = ({
       </div>
 
       {/* Portfolio Performance Summary Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
         
         {/* Card 1: US Growth Holdings P&L */}
         <div className="bg-[#f9f8f5] border border-[#e5e4e1] p-4 space-y-1.5">
           <div className="flex justify-between items-center text-[10px] font-mono text-gray-500 uppercase font-bold">
-            <span>🇺🇸 US Portfolio Market Value</span>
+            <span>🇺🇸 US Portfolio</span>
             <span>NASDAQ / NYSE</span>
           </div>
-          <div className="font-mono text-2xl font-black text-[#1a1a1a]">
+          <div className="font-mono text-xl font-black text-[#1a1a1a]">
             {formatCurrency(totals.totalValueUsd, '$')}
           </div>
           <div className="flex items-center justify-between text-xs font-mono pt-1 border-t border-[#e5e4e1]">
-            <span className="text-gray-500 text-[11px]">Unrealized P&L:</span>
+            <span className="text-gray-500 text-[10px]">P&L:</span>
             <span
               className={`font-extrabold flex items-center space-x-1 ${
                 totals.pnlUsd >= 0 ? 'text-emerald-700' : 'text-rose-600'
@@ -818,14 +975,14 @@ export const MyPortfolio: React.FC<MyPortfolioProps> = ({
         {/* Card 2: NSE India Growth Holdings P&L */}
         <div className="bg-[#f9f8f5] border border-[#e5e4e1] p-4 space-y-1.5">
           <div className="flex justify-between items-center text-[10px] font-mono text-gray-500 uppercase font-bold">
-            <span>🇮🇳 NSE India Market Value</span>
+            <span>🇮🇳 NSE India Value</span>
             <span>NSE Leader Stocks</span>
           </div>
-          <div className="font-mono text-2xl font-black text-[#1a1a1a]">
+          <div className="font-mono text-xl font-black text-[#1a1a1a]">
             {formatCurrency(totals.totalValueNse, '₹')}
           </div>
           <div className="flex items-center justify-between text-xs font-mono pt-1 border-t border-[#e5e4e1]">
-            <span className="text-gray-500 text-[11px]">Unrealized P&L:</span>
+            <span className="text-gray-500 text-[10px]">P&L:</span>
             <span
               className={`font-extrabold flex items-center space-x-1 ${
                 totals.pnlNse >= 0 ? 'text-emerald-700' : 'text-rose-600'
@@ -840,45 +997,73 @@ export const MyPortfolio: React.FC<MyPortfolioProps> = ({
           </div>
         </div>
 
-        {/* Card 3: SEPA Risk Health Score */}
+        {/* Card 3: Trailing Stop Loss Guard */}
+        <div className="bg-gradient-to-br from-amber-50 to-white border border-amber-300 p-4 space-y-1.5 shadow-xs">
+          <div className="flex justify-between items-center text-[10px] font-mono text-amber-900 uppercase font-bold">
+            <span className="flex items-center space-x-1">
+              <ShieldCheck className="w-3.5 h-3.5 text-amber-600" />
+              <span>Trailing Stop Guard</span>
+            </span>
+            <span className="bg-amber-500 text-black px-1.5 py-0.2 text-[9px] font-black font-mono">
+              {totals.trailingEnabledCount}/{holdings.length} Active
+            </span>
+          </div>
+          <div className="font-mono text-xl font-black text-[#1a1a1a]">
+            {totals.profitProtectedNse > 0 || totals.profitProtectedUsd > 0 ? (
+              <span className="text-emerald-700">
+                +{formatCurrency(totals.profitProtectedUsd + totals.profitProtectedNse * 0.012, '$')}
+              </span>
+            ) : (
+              <span className="text-gray-600 text-sm">Capital Preserved</span>
+            )}
+          </div>
+          <div className="flex justify-between text-[11px] font-mono text-gray-600 pt-1 border-t border-amber-200">
+            <span>{totals.trailingViolations > 0 ? '🚨 Trailing Triggered:' : 'Profit Protection:'}</span>
+            <strong className={totals.trailingViolations > 0 ? 'text-rose-600 font-bold animate-pulse' : 'text-emerald-700 font-bold'}>
+              {totals.trailingViolations > 0 ? `${totals.trailingViolations} Need Exit` : 'Locked Above Cost'}
+            </strong>
+          </div>
+        </div>
+
+        {/* Card 4: SEPA Risk Health Score */}
         <div className="bg-[#f9f8f5] border border-[#e5e4e1] p-4 space-y-1.5">
           <div className="flex justify-between items-center text-[10px] font-mono text-gray-500 uppercase font-bold">
             <span>SEPA Health Status</span>
-            <span>Stage 2 & Stop Checks</span>
+            <span>Stage 2 & Stops</span>
           </div>
           <div className="flex items-center space-x-2">
             {totals.sepaViolations === 0 ? (
               <div className="flex items-center space-x-1 text-emerald-800 bg-emerald-100 px-2.5 py-1 text-xs font-mono font-bold">
                 <CheckCircle2 className="w-4 h-4" />
-                <span>100% SEPA Compliant</span>
+                <span>100% Compliant</span>
               </div>
             ) : (
               <div className="flex items-center space-x-1 text-rose-800 bg-rose-100 px-2.5 py-1 text-xs font-mono font-bold animate-pulse">
                 <AlertTriangle className="w-4 h-4 text-rose-600" />
-                <span>{totals.sepaViolations} SEPA Violations</span>
+                <span>{totals.sepaViolations} Violations</span>
               </div>
             )}
           </div>
-          <p className="text-[11px] font-serif italic text-gray-600 pt-1 border-t border-[#e5e4e1]">
+          <p className="text-[10px] font-serif italic text-gray-600 pt-1 border-t border-[#e5e4e1] truncate">
             {totals.sepaViolations === 0
-              ? 'All positions strictly above Stage 2 moving averages & stop losses.'
-              : 'Action Required: Position hit stop-loss or lost 200-day moving average.'}
+              ? 'All positions above Stage 2 MAs & stops.'
+              : 'Action: Stop hit or lost 200 SMA.'}
           </p>
         </div>
 
-        {/* Card 4: Position Win/Loss Ratio */}
+        {/* Card 5: Position Win/Loss Ratio */}
         <div className="bg-[#f9f8f5] border border-[#e5e4e1] p-4 space-y-1.5">
           <div className="flex justify-between items-center text-[10px] font-mono text-gray-500 uppercase font-bold">
             <span>Win / Loss Breadth</span>
             <span>Batting Average</span>
           </div>
-          <div className="font-mono text-xl font-bold text-[#1a1a1a] flex items-center space-x-3">
-            <span className="text-emerald-700 font-black">{totals.totalGainers} Gainers</span>
+          <div className="font-mono text-lg font-bold text-[#1a1a1a] flex items-center space-x-2">
+            <span className="text-emerald-700 font-black">{totals.totalGainers} Win</span>
             <span className="text-gray-300">/</span>
-            <span className="text-rose-600 font-black">{totals.totalLosers} Losers</span>
+            <span className="text-rose-600 font-black">{totals.totalLosers} Loss</span>
           </div>
           <div className="flex justify-between text-[11px] font-mono text-gray-500 pt-1 border-t border-[#e5e4e1]">
-            <span>Total Active Holdings:</span>
+            <span>Active Positions:</span>
             <strong className="text-[#1a1a1a] font-bold">{holdings.length} Positions</strong>
           </div>
         </div>
@@ -958,7 +1143,8 @@ export const MyPortfolio: React.FC<MyPortfolioProps> = ({
               <th className="py-3 px-4">Cost Basis</th>
               <th className="py-3 px-4">Current Price</th>
               <th className="py-3 px-4 font-mono text-right">Unrealized P&L</th>
-              <th className="py-3 px-4 text-center">SEPA Stage & Stop Check</th>
+              <th className="py-3 px-4 text-center">Stop & Trailing TSL</th>
+              <th className="py-3 px-4 text-center">SEPA Compliance</th>
               <th className="py-3 px-4 text-center">Execution Plan</th>
               <th className="py-3 px-4 text-right">Actions</th>
             </tr>
@@ -966,7 +1152,7 @@ export const MyPortfolio: React.FC<MyPortfolioProps> = ({
           <tbody className="divide-y divide-[#e5e4e1] text-xs">
             {holdings.length === 0 ? (
               <tr>
-                <td colSpan={9} className="py-12 text-center text-gray-500 font-serif italic text-sm">
+                <td colSpan={10} className="py-12 text-center text-gray-500 font-serif italic text-sm">
                   No actual portfolio holdings tracked yet. Click "Add Portfolio Holding" to monitor your positions.
                 </td>
               </tr>
@@ -978,13 +1164,28 @@ export const MyPortfolio: React.FC<MyPortfolioProps> = ({
                 const pnl = currentValue - totalCost;
                 const pnlPercent = totalCost > 0 ? (pnl / totalCost) * 100 : 0;
 
-                const isStopViolated = h.currentPrice <= h.stopLossPrice;
-                const isTargetReached = h.currentPrice >= h.pivotTargetPrice;
-                const isStage2Intact = !h.sma200 || h.currentPrice >= h.sma200;
-
                 const matchedStock = stocks.find((s) => s.ticker === h.ticker);
                 const holdingSector = matchedStock?.sector?.trim() || (h.exchange === 'NSE' ? 'NSE Growth Leader' : 'Technology / Growth');
                 const isSectorMatch = selectedSectorFilter ? holdingSector.toLowerCase() === selectedSectorFilter.toLowerCase() : true;
+
+                const peakPrice = Math.max(h.trailingPeakPrice || h.entryPrice, h.currentPrice);
+                let effectiveTrail = h.trailingStopPrice;
+                if (h.isTrailingStopEnabled && !effectiveTrail) {
+                  if (h.trailingStopType === 'BREAKEVEN') {
+                    effectiveTrail = h.entryPrice;
+                  } else if (h.trailingStopType === 'ATR') {
+                    const atr = matchedStock?.atr14 || (h.entryPrice * 0.03);
+                    effectiveTrail = Math.max(h.stopLossPrice, Number((peakPrice - 2 * atr).toFixed(2)));
+                  } else {
+                    const pct = h.trailingStopPercent || 8.0;
+                    effectiveTrail = Math.max(h.stopLossPrice, Number((peakPrice * (1 - pct / 100)).toFixed(2)));
+                  }
+                }
+
+                const isStopViolated = h.currentPrice <= h.stopLossPrice;
+                const isTrailViolated = Boolean(h.isTrailingStopEnabled && effectiveTrail && h.currentPrice <= effectiveTrail);
+                const isTargetReached = h.currentPrice >= h.pivotTargetPrice;
+                const isStage2Intact = !h.sma200 || h.currentPrice >= h.sma200;
 
                 return (
                   <tr
@@ -1005,6 +1206,8 @@ export const MyPortfolio: React.FC<MyPortfolioProps> = ({
                         ? 'bg-amber-50/70 border-l-4 border-l-amber-500'
                         : isStopViolated
                         ? 'bg-rose-50/80 border-l-4 border-l-rose-600'
+                        : isTrailViolated
+                        ? 'bg-amber-50/90 border-l-4 border-l-amber-500'
                         : isTargetReached
                         ? 'bg-emerald-50/80 border-l-4 border-l-emerald-600'
                         : 'hover:bg-gray-50/80'
@@ -1092,8 +1295,9 @@ export const MyPortfolio: React.FC<MyPortfolioProps> = ({
                       <div className="font-extrabold text-sm text-[#1a1a1a]">
                         {formatCurrency(h.currentPrice, currency)}
                       </div>
-                      <div className="text-[10px] text-gray-500">
-                        Stop Level: {formatCurrency(h.stopLossPrice, currency)}
+                      <div className="text-[10px] text-gray-500 flex items-center space-x-1">
+                        <span>Peak:</span>
+                        <strong className="text-gray-700">{formatCurrency(peakPrice, currency)}</strong>
                       </div>
                     </td>
 
@@ -1120,12 +1324,80 @@ export const MyPortfolio: React.FC<MyPortfolioProps> = ({
                       </div>
                     </td>
 
+                    {/* Stop & Trailing Stop Loss */}
+                    <td className="py-4 px-4 font-mono">
+                      <div className="flex flex-col space-y-1 min-w-[140px]">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-gray-500 text-[10px]">Hard Stop:</span>
+                          <span className={`font-bold ${isStopViolated ? 'text-rose-600' : 'text-gray-700'}`}>
+                            {formatCurrency(h.stopLossPrice, currency)}
+                          </span>
+                        </div>
+
+                        {h.isTrailingStopEnabled ? (
+                          <div className="p-1.5 bg-amber-500/10 border border-amber-500/30 text-[10px]">
+                            <div className="flex items-center justify-between font-bold">
+                              <span className="flex items-center space-x-1 text-amber-700">
+                                <ShieldCheck className="w-3 h-3 text-amber-600" />
+                                <span>Trailing:</span>
+                              </span>
+                              <span className={isTrailViolated ? 'text-rose-600 line-through' : 'text-amber-900 font-extrabold'}>
+                                {formatCurrency(effectiveTrail || h.stopLossPrice, currency)}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between text-[9px] text-gray-500 mt-0.5">
+                              <span>Peak: {formatCurrency(peakPrice, currency)}</span>
+                              <span className="text-amber-800 font-semibold">
+                                {h.trailingStopType === 'BREAKEVEN'
+                                  ? '🔒 Breakeven'
+                                  : `-${h.trailingStopPercent || 8}%`}
+                              </span>
+                            </div>
+                            {isTrailViolated ? (
+                              <div className="mt-1 text-[9px] font-bold text-white bg-rose-600 px-1 py-0.5 text-center animate-pulse">
+                                🚨 TRAIL HIT — LOCK PROFIT!
+                              </div>
+                            ) : effectiveTrail && effectiveTrail > h.entryPrice ? (
+                              <div className="mt-0.5 text-[8.5px] font-bold text-emerald-700">
+                                🔒 +{(((effectiveTrail - h.entryPrice) / h.entryPrice) * 100).toFixed(1)}% Locked
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <div className="text-[10px] text-gray-400 italic">
+                            No trailing stop active
+                          </div>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTrailModalHolding(h);
+                            setQuickTrailPercent(h.trailingStopPercent || 8.0);
+                          }}
+                          className={`mt-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center space-x-1 transition-all cursor-pointer border ${
+                            h.isTrailingStopEnabled
+                              ? 'bg-amber-100 hover:bg-amber-200 text-amber-900 border-amber-300'
+                              : 'bg-white hover:bg-gray-100 text-gray-700 border-gray-300 hover:border-black'
+                          }`}
+                        >
+                          <ShieldCheck className="w-3 h-3 text-amber-600" />
+                          <span>{h.isTrailingStopEnabled ? 'Adjust Trail' : '+ Set Trail Stop'}</span>
+                        </button>
+                      </div>
+                    </td>
+
                     {/* SEPA Stage & Risk Compliance Check */}
                     <td className="py-4 px-4 text-center font-mono">
                       {isStopViolated ? (
                         <span className="inline-flex items-center space-x-1 bg-rose-800 text-white px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider animate-pulse">
                           <ShieldAlert className="w-3.5 h-3.5" />
                           <span>STOP HIT — CUT LOSS!</span>
+                        </span>
+                      ) : isTrailViolated ? (
+                        <span className="inline-flex items-center space-x-1 bg-amber-600 text-white px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider animate-pulse">
+                          <ShieldAlert className="w-3.5 h-3.5" />
+                          <span>TRAIL HIT — LOCK PROFIT!</span>
                         </span>
                       ) : isTargetReached ? (
                         <span className="inline-flex items-center space-x-1 bg-emerald-800 text-white px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider">
@@ -1335,6 +1607,93 @@ export const MyPortfolio: React.FC<MyPortfolioProps> = ({
                 </div>
               </div>
 
+              {/* Trailing Stop Loss Form Section */}
+              <div className="p-3 bg-amber-500/10 border border-amber-500/30 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isTrailingEnabledInput}
+                      onChange={(e) => setIsTrailingEnabledInput(e.target.checked)}
+                      className="w-4 h-4 text-amber-600 rounded-none border-gray-300 focus:ring-amber-500 cursor-pointer"
+                    />
+                    <span className="font-bold text-gray-900 flex items-center space-x-1.5">
+                      <ShieldCheck className="w-4 h-4 text-amber-600" />
+                      <span>Enable Dynamic Trailing Stop Loss</span>
+                    </span>
+                  </label>
+                  {isTrailingEnabledInput && (
+                    <span className="text-[9px] bg-amber-500 text-black px-1.5 py-0.2 font-black uppercase">
+                      TSL Active
+                    </span>
+                  )}
+                </div>
+
+                {isTrailingEnabledInput && (
+                  <div className="pt-2 border-t border-amber-500/20 space-y-2">
+                    <div className="grid grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTrailingTypeInput('PERCENT');
+                          setTrailingPercentInput('8.0');
+                        }}
+                        className={`p-1.5 text-center border font-bold text-[10px] uppercase transition-colors cursor-pointer ${
+                          trailingTypeInput === 'PERCENT' && trailingPercentInput === '8.0'
+                            ? 'bg-amber-500 text-black border-amber-600'
+                            : 'bg-white border-gray-300 text-gray-700'
+                        }`}
+                      >
+                        8% Standard
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTrailingTypeInput('PERCENT');
+                          setTrailingPercentInput('5.0');
+                        }}
+                        className={`p-1.5 text-center border font-bold text-[10px] uppercase transition-colors cursor-pointer ${
+                          trailingTypeInput === 'PERCENT' && trailingPercentInput === '5.0'
+                            ? 'bg-amber-500 text-black border-amber-600'
+                            : 'bg-white border-gray-300 text-gray-700'
+                        }`}
+                      >
+                        5% Tight
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTrailingTypeInput('BREAKEVEN')}
+                        className={`p-1.5 text-center border font-bold text-[10px] uppercase transition-colors cursor-pointer ${
+                          trailingTypeInput === 'BREAKEVEN'
+                            ? 'bg-amber-500 text-black border-amber-600'
+                            : 'bg-white border-gray-300 text-gray-700'
+                        }`}
+                      >
+                        🔒 Breakeven
+                      </button>
+                    </div>
+
+                    {trailingTypeInput === 'PERCENT' && (
+                      <div className="flex items-center space-x-2 pt-1">
+                        <span className="text-[10px] text-gray-600">Trail Offset (%):</span>
+                        <input
+                          type="number"
+                          step="0.5"
+                          min="1"
+                          max="25"
+                          value={trailingPercentInput}
+                          onChange={(e) => setTrailingPercentInput(e.target.value)}
+                          className="w-20 bg-white border border-[#e5e4e1] p-1.5 text-xs font-bold text-[#1a1a1a] focus:outline-none"
+                        />
+                        <span className="text-[10px] text-gray-500">
+                          (Trails {trailingPercentInput}% below peak)
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
               <div className="flex items-center justify-end space-x-2 pt-3 border-t border-[#e5e4e1]">
                 <button
                   type="button"
@@ -1352,6 +1711,210 @@ export const MyPortfolio: React.FC<MyPortfolioProps> = ({
               </div>
             </form>
 
+          </div>
+        </div>
+      )}
+
+      {/* Quick Trailing Stop Adjuster Modal */}
+      {trailModalHolding && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border-2 border-[#1a1a1a] max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-[#e5e4e1] pb-3">
+              <div className="flex items-center space-x-2">
+                <div className="w-8 h-8 bg-amber-500 text-black flex items-center justify-center font-bold">
+                  <ShieldCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-serif font-black text-[#1a1a1a]">
+                    Trailing Stop Loss (TSL) Manager
+                  </h3>
+                  <div className="text-[11px] font-mono text-gray-500">
+                    {trailModalHolding.ticker} ({trailModalHolding.stockName}) • {trailModalHolding.exchange}
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => setTrailModalHolding(null)}
+                className="text-gray-400 hover:text-black p-1 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Position Reference Metrics */}
+            <div className="grid grid-cols-4 gap-2 font-mono text-center text-xs">
+              <div className="p-2 bg-gray-50 border border-gray-200">
+                <div className="text-[9px] uppercase text-gray-500">Entry Cost</div>
+                <div className="font-bold">{formatCurrency(trailModalHolding.entryPrice, getCurrencySymbol(trailModalHolding.exchange))}</div>
+              </div>
+              <div className="p-2 bg-gray-50 border border-gray-200">
+                <div className="text-[9px] uppercase text-gray-500">Current LTP</div>
+                <div className="font-bold text-amber-600">{formatCurrency(trailModalHolding.currentPrice, getCurrencySymbol(trailModalHolding.exchange))}</div>
+              </div>
+              <div className="p-2 bg-gray-50 border border-gray-200">
+                <div className="text-[9px] uppercase text-gray-500">Peak High</div>
+                <div className="font-bold text-emerald-700">
+                  {formatCurrency(Math.max(trailModalHolding.trailingPeakPrice || trailModalHolding.entryPrice, trailModalHolding.currentPrice), getCurrencySymbol(trailModalHolding.exchange))}
+                </div>
+              </div>
+              <div className="p-2 bg-gray-50 border border-gray-200">
+                <div className="text-[9px] uppercase text-gray-500">Hard Stop</div>
+                <div className="font-bold text-rose-600">{formatCurrency(trailModalHolding.stopLossPrice, getCurrencySymbol(trailModalHolding.exchange))}</div>
+              </div>
+            </div>
+
+            {/* Presets Grid */}
+            <div className="space-y-2">
+              <label className="block text-[11px] font-mono font-bold uppercase text-gray-700">
+                Minervini Trailing Stop Presets (1-Click Apply):
+              </label>
+
+              <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+                {/* Preset 1: Lock Breakeven */}
+                <button
+                  type="button"
+                  onClick={() => handleApplyQuickTrail(trailModalHolding.id, 'BREAKEVEN')}
+                  className="p-3 text-left border border-blue-300 bg-blue-50/60 hover:bg-blue-100 transition-colors flex flex-col justify-between group cursor-pointer"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-blue-900 flex items-center space-x-1">
+                      <Lock className="w-3.5 h-3.5 text-blue-700" />
+                      <span>Lock Breakeven</span>
+                    </span>
+                    <span className="text-[10px] bg-blue-200 text-blue-900 px-1.5 py-0.2 font-bold">0% Risk</span>
+                  </div>
+                  <div className="text-[10px] text-blue-800 mt-1">
+                    Stop at {formatCurrency(trailModalHolding.entryPrice, getCurrencySymbol(trailModalHolding.exchange))} (Cost basis)
+                  </div>
+                  <div className="text-[9px] text-gray-500 mt-0.5">Eliminates downside capital loss.</div>
+                </button>
+
+                {/* Preset 2: 8% Standard Minervini Trail */}
+                <button
+                  type="button"
+                  onClick={() => handleApplyQuickTrail(trailModalHolding.id, 'PERCENT', 8.0)}
+                  className="p-3 text-left border border-amber-300 bg-amber-50/60 hover:bg-amber-100 transition-colors flex flex-col justify-between group cursor-pointer"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-amber-900 flex items-center space-x-1">
+                      <ShieldCheck className="w-3.5 h-3.5 text-amber-600" />
+                      <span>8% Standard Trail</span>
+                    </span>
+                    <span className="text-[10px] bg-amber-200 text-amber-900 px-1.5 py-0.2 font-bold">-8.0%</span>
+                  </div>
+                  <div className="text-[10px] text-amber-800 mt-1">
+                    Stop at {formatCurrency(Math.max(trailModalHolding.trailingPeakPrice || trailModalHolding.entryPrice, trailModalHolding.currentPrice) * 0.92, getCurrencySymbol(trailModalHolding.exchange))}
+                  </div>
+                  <div className="text-[9px] text-gray-500 mt-0.5">Minervini SEPA swing runner trail.</div>
+                </button>
+
+                {/* Preset 3: 5% Tight Profit Guard */}
+                <button
+                  type="button"
+                  onClick={() => handleApplyQuickTrail(trailModalHolding.id, 'PERCENT', 5.0)}
+                  className="p-3 text-left border border-emerald-300 bg-emerald-50/60 hover:bg-emerald-100 transition-colors flex flex-col justify-between group cursor-pointer"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-emerald-900 flex items-center space-x-1">
+                      <Zap className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>5% Tight Trail</span>
+                    </span>
+                    <span className="text-[10px] bg-emerald-200 text-emerald-900 px-1.5 py-0.2 font-bold">-5.0%</span>
+                  </div>
+                  <div className="text-[10px] text-emerald-800 mt-1">
+                    Stop at {formatCurrency(Math.max(trailModalHolding.trailingPeakPrice || trailModalHolding.entryPrice, trailModalHolding.currentPrice) * 0.95, getCurrencySymbol(trailModalHolding.exchange))}
+                  </div>
+                  <div className="text-[9px] text-gray-500 mt-0.5">Tight defense on steep vertical acceleration.</div>
+                </button>
+
+                {/* Preset 4: 2x ATR Volatility Trail */}
+                <button
+                  type="button"
+                  onClick={() => handleApplyQuickTrail(trailModalHolding.id, 'ATR')}
+                  className="p-3 text-left border border-purple-300 bg-purple-50/60 hover:bg-purple-100 transition-colors flex flex-col justify-between group cursor-pointer"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-purple-900 flex items-center space-x-1">
+                      <Sliders className="w-3.5 h-3.5 text-purple-600" />
+                      <span>2x ATR Trail</span>
+                    </span>
+                    <span className="text-[10px] bg-purple-200 text-purple-900 px-1.5 py-0.2 font-bold">Volatility</span>
+                  </div>
+                  <div className="text-[10px] text-purple-800 mt-1">
+                    Dynamic buffer based on 14-day True Range
+                  </div>
+                  <div className="text-[9px] text-gray-500 mt-0.5">Adapts to stock's actual daily volatility.</div>
+                </button>
+              </div>
+            </div>
+
+            {/* Custom Trail Percentage Input */}
+            <div className="p-3 bg-gray-50 border border-gray-200 space-y-2">
+              <div className="flex items-center justify-between text-xs font-mono font-bold text-gray-700">
+                <span>Custom Trail Distance Percentage:</span>
+                <span className="text-amber-600 font-extrabold">{quickTrailPercent}% Trail</span>
+              </div>
+              <div className="flex items-center space-x-3">
+                <input
+                  type="range"
+                  min="2"
+                  max="20"
+                  step="0.5"
+                  value={quickTrailPercent}
+                  onChange={(e) => setQuickTrailPercent(parseFloat(e.target.value))}
+                  className="w-full accent-amber-500 cursor-pointer"
+                />
+                <input
+                  type="number"
+                  min="1"
+                  max="25"
+                  step="0.5"
+                  value={quickTrailPercent}
+                  onChange={(e) => setQuickTrailPercent(parseFloat(e.target.value) || 5)}
+                  className="w-16 p-1 text-center font-mono text-xs font-bold border border-gray-300 bg-white"
+                />
+              </div>
+              <div className="flex items-center justify-between text-[11px] font-mono text-gray-600 pt-1 border-t border-gray-200">
+                <span>Projected Trail Level:</span>
+                <strong className="text-gray-900 font-bold">
+                  {formatCurrency(
+                    Math.max(
+                      trailModalHolding.stopLossPrice,
+                      Math.max(trailModalHolding.trailingPeakPrice || trailModalHolding.entryPrice, trailModalHolding.currentPrice) * (1 - quickTrailPercent / 100)
+                    ),
+                    getCurrencySymbol(trailModalHolding.exchange)
+                  )}
+                </strong>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex items-center justify-between pt-3 border-t border-[#e5e4e1] font-mono text-xs">
+              <button
+                type="button"
+                onClick={() => handleApplyQuickTrail(trailModalHolding.id, 'DISABLE')}
+                className="px-3 py-2 text-rose-700 hover:bg-rose-50 border border-rose-300 uppercase font-bold text-[10px] tracking-wider cursor-pointer transition-colors"
+              >
+                Disable Trailing Stop
+              </button>
+
+              <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setTrailModalHolding(null)}
+                  className="px-4 py-2 bg-white hover:bg-gray-100 text-gray-700 uppercase font-bold text-[10px] tracking-wider border border-[#e5e4e1] cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleApplyQuickTrail(trailModalHolding.id, 'PERCENT', quickTrailPercent)}
+                  className="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-black uppercase font-black text-[10px] tracking-wider border border-amber-600 cursor-pointer transition-all shadow-xs"
+                >
+                  Apply {quickTrailPercent}% Trail
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

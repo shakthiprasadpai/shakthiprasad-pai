@@ -50,6 +50,8 @@ export const FivePaisaOrderModal: React.FC<FivePaisaOrderModalProps> = ({
   const [stopLoss, setStopLoss] = useState<number>(stock.stopLossPrice || Number((stock.currentPrice * 0.94).toFixed(2)));
   const [targetPrice, setTargetPrice] = useState<number>(stock.target1Price || Number((stock.currentPrice * 1.20).toFixed(2)));
   const [riskPercentChoice, setRiskPercentChoice] = useState<number>(1.0); // 1% or 2% risk sizing
+  const [isTrailingEnabled, setIsTrailingEnabled] = useState<boolean>(false);
+  const [trailPercent, setTrailPercent] = useState<number>(8.0);
 
   useEffect(() => {
     if (isOpen) {
@@ -101,6 +103,10 @@ export const FivePaisaOrderModal: React.FC<FivePaisaOrderModalProps> = ({
     setIsSubmitting(true);
     setOrderStatusMessage(null);
 
+    const effectiveBasePrice = orderType === 'MARKET' ? stock.currentPrice : limitPrice;
+    const trailDist = Number(((effectiveBasePrice * trailPercent) / 100).toFixed(2));
+    const projectedTrailPrice = Math.max(0.01, Number((effectiveBasePrice - trailDist).toFixed(2)));
+
     const orderReq: FivePaisaOrderRequest = {
       symbol: stock.ticker,
       exchange: (stock.exchange === 'BSE' ? 'BSE' : 'NSE'),
@@ -108,10 +114,13 @@ export const FivePaisaOrderModal: React.FC<FivePaisaOrderModalProps> = ({
       orderType,
       productType,
       quantity,
-      price: orderType === 'MARKET' ? stock.currentPrice : limitPrice,
+      price: effectiveBasePrice,
       stopLossPrice: stopLoss,
       targetPrice,
-      minerviniSetupTag: `${stock.patternType} ${stock.vcpStage}`
+      minerviniSetupTag: `${stock.patternType} ${stock.vcpStage}`,
+      isTrailingStopEnabled: isTrailingEnabled,
+      trailingStopDistance: isTrailingEnabled ? trailDist : undefined,
+      trailingStopPrice: isTrailingEnabled ? projectedTrailPrice : undefined
     };
 
     const result = await placeFivePaisaOrder(orderReq);
@@ -406,6 +415,79 @@ export const FivePaisaOrderModal: React.FC<FivePaisaOrderModalProps> = ({
                       className="w-full p-2.5 font-mono text-sm font-bold border border-emerald-300 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-950/20 focus:outline-none focus:border-emerald-500"
                     />
                   </div>
+                </div>
+
+                {/* Trailing Stop Loss Control */}
+                <div className={`p-3.5 border transition-all ${
+                  isTrailingEnabled
+                    ? 'bg-amber-500/10 border-amber-500/40 text-amber-950 dark:text-amber-200'
+                    : isObsidian
+                    ? 'bg-[#181e2b] border-[#2a3243]'
+                    : 'bg-gray-50 border-gray-200'
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <label className="flex items-center space-x-2.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={isTrailingEnabled}
+                        onChange={(e) => setIsTrailingEnabled(e.target.checked)}
+                        className="w-4 h-4 text-amber-600 rounded-none border-gray-300 focus:ring-amber-500 cursor-pointer"
+                      />
+                      <span className="font-mono text-xs font-bold flex items-center space-x-1.5">
+                        <ShieldCheck className={`w-4 h-4 ${isTrailingEnabled ? 'text-amber-500' : 'text-gray-400'}`} />
+                        <span>Dynamic Trailing Stop Loss (TSL)</span>
+                      </span>
+                    </label>
+
+                    {isTrailingEnabled && (
+                      <span className="text-[10px] font-mono font-bold px-2 py-0.5 bg-amber-500 text-black uppercase">
+                        Active TSL
+                      </span>
+                    )}
+                  </div>
+
+                  {isTrailingEnabled && (
+                    <div className="mt-3 pt-3 border-t border-amber-500/20 space-y-2.5">
+                      <div className="flex items-center justify-between text-xs font-mono">
+                        <span className="text-gray-500 dark:text-gray-400">Trailing Trail Offset:</span>
+                        <div className="flex items-center space-x-1">
+                          {[5.0, 8.0, 10.0].map((pct) => (
+                            <button
+                              key={pct}
+                              type="button"
+                              onClick={() => setTrailPercent(pct)}
+                              className={`px-2 py-0.5 text-[10px] font-mono font-bold border transition-colors cursor-pointer ${
+                                trailPercent === pct
+                                  ? 'bg-amber-500 text-black border-amber-600'
+                                  : 'bg-white/60 dark:bg-black/30 border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300'
+                              }`}
+                            >
+                              {pct}%
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3 font-mono text-xs">
+                        <div className="p-2 bg-white/70 dark:bg-black/40 border border-amber-500/30">
+                          <div className="text-[10px] text-gray-500">Trailing Distance</div>
+                          <div className="font-bold text-amber-600 dark:text-amber-400">
+                            -₹{(((orderType === 'MARKET' ? stock.currentPrice : limitPrice) * trailPercent) / 100).toFixed(2)} ({trailPercent}%)
+                          </div>
+                        </div>
+                        <div className="p-2 bg-white/70 dark:bg-black/40 border border-amber-500/30">
+                          <div className="text-[10px] text-gray-500">Initial Trail Stop</div>
+                          <div className="font-bold text-gray-900 dark:text-white">
+                            ₹{Math.max(0.01, (orderType === 'MARKET' ? stock.currentPrice : limitPrice) * (1 - trailPercent / 100)).toFixed(2)}
+                          </div>
+                        </div>
+                      </div>
+
+                      <p className="text-[10px] text-gray-500 dark:text-gray-400 leading-tight">
+                        ⚡ <strong>Ratcheting Logic:</strong> As the stock price rallies, your stop loss automatically ratchets upward by {trailPercent}% below the highest peak price to lock in accrued breakout profits.
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 {/* Total Value & Margin Verification */}

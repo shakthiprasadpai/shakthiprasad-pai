@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MinerviniTradeSetup } from '../types';
-import { formatCurrency, getCurrencySymbol } from '../utils/sepaCalculator';
+import { formatCurrency, getCurrencySymbol, calculateDailyVolatilityMetrics } from '../utils/sepaCalculator';
 import { exportDetailedTradeParametersToCsv } from '../utils/csvExport';
 import {
   Calculator,
@@ -25,7 +25,10 @@ import {
   CheckCircle2,
   ChevronRight,
   BookOpen,
-  PieChart
+  PieChart,
+  Lock,
+  ShieldAlert,
+  Zap
 } from 'lucide-react';
 
 interface PositionRiskCalculatorProps {
@@ -63,13 +66,29 @@ export const PositionRiskCalculator: React.FC<PositionRiskCalculatorProps> = ({
   const [showPyramidingDetails, setShowPyramidingDetails] = useState<boolean>(true);
   const [showExpectancyModel, setShowExpectancyModel] = useState<boolean>(true);
 
+  // Dynamic Trailing Stop Loss State
+  const [isTrailingStopEnabled, setIsTrailingStopEnabled] = useState<boolean>(true);
+  const [trailingRefMode, setTrailingRefMode] = useState<'CURRENT' | 'HIGH52' | 'ENTRY' | 'CUSTOM'>('CURRENT');
+  const [trailingCustomPeak, setTrailingCustomPeak] = useState<number>(stock.currentPrice);
+  const [trailingMode, setTrailingMode] = useState<'PERCENT' | 'ATR' | 'EMA20' | 'BREAKEVEN'>('PERCENT');
+  const [trailingPercent, setTrailingPercent] = useState<number>(8.0); // 8% Minervini standard
+  const [trailingAtrMult, setTrailingAtrMult] = useState<number>(2.0); // 2.0x ATR
+  const [trailingStopAppliedToast, setTrailingStopAppliedToast] = useState<boolean>(false);
+
   // Sync state when stock prop changes
   React.useEffect(() => {
     setEntryPrice(stock.pivotPrice || stock.currentPrice);
     setStopLossPrice(stock.stopLossPrice || (stock.pivotPrice ? stock.pivotPrice * 0.94 : stock.currentPrice * 0.94));
     setTarget1Price(stock.target1Price || (stock.pivotPrice ? stock.pivotPrice * 1.20 : stock.currentPrice * 1.20));
     setTarget2Price(stock.target2Price || (stock.pivotPrice ? stock.pivotPrice * 1.35 : stock.currentPrice * 1.35));
-  }, [stock.ticker, stock.pivotPrice, stock.stopLossPrice, stock.target1Price, stock.target2Price, stock.currentPrice]);
+    if (trailingRefMode === 'CURRENT') {
+      setTrailingCustomPeak(stock.currentPrice);
+    } else if (trailingRefMode === 'HIGH52') {
+      setTrailingCustomPeak(stock.high52w);
+    } else if (trailingRefMode === 'ENTRY') {
+      setTrailingCustomPeak(stock.pivotPrice || stock.currentPrice);
+    }
+  }, [stock.ticker, stock.pivotPrice, stock.stopLossPrice, stock.target1Price, stock.target2Price, stock.currentPrice, stock.high52w, trailingRefMode]);
 
   const currency = getCurrencySymbol(stock.exchange);
 
@@ -163,6 +182,51 @@ export const PositionRiskCalculator: React.FC<PositionRiskCalculatorProps> = ({
     ];
   }, [pyramidPlan, finalShares, safeEntry, safeStop]);
 
+  // Trailing Stop Metrics and Dynamic Calculations
+  const volMetrics = calculateDailyVolatilityMetrics(stock);
+  const currentAtr14 = volMetrics.atr14 || (stock.currentPrice * 0.035);
+
+  const activeTrailingRef = useMemo(() => {
+    if (trailingRefMode === 'CUSTOM') return Math.max(0.01, trailingCustomPeak);
+    if (trailingRefMode === 'HIGH52') return stock.high52w;
+    if (trailingRefMode === 'ENTRY') return safeEntry;
+    return stock.currentPrice;
+  }, [trailingRefMode, trailingCustomPeak, stock.high52w, safeEntry, stock.currentPrice]);
+
+  const { computedTrailingStopPrice, trailingDistanceDollar, trailingDistancePct } = useMemo(() => {
+    let offset = 0;
+    if (trailingMode === 'PERCENT') {
+      offset = (activeTrailingRef * trailingPercent) / 100;
+    } else if (trailingMode === 'ATR') {
+      offset = currentAtr14 * trailingAtrMult;
+    } else if (trailingMode === 'EMA20') {
+      const emaEst = stock.sma50 ? stock.sma50 * 1.02 : safeEntry * 1.02;
+      offset = Math.max(0, activeTrailingRef - emaEst);
+    } else {
+      // BREAKEVEN
+      offset = Math.max(0, activeTrailingRef - safeEntry);
+    }
+    const stopPrice = Math.max(0.01, Number((activeTrailingRef - offset).toFixed(2)));
+    const pct = activeTrailingRef > 0 ? (offset / activeTrailingRef) * 100 : trailingPercent;
+    return {
+      computedTrailingStopPrice: stopPrice,
+      trailingDistanceDollar: offset,
+      trailingDistancePct: pct
+    };
+  }, [trailingMode, activeTrailingRef, trailingPercent, currentAtr14, trailingAtrMult, stock.sma50, safeEntry]);
+
+  // Outcome relative to entry price at trailing stop
+  const gainOrLossPerShareAtTrail = computedTrailingStopPrice - safeEntry;
+  const isProfitLockedAtTrail = gainOrLossPerShareAtTrail > 0;
+  const totalLockedProfitAtTrail = gainOrLossPerShareAtTrail * finalShares;
+  const lockedRMultipleAtTrail = riskPerShare > 0 ? gainOrLossPerShareAtTrail / riskPerShare : 0;
+
+  const handleApplyTrailingAsStopLoss = () => {
+    setStopLossPrice(computedTrailingStopPrice);
+    setTrailingStopAppliedToast(true);
+    setTimeout(() => setTrailingStopAppliedToast(false), 2500);
+  };
+
   // Asymmetric Expectancy Calculation: Expectancy = (WinRate% * AvgGain) - (LossRate% * AvgLoss)
   const expectancyResult = useMemo(() => {
     const wr = winRateInput / 100;
@@ -192,6 +256,7 @@ export const PositionRiskCalculator: React.FC<PositionRiskCalculatorProps> = ({
 • Planned Risk Per Trade: ${riskPercent}% (${formatCurrency(actualTotalDollarRisk, currency)})
 • Execution Entry Price: ${formatCurrency(safeEntry, currency)}
 • Hard Stop Loss: ${formatCurrency(safeStop, currency)} (-${riskPercentFromEntry.toFixed(2)}%)
+• Dynamic Trailing Stop: ${isTrailingStopEnabled ? `${formatCurrency(computedTrailingStopPrice, currency)} (-${trailingDistancePct.toFixed(1)}% | ${isProfitLockedAtTrail ? `+${formatCurrency(totalLockedProfitAtTrail, currency)} locked (${lockedRMultipleAtTrail.toFixed(1)}R)` : 'capital defense'})` : 'OFF'}
 • Target 1 (+20%): ${formatCurrency(safeTarget1, currency)} (+${rewardPercentT1.toFixed(1)}% | ${rrRatioT1.toFixed(2)}:1 R/R)
 • Target 2 (+35%): ${formatCurrency(safeTarget2, currency)} (+${rewardPercentT2.toFixed(1)}% | ${rrRatioT2.toFixed(2)}:1 R/R)
 • Position Sizing: ${finalShares.toLocaleString()} Shares (${formatCurrency(totalPositionCost, currency)} | ${actualPortfolioAllocationPercent.toFixed(1)}% Portfolio)
@@ -224,6 +289,9 @@ Generated via Growth Stock Alpha SEPA Engine
       rMultiple: rrRatioT1,
       target3RPrice: safeEntry + (riskPerShare * 3),
       potentialTotalGain3R: actualTotalDollarRisk * 3,
+      isTrailingStopEnabled,
+      trailingStopPrice: isTrailingStopEnabled ? computedTrailingStopPrice : undefined,
+      trailingStopParamStr: isTrailingStopEnabled ? `${trailingMode} (-${trailingDistancePct.toFixed(1)}% from ${formatCurrency(activeTrailingRef, currency)})` : undefined,
       notes: `SEPA Position Risk Calculation for ${stock.ticker}. Risk: ${riskPercent}%, Allocation: ${actualPortfolioAllocationPercent.toFixed(1)}%`
     });
   };
@@ -536,6 +604,252 @@ Generated via Growth Stock Alpha SEPA Engine
             </div>
           </div>
 
+          {/* SECTION 3: DYNAMIC TRAILING STOP LOSS & PROFIT DEFENSE */}
+          <div className="bg-[#f9f8f5] border border-[#e5e4e1] p-5 space-y-4">
+            <div className="flex items-center justify-between border-b border-[#e5e4e1] pb-2">
+              <div className="flex items-center space-x-1.5">
+                <ShieldCheck className={`w-4 h-4 ${isTrailingStopEnabled ? 'text-amber-600 animate-pulse' : 'text-gray-400'}`} />
+                <h3 className="text-xs font-mono font-black uppercase tracking-wider text-gray-800">
+                  3. Dynamic Trailing Stop Loss & Profit Defense
+                </h3>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <label className="inline-flex items-center space-x-1 text-[10px] font-mono font-bold uppercase cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={isTrailingStopEnabled}
+                    onChange={(e) => setIsTrailingStopEnabled(e.target.checked)}
+                    className="w-3.5 h-3.5 accent-amber-600 rounded cursor-pointer"
+                  />
+                  <span className={`px-2 py-0.5 border ${
+                    isTrailingStopEnabled ? 'bg-amber-500 text-slate-950 border-amber-600 font-black' : 'bg-white text-gray-400 border-gray-300'
+                  }`}>
+                    {isTrailingStopEnabled ? '🟢 Trailing ON' : '⚪ OFF'}
+                  </span>
+                </label>
+              </div>
+            </div>
+
+            {isTrailingStopEnabled ? (
+              <div className="space-y-3.5 font-mono text-xs">
+                {/* Reference Base Price */}
+                <div>
+                  <div className="flex items-center justify-between text-[10px] font-bold text-gray-600 uppercase mb-1.5">
+                    <span>Reference Base Price:</span>
+                    <span className="text-[#1a1a1a]">{formatCurrency(activeTrailingRef, currency)}</span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                    {[
+                      { id: 'CURRENT', label: 'Current Price', val: stock.currentPrice },
+                      { id: 'HIGH52', label: '52W High', val: stock.high52w },
+                      { id: 'ENTRY', label: 'Pivot Entry', val: safeEntry },
+                      { id: 'CUSTOM', label: 'Custom Peak', val: trailingCustomPeak }
+                    ].map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => {
+                          setTrailingRefMode(item.id as any);
+                          if (item.id === 'CUSTOM' && (!trailingCustomPeak || trailingCustomPeak <= 0)) {
+                            setTrailingCustomPeak(stock.currentPrice);
+                          }
+                        }}
+                        className={`p-1.5 text-left border cursor-pointer transition-all ${
+                          trailingRefMode === item.id
+                            ? 'bg-slate-900 text-white border-black font-bold'
+                            : 'bg-white text-slate-700 border-[#e5e4e1] hover:bg-gray-100'
+                        }`}
+                      >
+                        <div className="text-[9px] uppercase font-sans text-gray-400">{item.label}</div>
+                        <div className="text-[11px] font-mono">{formatCurrency(item.val, currency)}</div>
+                      </button>
+                    ))}
+                  </div>
+
+                  {trailingRefMode === 'CUSTOM' && (
+                    <div className="mt-2 flex items-center space-x-2 bg-white p-2 border border-[#e5e4e1]">
+                      <span className="text-[10px] font-bold uppercase text-gray-600">Custom Peak ({currency}):</span>
+                      <input
+                        type="number"
+                        step={0.5}
+                        value={trailingCustomPeak}
+                        onChange={(e) => setTrailingCustomPeak(Math.max(0.01, Number(e.target.value) || 0))}
+                        className="flex-1 px-2 py-1 bg-[#f9f8f5] border border-[#e5e4e1] font-mono font-bold text-xs text-[#1a1a1a] focus:outline-none focus:border-black"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* Trailing Calculation Method */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-[10px] font-bold text-gray-600 uppercase">
+                    <span>Trailing Strategy Mode:</span>
+                    <div className="flex bg-white border border-[#e5e4e1] p-0.5 text-[9px]">
+                      {[
+                        { id: 'PERCENT', label: '% Percentage' },
+                        { id: 'ATR', label: 'ATR Multiplier' },
+                        { id: 'EMA20', label: '20d EMA' },
+                        { id: 'BREAKEVEN', label: 'Breakeven' }
+                      ].map((m) => (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => setTrailingMode(m.id as any)}
+                          className={`px-1.5 py-0.5 uppercase font-bold cursor-pointer transition-colors ${
+                            trailingMode === m.id ? 'bg-[#1a1a1a] text-white' : 'text-gray-600 hover:text-black'
+                          }`}
+                        >
+                          {m.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Mode Specific Controls */}
+                  {trailingMode === 'PERCENT' && (
+                    <div className="bg-white p-3 border border-[#e5e4e1] space-y-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-gray-600 font-bold">Trailing Distance:</span>
+                        <span className="font-mono font-black text-amber-700 text-sm">-{trailingPercent}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={1.0}
+                        max={20.0}
+                        step={0.5}
+                        value={trailingPercent}
+                        onChange={(e) => setTrailingPercent(Number(e.target.value))}
+                        className="w-full accent-amber-600 cursor-pointer"
+                      />
+                      <div className="flex flex-wrap gap-1 pt-1">
+                        <span className="text-[9px] uppercase font-bold text-gray-400 self-center mr-1">Presets:</span>
+                        {[3.0, 5.0, 8.0, 10.0, 12.0, 15.0].map((pct) => (
+                          <button
+                            key={pct}
+                            type="button"
+                            onClick={() => setTrailingPercent(pct)}
+                            className={`px-2 py-0.5 text-[10px] border font-bold cursor-pointer transition-colors ${
+                              trailingPercent === pct
+                                ? 'bg-amber-500 text-slate-950 border-amber-600'
+                                : 'bg-[#f9f8f5] text-gray-700 border-[#e5e4e1] hover:bg-gray-100'
+                            }`}
+                          >
+                            {pct}%
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {trailingMode === 'ATR' && (
+                    <div className="bg-white p-3 border border-[#e5e4e1] space-y-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-gray-600 font-bold">ATR(14) Multiplier:</span>
+                        <span className="font-mono font-black text-amber-700">{trailingAtrMult}x ATR ({formatCurrency(currentAtr14 * trailingAtrMult, currency)})</span>
+                      </div>
+                      <div className="grid grid-cols-4 gap-1.5 pt-1">
+                        {[1.5, 2.0, 2.5, 3.0].map((mult) => (
+                          <button
+                            key={mult}
+                            type="button"
+                            onClick={() => setTrailingAtrMult(mult)}
+                            className={`py-1 text-[10px] border font-bold text-center cursor-pointer ${
+                              trailingAtrMult === mult
+                                ? 'bg-[#1a1a1a] text-white border-black'
+                                : 'bg-[#f9f8f5] text-gray-700 border-[#e5e4e1] hover:bg-gray-100'
+                            }`}
+                          >
+                            {mult}x ATR
+                          </button>
+                        ))}
+                      </div>
+                      <div className="text-[10px] text-gray-500 font-sans">
+                        Daily ATR(14) = {formatCurrency(currentAtr14, currency)} • Offsets price below highest swing high by {trailingAtrMult}x standard daily volatility.
+                      </div>
+                    </div>
+                  )}
+
+                  {trailingMode === 'EMA20' && (
+                    <div className="bg-white p-3 border border-[#e5e4e1] text-xs space-y-1">
+                      <div className="font-bold text-gray-800">20-Day Exponential Moving Average Defense</div>
+                      <p className="text-[11px] text-gray-500 font-sans leading-relaxed">
+                        Trails active runner shares along the ascending 20-day EMA support line ({formatCurrency(stock.sma50 ? stock.sma50 * 1.02 : safeEntry * 1.02, currency)}). Closes below 20 EMA trigger full position liquidation.
+                      </p>
+                    </div>
+                  )}
+
+                  {trailingMode === 'BREAKEVEN' && (
+                    <div className="bg-white p-3 border border-[#e5e4e1] text-xs space-y-1">
+                      <div className="font-bold text-blue-700">Minervini Zero-Risk Breakeven Backstop</div>
+                      <p className="text-[11px] text-gray-500 font-sans leading-relaxed">
+                        Locks the stop loss directly at your initial pivot entry price ({formatCurrency(safeEntry, currency)}). Eliminates downside equity risk once the stock produces an initial breakout impulse (+8% gain).
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Trailing Stop Output Card */}
+                <div className="bg-slate-900 text-white p-3.5 border border-slate-800 space-y-2.5">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <span className="text-[9px] uppercase font-bold text-amber-400">
+                      Calculated Trailing Stop Level:
+                    </span>
+                    <span className={`text-[9px] font-bold px-1.5 py-0.5 border ${
+                      isProfitLockedAtTrail ? 'bg-emerald-950 text-emerald-300 border-emerald-700' : 'bg-rose-950 text-rose-300 border-rose-700'
+                    }`}>
+                      {isProfitLockedAtTrail ? '🟢 PROFIT LOCKED' : '🔴 CAPITAL DEFENSE'}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="bg-slate-950 p-2 border border-slate-800">
+                      <span className="text-[9px] text-gray-400 uppercase block">Trailing Exit Price:</span>
+                      <span className="text-lg font-black text-amber-300">{formatCurrency(computedTrailingStopPrice, currency)}</span>
+                      <span className="text-[10px] text-gray-400 block mt-0.5">-{trailingDistancePct.toFixed(1)}% ({formatCurrency(trailingDistanceDollar, currency)})</span>
+                    </div>
+
+                    <div className="bg-slate-950 p-2 border border-slate-800">
+                      <span className="text-[9px] text-gray-400 uppercase block">Protected P&L:</span>
+                      <span className={`text-lg font-black ${isProfitLockedAtTrail ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {isProfitLockedAtTrail ? '+' : ''}{formatCurrency(totalLockedProfitAtTrail, currency)}
+                      </span>
+                      <span className="text-[10px] text-gray-400 block mt-0.5">
+                        {lockedRMultipleAtTrail >= 0 ? `+${lockedRMultipleAtTrail.toFixed(2)} R` : `${lockedRMultipleAtTrail.toFixed(2)} R`} Multiple
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Apply Button */}
+                  <div className="pt-1 flex items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={handleApplyTrailingAsStopLoss}
+                      className="w-full py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider transition-all flex items-center justify-center space-x-1.5 cursor-pointer shadow-xs"
+                      title="Set computed trailing stop as active stop loss in sizing calculator"
+                    >
+                      <Lock className="w-3.5 h-3.5 text-slate-950" />
+                      <span>Apply {formatCurrency(computedTrailingStopPrice, currency)} as Sizing Stop</span>
+                    </button>
+                  </div>
+                  {trailingStopAppliedToast && (
+                    <div className="text-[10px] text-emerald-400 font-sans text-center animate-fade-in font-bold">
+                      ✓ Sizing Stop Loss updated to {formatCurrency(computedTrailingStopPrice, currency)}!
+                    </div>
+                  )}
+                </div>
+
+                <div className="text-[10px] text-gray-500 font-sans italic leading-tight">
+                  Minervini Rule: "A profitable trade should never be allowed to turn into a loss. Ratchet your stop up behind the natural price progression to lock in compounding alpha."
+                </div>
+              </div>
+            ) : (
+              <div className="p-3 bg-white border border-[#e5e4e1] text-[11px] text-gray-500 font-sans">
+                Trailing stop loss is currently inactive. Toggle ON to calculate dynamic profit lock offsets and ATR runner protection.
+              </div>
+            )}
+          </div>
+
         </div>
 
         {/* RIGHT COLUMN: Calculated Outputs, Sizing Cards & R-Multiple Roadmap */}
@@ -637,6 +951,24 @@ Generated via Growth Stock Alpha SEPA Engine
                       <td className="py-2 px-3 text-right font-black text-emerald-800">+{formatCurrency(rm.profitDollar, currency)}</td>
                     </tr>
                   ))}
+                  {isTrailingStopEnabled && (
+                    <tr className="bg-amber-50/80 border-t-2 border-amber-300 font-bold">
+                      <td className="py-2 px-3 text-amber-900 flex items-center space-x-1">
+                        <ShieldCheck className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                        <span>{lockedRMultipleAtTrail >= 0 ? `+${lockedRMultipleAtTrail.toFixed(2)}R` : `${lockedRMultipleAtTrail.toFixed(2)}R`}</span>
+                      </td>
+                      <td className="py-2 px-3 text-amber-900 font-sans">
+                        Dynamic Trailing Stop ({trailingMode} -{trailingDistancePct.toFixed(1)}%)
+                      </td>
+                      <td className="py-2 px-3 text-right text-amber-950">{formatCurrency(computedTrailingStopPrice, currency)}</td>
+                      <td className={`py-2 px-3 text-right ${isProfitLockedAtTrail ? 'text-emerald-700' : 'text-rose-700'}`}>
+                        {gainOrLossPerShareAtTrail >= 0 ? '+' : ''}{((gainOrLossPerShareAtTrail / safeEntry) * 100).toFixed(1)}%
+                      </td>
+                      <td className={`py-2 px-3 text-right font-black ${isProfitLockedAtTrail ? 'text-emerald-800' : 'text-rose-800'}`}>
+                        {totalLockedProfitAtTrail >= 0 ? '+' : ''}{formatCurrency(totalLockedProfitAtTrail, currency)}
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>

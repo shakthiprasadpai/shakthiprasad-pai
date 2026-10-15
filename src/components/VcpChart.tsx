@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { MinerviniTradeSetup, PricePoint, CustomTrendline, TradeJournalNote, EmotionalState, TradeStatus, DetectedRsiDivergence } from '../types';
 import { formatCurrency, formatVolume, getCurrencySymbol, evaluateTrendTemplate } from '../utils/sepaCalculator';
-import { getChartLinkUrl } from '../utils/chartLinkHelper';
 import { getStoredJournalNotes, saveStoredJournalNotes } from '../utils/tradeJournalStorage';
 import { PineScriptExporter } from './PineScriptExporter';
 import { LorentzianClassification } from './LorentzianClassification';
@@ -51,6 +50,7 @@ import {
   Zap,
   TrendingDown,
   ShieldAlert,
+  ShieldCheck,
   Sparkles,
   Target,
   Code,
@@ -407,6 +407,15 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
   const [showHistoricalPivots, setShowHistoricalPivots] = useState(true);
   const [showHistoricalStops, setShowHistoricalStops] = useState(true);
   const [selectedLevelId, setSelectedLevelId] = useState<string | null>(null);
+
+  // Dynamic Trailing Stop Loss Overlay State
+  const [showTrailingStopLine, setShowTrailingStopLine] = useState<boolean>(true);
+  const [chartTrailingPct, setChartTrailingPct] = useState<number>(8.0);
+
+  const trailingStopLevel = useMemo(() => {
+    const peak = Math.max(stock.high52w || 0, stock.currentPrice || 0, stock.pivotPrice || 0);
+    return Number((peak * (1 - chartTrailingPct / 100)).toFixed(2));
+  }, [stock.high52w, stock.currentPrice, stock.pivotPrice, chartTrailingPct]);
 
   // Volume Intensity Heatmap Overlay State
   const [showVolumeHeatmap, setShowVolumeHeatmap] = useState(true);
@@ -1545,6 +1554,19 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
           </button>
 
           <button
+            onClick={() => setShowTrailingStopLine(!showTrailingStopLine)}
+            className={`px-3 py-1 border text-xs font-semibold uppercase tracking-wider font-mono transition-all flex items-center space-x-1 cursor-pointer ${
+              showTrailingStopLine
+                ? 'bg-amber-600 text-white border-amber-700 shadow-xs'
+                : 'bg-[#f9f8f5] text-gray-400 border-[#e5e4e1]'
+            }`}
+            title="Toggle Dynamic Trailing Stop Loss Line on Candlestick Chart (-8% from Peak)"
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-amber-200" />
+            <span>Trailing SL {showTrailingStopLine ? 'ON' : 'OFF'}</span>
+          </button>
+
+          <button
             onClick={() => setShowContractionStages(!showContractionStages)}
             className={`px-3 py-1 border text-xs font-semibold uppercase tracking-wider font-mono transition-all flex items-center space-x-1 cursor-pointer ${
               showContractionStages
@@ -1685,17 +1707,17 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
             <span>Interactive VCP Candlestick</span>
           </button>
 
-          {/* Direct ChartLink Live Chart Link */}
+          {/* Direct TradingView Live Chart Link */}
           <a
-            id="vcp-chart-chartlink-link"
-            href={getChartLinkUrl(stock)}
+            id="vcp-chart-tradingview-link"
+            href={`https://www.tradingview.com/chart/?symbol=${stock.ticker}`}
             target="_blank"
             rel="noopener noreferrer"
             className="px-3.5 py-1.5 font-bold uppercase tracking-wider flex items-center space-x-1.5 transition cursor-pointer bg-blue-700 hover:bg-blue-600 text-white shadow-xs ml-auto border border-blue-600"
-            title={`Open Live ChartLink for ${stock.ticker} in a new tab`}
+            title={`Open Live TradingView Chart for ${stock.ticker} in a new tab`}
           >
             <BarChart3 className="w-3.5 h-3.5 text-blue-200" />
-            <span>ChartLink ({stock.ticker})</span>
+            <span>TradingView Chart Link ({stock.ticker})</span>
             <ExternalLink className="w-3.5 h-3.5 text-blue-200" />
           </a>
 
@@ -2662,6 +2684,23 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
                     position: 'bottom'
                   }}
                 />
+
+                {/* Dynamic Trailing Stop Loss Line */}
+                {showTrailingStopLine && trailingStopLevel && trailingStopLevel > (stock.stopLossPrice * 0.95) && (
+                  <ReferenceLine
+                    y={trailingStopLevel}
+                    stroke="#f59e0b"
+                    strokeWidth={2}
+                    strokeDasharray="5 3"
+                    label={{
+                      value: `Trailing SL: ${currencySymbol}${trailingStopLevel.toFixed(2)} (-${chartTrailingPct}%)`,
+                      fill: '#d97706',
+                      fontSize: 10,
+                      fontWeight: 'bold',
+                      position: 'top'
+                    }}
+                  />
+                )}
 
                 {/* Target 1 Line */}
                 <ReferenceLine

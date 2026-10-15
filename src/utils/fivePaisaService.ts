@@ -394,6 +394,9 @@ export const placeFivePaisaOrder = async (orderReq: FivePaisaOrderRequest): Prom
     triggerPrice: orderReq.price,
     stopLossPrice: orderReq.stopLossPrice,
     targetPrice: orderReq.targetPrice,
+    isTrailingStopEnabled: orderReq.isTrailingStopEnabled,
+    trailingStopDistance: orderReq.trailingStopDistance,
+    trailingStopPrice: orderReq.trailingStopPrice,
     orderStatus: orderReq.orderType === 'MARKET' ? 'Executed' : 'Pending',
     placedTime: new Date().toLocaleString() + ' IST',
     minerviniSetupTag: orderReq.minerviniSetupTag || 'SEPA Bracket Order'
