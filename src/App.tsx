@@ -43,14 +43,16 @@ import { GoogleDriveView } from './components/GoogleDriveView';
 import { GoogleSheetsView } from './components/GoogleSheetsView';
 import { GmailAlertsView } from './components/GmailAlertsView';
 import { QuickInsightModal } from './components/QuickInsightModal';
+import { BearishMarketDashboard } from './components/BearishMarketDashboard';
 import { getStoredWatchlists } from './utils/watchlistStorage';
 import { initializeAlertHistory } from './utils/priceAlertHistoryStorage';
 import { DEFAULT_NSE_BHAVCOPY, DEFAULT_BSE_BHAVCOPY } from './data/bhavcopyData';
 import { MOCK_STOCKS } from './data/mockStocks';
+import { MOCK_BEARISH_STOCKS } from './utils/bearishSepaCalculator';
 import { MinerviniTradeSetup } from './types';
 import { formatCurrency, formatVolume, getCurrencySymbol, calculateBreakoutProbability } from './utils/sepaCalculator';
 import { getChartLinkUrl } from './utils/chartLinkHelper';
-import { TrendingUp, ShieldCheck, Target, Droplets, ArrowUpRight, Flame, BarChart3, Calculator, Sparkles, Gem, Bot, Bell, Keyboard, Command, Search, Zap, History, Brain, Bookmark, ExternalLink, Activity, BellRing } from 'lucide-react';
+import { TrendingUp, TrendingDown, Skull, ShieldAlert, ShieldCheck, Target, Droplets, ArrowUpRight, Flame, BarChart3, Calculator, Sparkles, Gem, Bot, Bell, Keyboard, Command, Search, Zap, History, Brain, Bookmark, ExternalLink, Activity, BellRing } from 'lucide-react';
 
 export default function App() {
   const [stocksList, setStocksList] = useState<MinerviniTradeSetup[]>(MOCK_STOCKS);
@@ -430,6 +432,23 @@ export default function App() {
                 </div>
               </button>
             </div>
+
+            {/* Bear Market & Stage 4 Short Mode Banner Button */}
+            <button
+              id="banner-bearish-market-toggle-button"
+              onClick={() => setActiveTab('bearish_market')}
+              className="bg-rose-700 hover:bg-rose-600 text-white font-mono font-bold text-xs p-3 rounded border border-rose-600 shadow-md flex items-center space-x-2 transition-all cursor-pointer hover:scale-[1.02] active:scale-98"
+              title="Open Bear Market & Stage 4 Short Selling Analysis"
+            >
+              <TrendingDown className="w-4 h-4 text-rose-200" />
+              <div className="text-left leading-tight">
+                <div className="font-extrabold text-[11px] uppercase tracking-wider flex items-center gap-1">
+                  <span>Bear Market</span>
+                  <span className="px-1 py-0.2 rounded bg-rose-950 text-rose-300 text-[8px] border border-rose-500/40">STAGE 4</span>
+                </div>
+                <div className="text-[9px] font-mono text-rose-100">Short Screener</div>
+              </div>
+            </button>
           </div>
         </div>
 
@@ -508,6 +527,42 @@ export default function App() {
               className="space-y-8"
             >
               
+              {/* Bear Market & Distribution Alert Banner in Dashboard */}
+              <div className="bg-gradient-to-r from-rose-950/40 via-slate-900 to-rose-950/30 border border-rose-500/30 p-4 sm:p-5 rounded-lg flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
+                <div className="flex items-start sm:items-center space-x-3.5">
+                  <div className="p-2.5 bg-rose-600/20 text-rose-400 rounded-lg border border-rose-500/30 shrink-0">
+                    <TrendingDown className="w-6 h-6 text-rose-400" />
+                  </div>
+                  <div>
+                    <div className="flex items-center space-x-2">
+                      <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30 uppercase tracking-widest">
+                        Bear Market Protocol
+                      </span>
+                      <span className="text-xs font-mono text-gray-400">
+                        Stan Weinstein &amp; Mark Minervini Short Selling Suite
+                      </span>
+                    </div>
+                    <h3 className="text-base sm:text-lg font-serif font-black text-white mt-0.5">
+                      Stage 4 Markdown &amp; Institutional Distribution Screener
+                    </h3>
+                    <p className="text-xs text-gray-300 font-sans mt-0.5">
+                      Market under institutional pressure? Access inverse 8-rule checklist, breakdown triggers, cover stops, and asymmetric short setups.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-3 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('bearish_market')}
+                    className="px-4 py-2.5 rounded font-mono font-bold text-xs uppercase tracking-wider bg-rose-600 hover:bg-rose-500 text-white shadow-md flex items-center space-x-2 transition-all cursor-pointer"
+                  >
+                    <Skull className="w-3.5 h-3.5" />
+                    <span>Open Bearish Market &amp; Shorts</span>
+                  </button>
+                </div>
+              </div>
+
               {/* Market Sentiment & Health Ribbon */}
               <MarketSentimentRibbon />
 
@@ -659,6 +714,30 @@ export default function App() {
 
               </div>
 
+            </motion.div>
+          )}
+
+          {/* TAB: BEARISH MARKET & STAGE 4 SHORT SELLING SUITE */}
+          {activeTab === 'bearish_market' && (
+            <motion.div
+              key="bearish_market"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.25, ease: 'easeInOut' }}
+              className="space-y-8"
+            >
+              <BearishMarketDashboard
+                allStocks={stocksList}
+                selectedStock={selectedStock}
+                onSelectStock={(stock) => setSelectedStock(stock)}
+                onViewChart={(stock) => {
+                  setSelectedStock(stock);
+                  setActiveTab('chart');
+                }}
+                onSwitchToBullishMode={() => setActiveTab('screener')}
+                isObsidian={isObsidian}
+              />
             </motion.div>
           )}
 

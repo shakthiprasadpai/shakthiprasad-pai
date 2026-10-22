@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { TrendingUp, BarChart3, Calculator, BookOpen, SlidersHorizontal, Briefcase, Calendar, Video, Gem, Moon, Sun, Zap, Target, BookMarked, Layers, BellRing, Download, Sparkles, Bot, Cpu, Bookmark, ShieldCheck, CheckSquare, Award, Monitor, FileSpreadsheet, Radio, Menu, X, Compass, Brain, HardDrive, Mail, ExternalLink } from 'lucide-react';
+import { TrendingUp, TrendingDown, Skull, ShieldAlert, BarChart3, Calculator, BookOpen, SlidersHorizontal, Briefcase, Calendar, Video, Gem, Moon, Sun, Zap, Target, BookMarked, Layers, BellRing, Download, Sparkles, Bot, Cpu, Bookmark, ShieldCheck, CheckSquare, Award, Monitor, FileSpreadsheet, Radio, Menu, X, Compass, Brain, HardDrive, Mail, ExternalLink } from 'lucide-react';
 import { DesktopRemixGuideModal } from './DesktopRemixGuideModal';
 import { MobileNavDrawer } from './MobileNavDrawer';
 import { UserAuthButton } from './UserAuthButton';
@@ -10,6 +10,7 @@ export type AppNavTab =
   | 'daily_review'
   | 'hermes_agent'
   | 'screener' 
+  | 'bearish_market'
   | 'watchlist'
   | 'chart' 
   | 'rrg_chart'
@@ -39,6 +40,7 @@ export const TAB_LABELS: Record<AppNavTab, string> = {
   daily_review: 'Daily Review',
   hermes_agent: 'Hermes AI',
   screener: 'Screener',
+  bearish_market: 'Bear Market & Shorts',
   watchlist: 'Watchlist',
   chart: 'VCP Charts',
   rrg_chart: 'RRG Tool',
@@ -175,6 +177,28 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </span>
               </motion.button>
             )}
+
+            {/* Quick Bear Market & Short Screener Header Button */}
+            <motion.button
+              id="header-bear-market-btn"
+              onClick={() => setActiveTab('bearish_market')}
+              whileHover={{ scale: 1.04 }}
+              whileTap={{ scale: 0.96 }}
+              className={`px-3 py-1.5 rounded text-[11px] font-bold uppercase tracking-wider font-mono flex items-center space-x-1.5 border shadow-sm cursor-pointer transition-all ${
+                activeTab === 'bearish_market'
+                  ? 'bg-rose-600 text-white border-rose-500 shadow-md'
+                  : isObsidian
+                  ? 'bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border-rose-800/50'
+                  : 'bg-rose-50 hover:bg-rose-100 text-rose-800 border-rose-200'
+              }`}
+              title="Open Bear Market & Stage 4 Short Selling Engine"
+            >
+              <TrendingDown className="w-3.5 h-3.5 text-rose-400" />
+              <span>Bear Market</span>
+              <span className="text-[9px] px-1 py-0.2 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                STAGE 4
+              </span>
+            </motion.button>
 
             {/* Quick Tag Insight to Second Brain P.A.R.A Button */}
             {onOpenQuickInsight && (
@@ -398,6 +422,24 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <BarChart3 className="w-3.5 h-3.5" />
               <span className="hidden md:inline">Minervini Strategy</span>
+            </button>
+
+            <button
+              id="nav-tab-bearish-market"
+              onClick={() => setActiveTab('bearish_market')}
+              className={`flex items-center space-x-1.5 py-2 px-2.5 rounded transition-all border-b-2 font-bold cursor-pointer ${
+                activeTab === 'bearish_market'
+                  ? 'bg-rose-500/15 border-rose-500 text-rose-500 shadow-xs'
+                  : 'border-transparent text-rose-600/90 hover:text-rose-500 hover:bg-rose-500/5'
+              }`}
+            >
+              <TrendingDown className="w-3.5 h-3.5 text-rose-500" />
+              <span className="font-mono tracking-wider font-extrabold flex items-center gap-1">
+                <span>BEAR MARKET</span>
+                <span className="px-1 py-0.2 bg-rose-500/20 text-rose-400 text-[8px] font-mono rounded font-black">
+                  SHORTS
+                </span>
+              </span>
             </button>
 
             <button

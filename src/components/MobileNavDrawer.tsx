@@ -8,6 +8,7 @@ import {
   BarChart3,
   Bookmark,
   TrendingUp,
+  TrendingDown,
   Calculator,
   FileSpreadsheet,
   Briefcase,
@@ -73,6 +74,15 @@ const NAV_ITEMS: NavItemDef[] = [
     subtitle: 'SEPA 8-point trend template & pivot breakouts',
     category: 'strategy',
     icon: BarChart3,
+  },
+  {
+    id: 'bearish_market',
+    title: 'Bear Market & Shorts',
+    subtitle: 'Stage 4 markdown screener, distribution barometer & short setups',
+    category: 'strategy',
+    icon: TrendingDown,
+    badge: 'STAGE 4',
+    badgeColor: 'bg-rose-500/20 text-rose-400 border border-rose-500/30',
   },
   {
     id: 'watchlist',

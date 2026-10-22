@@ -105,6 +105,7 @@ export interface MinerviniTradeSetup {
   salesPrecedingQtr?: number; // e.g. $980M (Acceleration > 20%)
   roce?: number; // Return on Capital Employed e.g. 22.5%
   roe?: number; // Return on Equity e.g. 25.8%
+  roePercent?: number; // Alias for Return on Equity
   debtToEquity?: number; // e.g. 0.18
   npmLastYear?: number; // Net Profit Margin last year e.g. 14.2%
   npmLatestQtr?: number; // NPM latest quarter e.g. 16.5%
