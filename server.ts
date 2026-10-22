@@ -1,7 +1,6 @@
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
-import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 
 async function startServer() {
@@ -1704,13 +1703,16 @@ Respond with valid JSON only.`;
   const distIndexHtml = path.join(distPath, 'index.html');
   const hasDist = fs.existsSync(distIndexHtml);
 
-  // In AI Studio / Cloud Run, K_SERVICE is always set (even in dev: ais-dev-*).
-  // Only serve static pre-built assets when in production AND dist/index.html exists.
-  const isProduction = process.env.NODE_ENV === 'production' && hasDist;
+  // Detect AI Studio development environment (K_SERVICE starting with ais-dev- in dev environment)
+  const isAiStudioDev = !!process.env.K_SERVICE && process.env.K_SERVICE.startsWith('ais-dev-') && process.env.NODE_ENV !== 'production';
+
+  // In production (Cloud Run, Docker container, or prebuilt run), serve pre-built dist assets
+  const isProduction = (process.env.NODE_ENV === 'production' || !isAiStudioDev) && hasDist;
 
   const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
   if (!isProduction) {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa'
@@ -1735,14 +1737,25 @@ Respond with valid JSON only.`;
       if (fs.existsSync(distIndexHtml)) {
         res.sendFile(distIndexHtml);
       } else {
-        res.status(404).send('Application build in progress. Please refresh momentarily.');
+        res.status(200).send('<!doctype html><html><body><div id="root">Application starting...</div></body></html>');
       }
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://0.0.0.0:${PORT} (production: ${isProduction})`);
+  });
+
+  // Graceful shutdown on SIGTERM / SIGINT for Cloud Run container lifecycle
+  process.on('SIGTERM', () => {
+    console.log('SIGTERM received, shutting down gracefully...');
+    server.close(() => {
+      process.exit(0);
+    });
   });
 }
 
-startServer();
+startServer().catch((err) => {
+  console.error('Fatal error starting server:', err);
+  process.exit(1);
+});
