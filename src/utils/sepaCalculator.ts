@@ -191,10 +191,22 @@ export function calculatePositionSize(
   };
 }
 
-export function getCurrencySymbol(exchange?: string): string {
-  const normalizedExchange = (exchange || "").trim().toUpperCase();
+export function getCurrencySymbol(exchangeOrStock?: string | { exchange?: string } | null | undefined | unknown): string {
+  if (!exchangeOrStock) return "₹";
 
-  if (normalizedExchange === "NASDAQ" || normalizedExchange === "NYSE" || normalizedExchange === "US") {
+  let raw = "";
+  if (typeof exchangeOrStock === "string") {
+    raw = exchangeOrStock;
+  } else if (typeof exchangeOrStock === "object" && exchangeOrStock !== null && "exchange" in exchangeOrStock) {
+    const ex = (exchangeOrStock as { exchange?: unknown }).exchange;
+    if (typeof ex === "string") {
+      raw = ex;
+    }
+  }
+
+  const normalizedExchange = (raw || "").trim().toUpperCase();
+
+  if (normalizedExchange === "NASDAQ" || normalizedExchange === "NYSE" || normalizedExchange === "US" || normalizedExchange === "$") {
     return "$";
   }
 

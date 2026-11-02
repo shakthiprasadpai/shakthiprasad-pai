@@ -84,7 +84,7 @@ export const BearishMarketDashboard: React.FC<BearishMarketDashboardProps> = ({
   const [riskPercent, setRiskPercent] = useState<number>(1.0);
   const [customCoverStopPct, setCustomCoverStopPct] = useState<number>(4.8);
 
-  const currencySymbol = getCurrencySymbol(activeBearStock);
+  const currencySymbol = getCurrencySymbol(activeBearStock?.exchange);
 
   // Run evaluation
   const bearishEval = useMemo(() => {
@@ -696,7 +696,7 @@ export const BearishMarketDashboard: React.FC<BearishMarketDashboardProps> = ({
               {filteredBearishStocks.map((stock) => {
                 const plan = calculateShortTradePlan(stock);
                 const isSelected = stock.ticker === activeBearStock.ticker;
-                const sym = getCurrencySymbol(stock);
+                const sym = getCurrencySymbol(stock?.exchange);
 
                 return (
                   <tr
