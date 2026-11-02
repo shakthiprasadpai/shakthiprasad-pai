@@ -44,6 +44,7 @@ import { GoogleSheetsView } from './components/GoogleSheetsView';
 import { GmailAlertsView } from './components/GmailAlertsView';
 import { QuickInsightModal } from './components/QuickInsightModal';
 import { BearishMarketDashboard } from './components/BearishMarketDashboard';
+import { TrendTemplateBacktestView } from './components/TrendTemplateBacktestView';
 import { getStoredWatchlists } from './utils/watchlistStorage';
 import { initializeAlertHistory } from './utils/priceAlertHistoryStorage';
 import { DEFAULT_NSE_BHAVCOPY, DEFAULT_BSE_BHAVCOPY } from './data/bhavcopyData';
@@ -433,6 +434,23 @@ export default function App() {
               </button>
             </div>
 
+            {/* SEPA Trend Template Quantitative Backtester Banner Button */}
+            <button
+              id="banner-sepa-backtester-button"
+              onClick={() => setActiveTab('trend_backtest')}
+              className="bg-indigo-700 hover:bg-indigo-600 text-white font-mono font-bold text-xs p-3 rounded border border-indigo-500 shadow-md flex items-center space-x-2 transition-all cursor-pointer hover:scale-[1.02] active:scale-98"
+              title="Open Minervini Trend Template Quantitative Backtesting Engine"
+            >
+              <History className="w-4 h-4 text-indigo-200" />
+              <div className="text-left leading-tight">
+                <div className="font-extrabold text-[11px] uppercase tracking-wider flex items-center gap-1">
+                  <span>SEPA Backtest</span>
+                  <span className="px-1 py-0.2 rounded bg-indigo-950 text-indigo-300 text-[8px] border border-indigo-500/40">QUANT</span>
+                </div>
+                <div className="text-[9px] font-mono text-indigo-100">8-Rule Strategy</div>
+              </div>
+            </button>
+
             {/* Bear Market & Stage 4 Short Mode Banner Button */}
             <button
               id="banner-bearish-market-toggle-button"
@@ -563,6 +581,42 @@ export default function App() {
                 </div>
               </div>
 
+              {/* SEPA Trend Template Quantitative Backtest Banner Card */}
+              <div className="bg-gradient-to-r from-indigo-950/50 via-slate-900 to-indigo-950/40 border border-indigo-500/30 p-4 sm:p-5 rounded-lg flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
+                <div className="flex items-start sm:items-center space-x-3.5">
+                  <div className="p-2.5 bg-indigo-600/20 text-indigo-400 rounded-lg border border-indigo-500/30 shrink-0">
+                    <History className="w-6 h-6 text-indigo-400" />
+                  </div>
+                  <div>
+                    <div className="flex items-center space-x-2">
+                      <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 uppercase tracking-widest">
+                        Quantitative Backtesting
+                      </span>
+                      <span className="text-xs font-mono text-gray-400">
+                        Mark Minervini Trend Continuation Template (2022–2026)
+                      </span>
+                    </div>
+                    <h3 className="text-base sm:text-lg font-serif font-black text-white mt-0.5">
+                      Volatile Growth Stocks Trend Continuation Backtester
+                    </h3>
+                    <p className="text-xs text-gray-300 font-sans mt-0.5">
+                      Tested across 16 volatile momentum leaders (NVDA, TSLA, PLTR, TRENT, DIXON, HAL, BEL). Analyze Win Rate, Profit Factor, Max Drawdown with 2x ATR &amp; fixed stops.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-3 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('trend_backtest')}
+                    className="px-4 py-2.5 rounded font-mono font-bold text-xs uppercase tracking-wider bg-indigo-600 hover:bg-indigo-500 text-white shadow-md flex items-center space-x-2 transition-all cursor-pointer hover:scale-[1.02]"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-indigo-200" />
+                    <span>Launch SEPA Backtester</span>
+                  </button>
+                </div>
+              </div>
+
               {/* Market Sentiment & Health Ribbon */}
               <MarketSentimentRibbon />
 
@@ -688,7 +742,10 @@ export default function App() {
                 />
 
                 {/* Historical VCP Backtest & Win-Rate Summary Engine */}
-                <HistoricalBacktestPanel stock={selectedStock} />
+                <HistoricalBacktestPanel
+                  stock={selectedStock}
+                  onOpenFullBacktest={() => setActiveTab('trend_backtest')}
+                />
 
                 {/* 'Big Money' Institutional Volume Spike Tracker */}
                 <BigMoneyTracker
@@ -737,6 +794,29 @@ export default function App() {
                 }}
                 onSwitchToBullishMode={() => setActiveTab('screener')}
                 isObsidian={isObsidian}
+              />
+            </motion.div>
+          )}
+
+          {/* TAB: SEPA TREND CONTINUATION TEMPLATE QUANTITATIVE BACKTESTER */}
+          {activeTab === 'trend_backtest' && (
+            <motion.div
+              key="trend_backtest"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.25, ease: 'easeInOut' }}
+              className="space-y-8"
+            >
+              <TrendTemplateBacktestView
+                isObsidian={isObsidian}
+                onSelectStockTicker={(ticker) => {
+                  const match = stocksList.find((s) => s.ticker === ticker);
+                  if (match) {
+                    setSelectedStock(match);
+                    setActiveTab('chart');
+                  }
+                }}
               />
             </motion.div>
           )}

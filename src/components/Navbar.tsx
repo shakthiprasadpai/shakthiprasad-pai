@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { TrendingUp, TrendingDown, Skull, ShieldAlert, BarChart3, Calculator, BookOpen, SlidersHorizontal, Briefcase, Calendar, Video, Gem, Moon, Sun, Zap, Target, BookMarked, Layers, BellRing, Download, Sparkles, Bot, Cpu, Bookmark, ShieldCheck, CheckSquare, Award, Monitor, FileSpreadsheet, Radio, Menu, X, Compass, Brain, HardDrive, Mail, ExternalLink } from 'lucide-react';
+import { TrendingUp, TrendingDown, Skull, ShieldAlert, BarChart3, Calculator, BookOpen, SlidersHorizontal, Briefcase, Calendar, Video, Gem, Moon, Sun, Zap, Target, BookMarked, Layers, BellRing, Download, Sparkles, Bot, Cpu, Bookmark, ShieldCheck, CheckSquare, Award, Monitor, FileSpreadsheet, Radio, Menu, X, Compass, Brain, HardDrive, Mail, ExternalLink, History } from 'lucide-react';
 import { DesktopRemixGuideModal } from './DesktopRemixGuideModal';
 import { MobileNavDrawer } from './MobileNavDrawer';
 import { UserAuthButton } from './UserAuthButton';
@@ -10,6 +10,7 @@ export type AppNavTab =
   | 'daily_review'
   | 'hermes_agent'
   | 'screener' 
+  | 'trend_backtest'
   | 'bearish_market'
   | 'watchlist'
   | 'chart' 
@@ -40,6 +41,7 @@ export const TAB_LABELS: Record<AppNavTab, string> = {
   daily_review: 'Daily Review',
   hermes_agent: 'Hermes AI',
   screener: 'Screener',
+  trend_backtest: 'SEPA Backtester',
   bearish_market: 'Bear Market & Shorts',
   watchlist: 'Watchlist',
   chart: 'VCP Charts',
@@ -422,6 +424,24 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <BarChart3 className="w-3.5 h-3.5" />
               <span className="hidden md:inline">Minervini Strategy</span>
+            </button>
+
+            <button
+              id="nav-tab-trend-backtest"
+              onClick={() => setActiveTab('trend_backtest')}
+              className={`flex items-center space-x-1.5 py-2 px-2.5 rounded transition-all border-b-2 font-bold cursor-pointer ${
+                activeTab === 'trend_backtest'
+                  ? 'bg-indigo-500/15 border-indigo-500 text-indigo-400 shadow-xs'
+                  : 'border-transparent text-indigo-400/90 hover:text-indigo-300 hover:bg-indigo-500/5'
+              }`}
+            >
+              <History className="w-3.5 h-3.5 text-indigo-400" />
+              <span className="font-mono tracking-wider font-extrabold flex items-center gap-1">
+                <span>SEPA BACKTEST</span>
+                <span className="px-1 py-0.2 bg-indigo-500/20 text-indigo-300 text-[8px] font-mono rounded font-black">
+                  QUANT
+                </span>
+              </span>
             </button>
 
             <button

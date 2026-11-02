@@ -34,7 +34,8 @@ import {
   Brain,
   Wallet,
   HardDrive,
-  Mail
+  Mail,
+  History
 } from 'lucide-react';
 import { AppNavTab } from './Navbar';
 
@@ -74,6 +75,15 @@ const NAV_ITEMS: NavItemDef[] = [
     subtitle: 'SEPA 8-point trend template & pivot breakouts',
     category: 'strategy',
     icon: BarChart3,
+  },
+  {
+    id: 'trend_backtest',
+    title: 'SEPA Backtester',
+    subtitle: 'Quantitative trend template backtest on volatile growth leaders',
+    category: 'strategy',
+    icon: History,
+    badge: 'QUANT',
+    badgeColor: 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30',
   },
   {
     id: 'bearish_market',

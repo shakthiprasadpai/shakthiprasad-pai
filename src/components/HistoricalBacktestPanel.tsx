@@ -6,6 +6,7 @@ import { BacktestWinRateSummaryCard } from './BacktestWinRateSummaryCard';
 
 interface HistoricalBacktestPanelProps {
   stock: MinerviniTradeSetup;
+  onOpenFullBacktest?: () => void;
 }
 
 export interface BreakoutBacktestRecord {
@@ -18,7 +19,7 @@ export interface BreakoutBacktestRecord {
   outcome: 'Success (+24%)' | 'Breakout Failure (-7%)' | 'Consolidating';
 }
 
-export const HistoricalBacktestPanel: React.FC<HistoricalBacktestPanelProps> = ({ stock }) => {
+export const HistoricalBacktestPanel: React.FC<HistoricalBacktestPanelProps> = ({ stock, onOpenFullBacktest }) => {
   const currencySymbol = getCurrencySymbol(stock.exchange);
 
   // Generate historical breakout pivot events from price history
@@ -90,8 +91,20 @@ export const HistoricalBacktestPanel: React.FC<HistoricalBacktestPanelProps> = (
           </div>
         </div>
 
-        <div className="px-3 py-1 bg-[#f9f8f5] border border-[#e5e4e1] text-xs font-mono font-bold text-gray-700 flex items-center space-x-2">
-          <span>Tested Pivots: {breakoutRecords.length} Events</span>
+        <div className="flex items-center space-x-2">
+          {onOpenFullBacktest && (
+            <button
+              onClick={onOpenFullBacktest}
+              className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-xs font-mono font-bold uppercase tracking-wider flex items-center space-x-1.5 shadow-xs cursor-pointer transition-all hover:scale-[1.02]"
+              title="Open Multi-Stock Minervini Trend Template Quantitative Backtest (16 Stocks, 2x ATR / Fixed Stop, Win Rate, Profit Factor, Max Drawdown)"
+            >
+              <span>Full SEPA Backtester</span>
+              <span className="bg-indigo-900 text-indigo-200 px-1 py-0.2 rounded text-[9px]">QUANT</span>
+            </button>
+          )}
+          <div className="px-3 py-1 bg-[#f9f8f5] border border-[#e5e4e1] text-xs font-mono font-bold text-gray-700 flex items-center space-x-2">
+            <span>Tested Pivots: {breakoutRecords.length} Events</span>
+          </div>
         </div>
       </div>
 
