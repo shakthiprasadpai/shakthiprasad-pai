@@ -63,14 +63,20 @@ export interface CalculatedBar extends HistoricalDailyBar {
   trendTemplateRulesPassed: number; // 0 to 8
   isBreakoutPivot: boolean;
   pivotResistance: number;
+  bearishTrendTemplatePass: boolean;
+  bearishTrendRulesPassed: number; // 0 to 8
+  isBreakdownPivot: boolean;
+  pivotSupport: number;
 }
 
 export type StopLossMode = '2x_atr' | 'fixed_7pct' | 'fixed_10pct' | 'fixed_8pct' | 'fixed_5pct';
 export type ProfitTargetMode = '2r' | '3r' | 'minervini_20pct' | 'trailing_only';
+export type StrategyTrendMode = 'BULLISH_STAGE_2' | 'AUTOMATIC_BEARISH_STAGE_4' | 'ADAPTIVE_REGIME';
 
 export interface BacktestConfig {
   universe: 'ALL' | 'US_ONLY' | 'INDIA_ONLY' | 'CUSTOM';
   selectedTickers?: string[];
+  trendMode?: StrategyTrendMode;
   stopLossMode: StopLossMode;
   profitTargetMode: ProfitTargetMode;
   initialCapital: number;
@@ -86,6 +92,7 @@ export interface BacktestTrade {
   companyName: string;
   exchange: string;
   currency: string;
+  tradeDirection: 'LONG' | 'SHORT';
   entryDate: string;
   entryPrice: number;
   shares: number;
@@ -415,43 +422,49 @@ export function calculateMinerviniIndicators(bars: HistoricalDailyBar[]): Calcul
       relativeStrength = Math.min(99, Math.max(10, Math.round(50 + perf60d * 0.8 + perfVs200 * 0.5)));
     }
 
-    // 20-day Resistance Pivot level
+    // 20-day Resistance Pivot & 20-day Support Floor levels
     const pivotLookback = Math.min(i + 1, 20);
     let pivotResistance = bar.close;
+    let pivotSupport = bar.close;
     for (let j = i - pivotLookback + 1; j < i; j++) {
       if (bars[j].high > pivotResistance) pivotResistance = bars[j].high;
+      if (bars[j].low < pivotSupport) pivotSupport = bars[j].low;
     }
 
-    // EVALUATE MINERVINI 8 TREND TEMPLATE CRITERIA:
+    // EVALUATE MINERVINI 8 TREND TEMPLATE CRITERIA (STAGE 2 BULLISH):
     // Only valid once sufficient history exists (i >= 222 bars, ~1 year)
     let passedRules = 0;
+    let bearishPassedRules = 0;
+
     if (i >= 222) {
-      // Rule 1: Price > 150-day and 200-day SMA
+      // 1. BULLISH RULES
       if (bar.close > sma150 && bar.close > sma200) passedRules++;
-      // Rule 2: 150-day SMA > 200-day SMA
       if (sma150 > sma200) passedRules++;
-      // Rule 3: 200-day SMA is sloping upward for at least 1 month
       if (sma200Slope22d > 0.05) passedRules++;
-      // Rule 4: 50-day SMA > 150-day SMA and 200-day SMA
       if (sma50 > sma150 && sma50 > sma200) passedRules++;
-      // Rule 5: Current Price > 50-day SMA
       if (bar.close > sma50) passedRules++;
-      // Rule 6: Current Price is at least 30% above 52-week low
       if (pctAbove52wLow >= 30) passedRules++;
-      // Rule 7: Current Price is within 25% of 52-week high
       if (pctBelow52wHigh <= 25) passedRules++;
-      // Rule 8: Relative Strength >= 70
       if (relativeStrength >= 70) passedRules++;
+
+      // 2. AUTOMATIC BEARISH RULES (INVERSE STAGE 4 MARKDOWN)
+      if (bar.close < sma150 && bar.close < sma200) bearishPassedRules++;
+      if (sma150 < sma200) bearishPassedRules++; // Death cross
+      if (sma200Slope22d < -0.05) bearishPassedRules++; // Downward sloping 200MA
+      if (sma50 < sma150 && sma50 < sma200) bearishPassedRules++;
+      if (bar.close < sma50) bearishPassedRules++;
+      if (pctAbove52wLow <= 25) bearishPassedRules++; // Near 52-week low
+      if (pctBelow52wHigh >= 25) bearishPassedRules++; // >25% off high
+      if (relativeStrength <= 40) bearishPassedRules++; // Severe laggard
     }
 
     const trendTemplatePass = passedRules === 8;
+    const bearishTrendTemplatePass = bearishPassedRules >= 6;
 
-    // Entry Trigger:
-    // 1. All 8 Trend Template rules pass
-    // 2. Bar closes above 20-day resistance pivot
-    // 3. Volume is at least 1.4x 20-day average volume
-    // 4. Previous bar was below or at pivot (breakout pivot moment)
+    // Entry Triggers:
     const prevBar = i > 0 ? bars[i - 1] : null;
+
+    // Bullish Pivot Breakout
     const isBreakoutPivot = Boolean(
       trendTemplatePass &&
       prevBar &&
@@ -459,6 +472,16 @@ export function calculateMinerviniIndicators(bars: HistoricalDailyBar[]): Calcul
       bar.close > pivotResistance &&
       bar.volume >= volumeSma20 * 1.4 &&
       bar.close > bar.open // Green candle expansion
+    );
+
+    // Automatic Bearish Support Breakdown
+    const isBreakdownPivot = Boolean(
+      bearishTrendTemplatePass &&
+      prevBar &&
+      prevBar.close >= pivotSupport * 0.99 &&
+      bar.close < pivotSupport &&
+      bar.volume >= volumeSma20 * 1.35 &&
+      bar.close < bar.open // Red breakdown distribution candle
     );
 
     calculated.push({
@@ -477,7 +500,11 @@ export function calculateMinerviniIndicators(bars: HistoricalDailyBar[]): Calcul
       trendTemplatePass,
       trendTemplateRulesPassed: passedRules,
       isBreakoutPivot,
-      pivotResistance
+      pivotResistance,
+      bearishTrendTemplatePass,
+      bearishTrendRulesPassed: bearishPassedRules,
+      isBreakdownPivot,
+      pivotSupport
     });
   }
 
@@ -545,29 +572,41 @@ export function runMinerviniBacktest(config: BacktestConfig): BacktestSummaryRep
       let exitPrice: number | null = null;
       let exitReason: BacktestTrade['exitReason'] | null = null;
 
+      // Determine if long or short trade
+      const isShort = trade.tradeDirection === 'SHORT';
+
       // Check Stop Loss Trigger
-      if (bar.low <= trade.initialStopLoss) {
-        // Stop hit! Exit at stop loss price (or open if gapped below stop)
-        exitPrice = Math.min(bar.open, trade.initialStopLoss);
-        exitReason = config.stopLossMode === '2x_atr' ? 'Stop Loss Hit (2x ATR)' : 'Fixed Stop Hit';
-      }
-      // Check Profit Target Trigger
-      else if (bar.high >= trade.initialTargetPrice && config.profitTargetMode !== 'trailing_only') {
-        exitPrice = trade.initialTargetPrice;
-        exitReason = config.profitTargetMode === 'minervini_20pct' ? 'Minervini 20% Target' : 'Profit Target Hit (2R/3R)';
-      }
-      // Check Trailing Stop (Move to breakeven after +1R / +10% gain)
-      else if (trade.highestPriceReached >= trade.entryPrice * (1 + (trade.stopLossPercent / 100) * config.trailToBreakevenAtR)) {
-        // Stop moved to Breakeven
-        if (bar.low <= trade.entryPrice) {
-          exitPrice = trade.entryPrice;
-          exitReason = 'Breakeven Trail';
+      if (isShort) {
+        if (bar.high >= trade.initialStopLoss) {
+          exitPrice = Math.max(bar.open, trade.initialStopLoss);
+          exitReason = config.stopLossMode === '2x_atr' ? 'Stop Loss Hit (2x ATR)' : 'Fixed Stop Hit';
+        } else if (bar.low <= trade.initialTargetPrice && config.profitTargetMode !== 'trailing_only') {
+          exitPrice = trade.initialTargetPrice;
+          exitReason = config.profitTargetMode === 'minervini_20pct' ? 'Minervini 20% Target' : 'Profit Target Hit (2R/3R)';
+        } else if (trade.entryPrice - bar.low >= trade.initialRiskPerShare * config.trailToBreakevenAtR) {
+          if (bar.high >= trade.entryPrice) {
+            exitPrice = trade.entryPrice;
+            exitReason = 'Breakeven Trail';
+          }
         }
-      }
-      // Check 50-day SMA breakdown (Minervini institutional trailing rule: break of 50 SMA by > 2% when in profit)
-      if (!exitPrice && bar.close < bar.sma50 * 0.98 && trade.highestPriceReached > trade.entryPrice * 1.08) {
-        exitPrice = bar.close;
-        exitReason = '50 SMA Breach';
+      } else {
+        // LONG TRADE EXITS
+        if (bar.low <= trade.initialStopLoss) {
+          // Stop hit! Exit at stop loss price (or open if gapped below stop)
+          exitPrice = Math.min(bar.open, trade.initialStopLoss);
+          exitReason = config.stopLossMode === '2x_atr' ? 'Stop Loss Hit (2x ATR)' : 'Fixed Stop Hit';
+        } else if (bar.high >= trade.initialTargetPrice && config.profitTargetMode !== 'trailing_only') {
+          exitPrice = trade.initialTargetPrice;
+          exitReason = config.profitTargetMode === 'minervini_20pct' ? 'Minervini 20% Target' : 'Profit Target Hit (2R/3R)';
+        } else if (trade.highestPriceReached >= trade.entryPrice * (1 + (trade.stopLossPercent / 100) * config.trailToBreakevenAtR)) {
+          if (bar.low <= trade.entryPrice) {
+            exitPrice = trade.entryPrice;
+            exitReason = 'Breakeven Trail';
+          }
+        } else if (bar.close < bar.sma50 * 0.98 && trade.highestPriceReached > trade.entryPrice * 1.08) {
+          exitPrice = bar.close;
+          exitReason = '50 SMA Breach';
+        }
       }
 
       // Check Max Holding Days Expiry
@@ -582,9 +621,12 @@ export function runMinerviniBacktest(config: BacktestConfig): BacktestSummaryRep
         trade.exitPrice = Number(exitPrice.toFixed(2));
         trade.exitReason = exitReason;
 
-        const pnlPerShare = trade.exitPrice - trade.entryPrice;
+        const pnlPerShare = isShort
+          ? trade.entryPrice - trade.exitPrice
+          : trade.exitPrice - trade.entryPrice;
+
         trade.realizedPnl = Number((pnlPerShare * trade.shares).toFixed(2));
-        trade.realizedPnlPercent = Number((((trade.exitPrice - trade.entryPrice) / trade.entryPrice) * 100).toFixed(2));
+        trade.realizedPnlPercent = Number((((pnlPerShare) / trade.entryPrice) * 100).toFixed(2));
         trade.realizedRMultiple = trade.initialRiskPerShare > 0
           ? Number((pnlPerShare / trade.initialRiskPerShare).toFixed(2))
           : 0;
@@ -597,13 +639,15 @@ export function runMinerviniBacktest(config: BacktestConfig): BacktestSummaryRep
           trade.outcome = 'SCRATCH';
         }
 
-        cash += trade.shares * trade.exitPrice;
+        cash += trade.positionValue + trade.realizedPnl;
         closedTrades.push(trade);
         activeTrades.splice(t, 1);
       }
     }
 
-    // 2. Scan for New Minervini Trend Template Breakout Pivot Entries
+    // 2. Scan for New Minervini Trend Template Breakout / Automatic Bearish Breakdown Entries
+    const trendMode = config.trendMode || 'BULLISH_STAGE_2';
+
     if (activeTrades.length < config.maxConcurrentPositions) {
       for (let s = 0; s < stocksToTest.length; s++) {
         if (activeTrades.length >= config.maxConcurrentPositions) break;
@@ -619,57 +663,100 @@ export function runMinerviniBacktest(config: BacktestConfig): BacktestSummaryRep
         if (barIndex <= 0) continue;
 
         const bar = stockObj.bars[barIndex];
-        if (bar.isBreakoutPivot) {
+        
+        const shouldEnterLong = (trendMode === 'BULLISH_STAGE_2' || trendMode === 'ADAPTIVE_REGIME') && bar.isBreakoutPivot;
+        const shouldEnterShort = (trendMode === 'AUTOMATIC_BEARISH_STAGE_4' || trendMode === 'ADAPTIVE_REGIME') && bar.isBreakdownPivot;
+
+        if (shouldEnterLong || shouldEnterShort) {
+          const isShort = shouldEnterShort && !shouldEnterLong;
+
           // Calculate Stop Loss based on selected mode
           let stopPrice = 0;
           let stopPct = 0;
 
-          if (config.stopLossMode === '2x_atr') {
-            stopPrice = Number((bar.close - 2 * bar.atr14).toFixed(2));
-            stopPct = Number((((bar.close - stopPrice) / bar.close) * 100).toFixed(2));
-          } else if (config.stopLossMode === 'fixed_7pct') {
-            stopPct = 7.0;
-            stopPrice = Number((bar.close * 0.93).toFixed(2));
-          } else if (config.stopLossMode === 'fixed_10pct') {
-            stopPct = 10.0;
-            stopPrice = Number((bar.close * 0.90).toFixed(2));
-          } else if (config.stopLossMode === 'fixed_8pct') {
-            stopPct = 8.0;
-            stopPrice = Number((bar.close * 0.92).toFixed(2));
+          if (isShort) {
+            // SHORT STOP LOSS (Placed above entry)
+            if (config.stopLossMode === '2x_atr') {
+              stopPrice = Number((bar.close + 2 * bar.atr14).toFixed(2));
+              stopPct = Number((((stopPrice - bar.close) / bar.close) * 100).toFixed(2));
+            } else if (config.stopLossMode === 'fixed_7pct') {
+              stopPct = 7.0;
+              stopPrice = Number((bar.close * 1.07).toFixed(2));
+            } else if (config.stopLossMode === 'fixed_10pct') {
+              stopPct = 10.0;
+              stopPrice = Number((bar.close * 1.10).toFixed(2));
+            } else if (config.stopLossMode === 'fixed_8pct') {
+              stopPct = 8.0;
+              stopPrice = Number((bar.close * 1.08).toFixed(2));
+            } else {
+              stopPct = 5.0;
+              stopPrice = Number((bar.close * 1.05).toFixed(2));
+            }
+
+            if (stopPct > 10) {
+              stopPct = 10;
+              stopPrice = Number((bar.close * 1.10).toFixed(2));
+            }
           } else {
-            // fixed_5pct
-            stopPct = 5.0;
-            stopPrice = Number((bar.close * 0.95).toFixed(2));
+            // LONG STOP LOSS (Placed below entry)
+            if (config.stopLossMode === '2x_atr') {
+              stopPrice = Number((bar.close - 2 * bar.atr14).toFixed(2));
+              stopPct = Number((((bar.close - stopPrice) / bar.close) * 100).toFixed(2));
+            } else if (config.stopLossMode === 'fixed_7pct') {
+              stopPct = 7.0;
+              stopPrice = Number((bar.close * 0.93).toFixed(2));
+            } else if (config.stopLossMode === 'fixed_10pct') {
+              stopPct = 10.0;
+              stopPrice = Number((bar.close * 0.90).toFixed(2));
+            } else if (config.stopLossMode === 'fixed_8pct') {
+              stopPct = 8.0;
+              stopPrice = Number((bar.close * 0.92).toFixed(2));
+            } else {
+              stopPct = 5.0;
+              stopPrice = Number((bar.close * 0.95).toFixed(2));
+            }
+
+            if (stopPct > 10) {
+              stopPct = 10;
+              stopPrice = Number((bar.close * 0.90).toFixed(2));
+            }
           }
 
-          // Minervini Golden Rule: Stop loss must never exceed 10%
-          if (stopPct > 10) {
-            stopPct = 10;
-            stopPrice = Number((bar.close * 0.90).toFixed(2));
-          }
+          const riskPerShare = isShort
+            ? stopPrice - bar.close
+            : bar.close - stopPrice;
 
-          const riskPerShare = bar.close - stopPrice;
           if (riskPerShare <= 0) continue;
 
           // Calculate Profit Target Price
           let targetPrice = 0;
-          if (config.profitTargetMode === '2r') {
-            targetPrice = Number((bar.close + 2 * riskPerShare).toFixed(2));
-          } else if (config.profitTargetMode === '3r') {
-            targetPrice = Number((bar.close + 3 * riskPerShare).toFixed(2));
-          } else if (config.profitTargetMode === 'minervini_20pct') {
-            targetPrice = Number((bar.close * 1.20).toFixed(2));
+          if (isShort) {
+            if (config.profitTargetMode === '2r') {
+              targetPrice = Number((bar.close - 2 * riskPerShare).toFixed(2));
+            } else if (config.profitTargetMode === '3r') {
+              targetPrice = Number((bar.close - 3 * riskPerShare).toFixed(2));
+            } else if (config.profitTargetMode === 'minervini_20pct') {
+              targetPrice = Number((bar.close * 0.80).toFixed(2));
+            } else {
+              targetPrice = Number((bar.close * 0.60).toFixed(2));
+            }
           } else {
-            // Trailing only: set loose ceiling at +50%
-            targetPrice = Number((bar.close * 1.50).toFixed(2));
+            if (config.profitTargetMode === '2r') {
+              targetPrice = Number((bar.close + 2 * riskPerShare).toFixed(2));
+            } else if (config.profitTargetMode === '3r') {
+              targetPrice = Number((bar.close + 3 * riskPerShare).toFixed(2));
+            } else if (config.profitTargetMode === 'minervini_20pct') {
+              targetPrice = Number((bar.close * 1.20).toFixed(2));
+            } else {
+              targetPrice = Number((bar.close * 1.50).toFixed(2));
+            }
           }
 
-          // Position Sizing: Risk 1.5% of total portfolio equity, capped at max 20% of capital
+          // Position Sizing: Risk 1.5% of total portfolio equity, capped at max position limits
           const totalPortfolioEstimate = cash + activeTrades.reduce((acc, t) => acc + t.positionValue, 0);
           const maxRiskDollars = totalPortfolioEstimate * (config.maxRiskPerTradePct / 100);
           let targetShares = Math.floor(maxRiskDollars / riskPerShare);
 
-          // Position size cap
           const maxPositionCapital = totalPortfolioEstimate / config.maxConcurrentPositions;
           const maxSharesByCapital = Math.floor(maxPositionCapital / bar.close);
           targetShares = Math.max(1, Math.min(targetShares, maxSharesByCapital));
@@ -684,6 +771,7 @@ export function runMinerviniBacktest(config: BacktestConfig): BacktestSummaryRep
               companyName: def.name,
               exchange: def.exchange,
               currency: def.currency,
+              tradeDirection: isShort ? 'SHORT' : 'LONG',
               entryDate: bar.date,
               entryPrice: bar.close,
               shares: targetShares,
@@ -701,7 +789,7 @@ export function runMinerviniBacktest(config: BacktestConfig): BacktestSummaryRep
               realizedRMultiple: 0,
               holdingDays: 0,
               highestPriceReached: bar.high,
-              trendScoreAtEntry: 8
+              trendScoreAtEntry: isShort ? bar.bearishTrendRulesPassed : 8
             };
 
             activeTrades.push(newTrade);
@@ -717,7 +805,11 @@ export function runMinerviniBacktest(config: BacktestConfig): BacktestSummaryRep
       if (stockObj) {
         const bar = stockObj.bars.find((b) => b.date === currentDate);
         const currentP = bar ? bar.close : trade.entryPrice;
-        openPositionsValue += trade.shares * currentP;
+        if (trade.tradeDirection === 'SHORT') {
+          openPositionsValue += trade.positionValue + (trade.entryPrice - currentP) * trade.shares;
+        } else {
+          openPositionsValue += trade.shares * currentP;
+        }
       } else {
         openPositionsValue += trade.positionValue;
       }
@@ -753,15 +845,17 @@ export function runMinerviniBacktest(config: BacktestConfig): BacktestSummaryRep
       trade.exitDate = finalDate;
       trade.exitPrice = finalPrice;
       trade.exitReason = 'Max Hold Period';
-      const pnl = (finalPrice - trade.entryPrice) * trade.shares;
+      const isShort = trade.tradeDirection === 'SHORT';
+      const pnlPerShare = isShort ? trade.entryPrice - finalPrice : finalPrice - trade.entryPrice;
+      const pnl = pnlPerShare * trade.shares;
       trade.realizedPnl = Number(pnl.toFixed(2));
-      trade.realizedPnlPercent = Number((((finalPrice - trade.entryPrice) / trade.entryPrice) * 100).toFixed(2));
+      trade.realizedPnlPercent = Number((((pnlPerShare) / trade.entryPrice) * 100).toFixed(2));
       trade.realizedRMultiple = trade.initialRiskPerShare > 0
-        ? Number(((finalPrice - trade.entryPrice) / trade.initialRiskPerShare).toFixed(2))
+        ? Number((pnlPerShare / trade.initialRiskPerShare).toFixed(2))
         : 0;
       trade.outcome = trade.realizedPnlPercent > 0.5 ? 'WIN' : trade.realizedPnlPercent < -0.5 ? 'LOSS' : 'SCRATCH';
 
-      cash += trade.shares * finalPrice;
+      cash += trade.positionValue + trade.realizedPnl;
       closedTrades.push(trade);
     });
   }

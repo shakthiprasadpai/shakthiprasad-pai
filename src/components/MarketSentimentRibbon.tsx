@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   TrendingUp,
   AlertTriangle,
@@ -11,9 +11,14 @@ import {
   ChevronUp,
   Zap,
   RefreshCw,
-  Gauge
+  Gauge,
+  Skull,
+  Flame,
+  ArrowRight
 } from 'lucide-react';
 import { BseSensexChart } from './BseSensexChart';
+import { MinerviniTradeSetup } from '../types';
+import { calculateMarketAutomaticTrend } from '../utils/automaticTrendClassifier';
 
 export type MarketRegime = 'CONFIRMED_UPTREND' | 'UNDER_PRESSURE' | 'CORRECTION' | 'RALLY_ATTEMPT';
 
@@ -27,10 +32,32 @@ export interface MarketIndexData {
   statusAbove21Ema: boolean;
 }
 
-export const MarketSentimentRibbon: React.FC = () => {
+interface MarketSentimentRibbonProps {
+  stocks?: MinerviniTradeSetup[];
+  onOpenBearishMode?: () => void;
+  onOpenBacktest?: () => void;
+}
+
+export const MarketSentimentRibbon: React.FC<MarketSentimentRibbonProps> = ({
+  stocks = [],
+  onOpenBearishMode,
+  onOpenBacktest
+}) => {
   const [regime, setRegime] = useState<MarketRegime>('CONFIRMED_UPTREND');
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+  const [autoDetectMode, setAutoDetectMode] = useState<boolean>(true);
+
+  // Automatic Minervini Trend Regime Evaluation
+  const autoMarket = useMemo(() => calculateMarketAutomaticTrend(stocks), [stocks]);
+
+  // Synchronize regime if auto-detect is enabled
+  const effectiveRegime: MarketRegime = useMemo(() => {
+    if (!autoDetectMode) return regime;
+    if (autoMarket.regime === 'AUTOMATIC_STAGE_4_BEARISH_MARKDOWN') return 'CORRECTION';
+    if (autoMarket.regime === 'UPTREND_UNDER_DISTRIBUTION_PRESSURE') return 'UNDER_PRESSURE';
+    return 'CONFIRMED_UPTREND';
+  }, [autoDetectMode, regime, autoMarket]);
 
   // Simulated live market index feed data
   const [indices, setIndices] = useState<MarketIndexData[]>([
@@ -152,7 +179,7 @@ export const MarketSentimentRibbon: React.FC = () => {
     },
   };
 
-  const currentConfig = regimeConfig[regime];
+  const currentConfig = regimeConfig[effectiveRegime];
   const IconComponent = currentConfig.icon;
 
   return (
@@ -178,8 +205,13 @@ export const MarketSentimentRibbon: React.FC = () => {
                   Market Health Status
                 </span>
                 <span className={`text-[9px] font-mono font-bold px-1.5 py-0.2 uppercase ${currentConfig.badgeBg}`}>
-                  {currentConfig.title}
+                  {autoDetectMode ? `Auto: ${currentConfig.title}` : currentConfig.title}
                 </span>
+                {autoMarket.isMarketBearish && (
+                  <span className="text-[9px] font-mono font-black px-1.5 py-0.2 uppercase bg-rose-600 text-white rounded animate-pulse">
+                    STAGE 4 BEARISH
+                  </span>
+                )}
               </div>
               <p className="text-xs font-serif italic text-gray-200 mt-0.5">
                 {currentConfig.subtitle}
@@ -216,6 +248,19 @@ export const MarketSentimentRibbon: React.FC = () => {
 
         {/* Right Actionable Guidance & Toggle Details */}
         <div className="flex items-center space-x-3 text-xs font-sans ml-auto">
+          {/* Auto vs Manual Toggle */}
+          <button
+            onClick={() => setAutoDetectMode(!autoDetectMode)}
+            className={`px-2 py-1 text-[10px] font-mono uppercase font-bold rounded border transition-all cursor-pointer ${
+              autoDetectMode
+                ? 'bg-indigo-600 text-white border-indigo-400'
+                : 'bg-black/40 text-gray-400 border-white/10'
+            }`}
+            title="Toggle Automatic Minervini Trend Template Market Classification"
+          >
+            {autoDetectMode ? '⚡ Auto Trend ON' : 'Manual Regime'}
+          </button>
+
           {/* Regime Switcher Dropdown / Buttons */}
           <div className="flex items-center space-x-1 bg-black/40 p-1 border border-white/10">
             {(['CONFIRMED_UPTREND', 'UNDER_PRESSURE', 'CORRECTION', 'RALLY_ATTEMPT'] as MarketRegime[]).map((r) => {
@@ -228,9 +273,12 @@ export const MarketSentimentRibbon: React.FC = () => {
               return (
                 <button
                   key={r}
-                  onClick={() => setRegime(r)}
-                  className={`px-2 py-1 text-[10px] font-mono uppercase font-bold transition-all ${
-                    regime === r
+                  onClick={() => {
+                    setAutoDetectMode(false);
+                    setRegime(r);
+                  }}
+                  className={`px-2 py-1 text-[10px] font-mono uppercase font-bold transition-all cursor-pointer ${
+                    effectiveRegime === r
                       ? 'bg-white text-black shadow-xs'
                       : 'text-gray-300 hover:text-white hover:bg-white/10'
                   }`}
@@ -243,15 +291,54 @@ export const MarketSentimentRibbon: React.FC = () => {
 
           <button
             onClick={() => setIsExpanded(!isExpanded)}
-            className="flex items-center space-x-1 bg-white/10 hover:bg-white/20 text-white px-2.5 py-1.5 text-xs font-mono font-bold transition-all"
+            className="flex items-center space-x-1 bg-white/10 hover:bg-white/20 text-white px-2.5 py-1.5 text-xs font-mono font-bold transition-all cursor-pointer"
           >
             <Gauge className="w-3.5 h-3.5" />
-            <span>{isExpanded ? 'Hide Diagnostics' : 'Market Pulse'}</span>
+            <span>{isExpanded ? 'Hide Pulse' : 'Market Pulse'}</span>
             {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
           </button>
         </div>
 
       </div>
+
+      {/* Automatic Minervini Bearish Trend Alert Ribbon */}
+      {autoMarket.isMarketBearish && (
+        <div className="bg-gradient-to-r from-rose-950 via-slate-900 to-rose-950 border-t border-rose-500/40 px-4 py-2 sm:px-6 flex flex-wrap items-center justify-between gap-3 text-xs font-mono text-rose-100 shadow-inner">
+          <div className="flex items-center space-x-2.5">
+            <span className="p-1 rounded bg-rose-600 text-white font-black animate-pulse flex items-center justify-center">
+              <Skull className="w-3.5 h-3.5" />
+            </span>
+            <div>
+              <span className="font-black text-rose-300 uppercase tracking-wider mr-2">
+                Automatic Bearish Trend Detected:
+              </span>
+              <span className="text-gray-200">
+                {autoMarket.below200SmaPercent}% stocks below 200 SMA • {autoMarket.deathCrossPercent}% Death Cross • {autoMarket.stage4BearishCount} leaders in Stage 4 Markdown.
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-2">
+            {onOpenBearishMode && (
+              <button
+                onClick={onOpenBearishMode}
+                className="px-3 py-1 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded text-[10px] uppercase tracking-wider flex items-center space-x-1 shadow-sm cursor-pointer transition-all hover:scale-[1.02]"
+              >
+                <span>Switch to Bear Market Suite</span>
+                <ArrowRight className="w-3 h-3" />
+              </button>
+            )}
+            {onOpenBacktest && (
+              <button
+                onClick={onOpenBacktest}
+                className="px-2.5 py-1 bg-indigo-900/80 hover:bg-indigo-800 text-indigo-200 font-bold rounded text-[10px] uppercase border border-indigo-500/40 cursor-pointer"
+              >
+                Backtest Shorts
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Action Guidance Bar */}
       <div className="bg-black/50 border-t border-white/10 px-4 py-2 sm:px-6 flex flex-wrap items-center justify-between gap-3 text-xs font-mono">

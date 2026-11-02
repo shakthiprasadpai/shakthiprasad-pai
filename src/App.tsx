@@ -554,17 +554,17 @@ export default function App() {
                   <div>
                     <div className="flex items-center space-x-2">
                       <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30 uppercase tracking-widest">
-                        Bear Market Protocol
+                        Fully Automatic Bearish SEPA
                       </span>
                       <span className="text-xs font-mono text-gray-400">
-                        Stan Weinstein &amp; Mark Minervini Short Selling Suite
+                        Mark Minervini &amp; Stan Weinstein Autonomous Engine
                       </span>
                     </div>
                     <h3 className="text-base sm:text-lg font-serif font-black text-white mt-0.5">
-                      Stage 4 Markdown &amp; Institutional Distribution Screener
+                      Fully Automatic Bearish Stock Execution &amp; Short Screener
                     </h3>
                     <p className="text-xs text-gray-300 font-sans mt-0.5">
-                      Market under institutional pressure? Access inverse 8-rule checklist, breakdown triggers, cover stops, and asymmetric short setups.
+                      Autonomous Stage 4 markdown detection, automatic simulated short triggers, 2x ATR protective cover stops, 2R/3.5R dual targets, and dynamic breakeven trailing.
                     </p>
                   </div>
                 </div>
@@ -573,10 +573,10 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => setActiveTab('bearish_market')}
-                    className="px-4 py-2.5 rounded font-mono font-bold text-xs uppercase tracking-wider bg-rose-600 hover:bg-rose-500 text-white shadow-md flex items-center space-x-2 transition-all cursor-pointer"
+                    className="px-4 py-2.5 rounded font-mono font-bold text-xs uppercase tracking-wider bg-rose-600 hover:bg-rose-500 text-white shadow-md flex items-center space-x-2 transition-all cursor-pointer hover:scale-[1.02]"
                   >
-                    <Skull className="w-3.5 h-3.5" />
-                    <span>Open Bearish Market &amp; Shorts</span>
+                    <Zap className="w-3.5 h-3.5 text-amber-300" />
+                    <span>Launch Automatic Bearish Engine</span>
                   </button>
                 </div>
               </div>
@@ -618,7 +618,11 @@ export default function App() {
               </div>
 
               {/* Market Sentiment & Health Ribbon */}
-              <MarketSentimentRibbon />
+              <MarketSentimentRibbon
+                stocks={stocksList}
+                onOpenBearishMode={() => setActiveTab('bearish_market')}
+                onOpenBacktest={() => setActiveTab('trend_backtest')}
+              />
 
               {/* Screener Table */}
               <ScreenerTable

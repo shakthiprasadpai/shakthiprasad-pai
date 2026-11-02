@@ -6,6 +6,7 @@ import {
   VOLATILE_GROWTH_STOCKS,
   StopLossMode,
   ProfitTargetMode,
+  StrategyTrendMode,
   BacktestTrade
 } from '../utils/minerviniTrendTemplateBacktester';
 import {
@@ -38,7 +39,8 @@ import {
   Activity,
   Calendar,
   Search,
-  ExternalLink
+  ExternalLink,
+  Skull
 } from 'lucide-react';
 import { formatCurrency } from '../utils/sepaCalculator';
 
@@ -53,6 +55,7 @@ export const TrendTemplateBacktestView: React.FC<TrendTemplateBacktestViewProps>
 }) => {
   // Strategy Configurations State
   const [universe, setUniverse] = useState<BacktestConfig['universe']>('ALL');
+  const [trendMode, setTrendMode] = useState<StrategyTrendMode>('BULLISH_STAGE_2');
   const [stopLossMode, setStopLossMode] = useState<StopLossMode>('2x_atr');
   const [profitTargetMode, setProfitTargetMode] = useState<ProfitTargetMode>('2r');
   const [initialCapital, setInitialCapital] = useState<number>(100000);
@@ -72,6 +75,7 @@ export const TrendTemplateBacktestView: React.FC<TrendTemplateBacktestViewProps>
   const backtestResult: BacktestSummaryReport = useMemo(() => {
     return runMinerviniBacktest({
       universe,
+      trendMode,
       stopLossMode,
       profitTargetMode,
       initialCapital,
@@ -80,7 +84,7 @@ export const TrendTemplateBacktestView: React.FC<TrendTemplateBacktestViewProps>
       trailToBreakevenAtR: 1.0,
       maxHoldingDays
     });
-  }, [universe, stopLossMode, profitTargetMode, initialCapital, maxRiskPerTradePct, maxConcurrentPositions, maxHoldingDays]);
+  }, [universe, trendMode, stopLossMode, profitTargetMode, initialCapital, maxRiskPerTradePct, maxConcurrentPositions, maxHoldingDays]);
 
   // Filtered trades list
   const filteredTrades = useMemo(() => {
@@ -268,9 +272,32 @@ export const TrendTemplateBacktestView: React.FC<TrendTemplateBacktestViewProps>
           </span>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           
-          {/* 1. Stock Universe Selection */}
+          {/* 1. Strategy Trend Direction (Bullish vs Automatic Bearish vs Dual) */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-mono font-bold text-gray-300 flex items-center justify-between">
+              <span>Trend Direction</span>
+              <span className={trendMode === 'AUTOMATIC_BEARISH_STAGE_4' ? 'text-rose-400 font-bold' : 'text-emerald-400 font-bold'}>
+                {trendMode === 'AUTOMATIC_BEARISH_STAGE_4' ? 'Short Breakdowns' : trendMode === 'ADAPTIVE_REGIME' ? 'Adaptive Dual' : 'Stage 2 Longs'}
+              </span>
+            </label>
+            <select
+              value={trendMode}
+              onChange={(e) => setTrendMode(e.target.value as StrategyTrendMode)}
+              className={`w-full border rounded-lg px-3 py-2 text-xs font-mono font-bold cursor-pointer transition-colors ${
+                trendMode === 'AUTOMATIC_BEARISH_STAGE_4'
+                  ? 'bg-rose-950/80 border-rose-600 text-rose-200'
+                  : 'bg-slate-800 border-slate-700 text-white focus:outline-none focus:border-indigo-500'
+              }`}
+            >
+              <option value="BULLISH_STAGE_2">🟢 Stage 2 Bullish (Longs)</option>
+              <option value="AUTOMATIC_BEARISH_STAGE_4">🔴 Automatic Bearish Trend (Shorts)</option>
+              <option value="ADAPTIVE_REGIME">⚡ Adaptive Dual (Long + Short)</option>
+            </select>
+          </div>
+
+          {/* 2. Stock Universe Selection */}
           <div className="space-y-1.5">
             <label className="text-[11px] font-mono font-bold text-gray-300 flex items-center justify-between">
               <span>Stock Universe</span>
@@ -283,9 +310,9 @@ export const TrendTemplateBacktestView: React.FC<TrendTemplateBacktestViewProps>
               onChange={(e) => setUniverse(e.target.value as BacktestConfig['universe'])}
               className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs font-mono font-semibold text-white focus:outline-none focus:border-indigo-500 cursor-pointer"
             >
-              <option value="ALL">All Volatile Growth (US + India NSE - 16 Leaders)</option>
-              <option value="US_ONLY">US Growth Leaders (NVDA, TSLA, PLTR, SMCI, AMD, CELH, ANET, APP)</option>
-              <option value="INDIA_ONLY">Indian Momentum Leaders (TRENT, DIXON, BEL, HAL, VBL, POLYCAB, KAYNES, TATAELXSI)</option>
+              <option value="ALL">All Volatile Growth (16 Leaders)</option>
+              <option value="US_ONLY">US Growth (NVDA, TSLA, PLTR...)</option>
+              <option value="INDIA_ONLY">India NSE (TRENT, DIXON, BEL...)</option>
             </select>
           </div>
 
@@ -824,6 +851,7 @@ export const TrendTemplateBacktestView: React.FC<TrendTemplateBacktestViewProps>
               <thead>
                 <tr className="bg-slate-950 text-gray-400 border-b border-slate-800 uppercase tracking-wider text-[10px]">
                   <th className="py-2.5 px-3">Ticker / Stock</th>
+                  <th className="py-2.5 px-2 text-center">Side</th>
                   <th className="py-2.5 px-3">Entry Date &amp; Price</th>
                   <th className="py-2.5 px-3">Stop Loss</th>
                   <th className="py-2.5 px-3">Exit Date &amp; Price</th>
@@ -837,7 +865,7 @@ export const TrendTemplateBacktestView: React.FC<TrendTemplateBacktestViewProps>
               <tbody className="divide-y divide-slate-800/60">
                 {filteredTrades.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="py-8 text-center text-gray-500 font-mono">
+                    <td colSpan={10} className="py-8 text-center text-gray-500 font-mono">
                       No trades matched the selected filters.
                     </td>
                   </tr>
@@ -864,6 +892,16 @@ export const TrendTemplateBacktestView: React.FC<TrendTemplateBacktestViewProps>
                                 {t.companyName}
                               </span>
                             </div>
+                          </td>
+
+                          <td className="py-2.5 px-2 text-center">
+                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-black border ${
+                              t.tradeDirection === 'SHORT'
+                                ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                                : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                            }`}>
+                              {t.tradeDirection || 'LONG'}
+                            </span>
                           </td>
 
                           <td className="py-2.5 px-3">
@@ -922,7 +960,7 @@ export const TrendTemplateBacktestView: React.FC<TrendTemplateBacktestViewProps>
                         {/* Expanded Trade Detail Card */}
                         {isExpanded && (
                           <tr className="bg-slate-950/80">
-                            <td colSpan={9} className="p-4 border-y border-slate-800">
+                            <td colSpan={10} className="p-4 border-y border-slate-800">
                               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs font-mono">
                                 <div className="space-y-1">
                                   <div className="text-gray-400 text-[10px] uppercase font-bold">SEPA Stage 2 Qualification</div>

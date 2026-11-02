@@ -38,6 +38,8 @@ import {
 } from '../utils/bearishSepaCalculator';
 import { formatCurrency, getCurrencySymbol } from '../utils/sepaCalculator';
 import { getChartLinkUrl } from '../utils/chartLinkHelper';
+import { SemiAutomaticBearishConsole } from './SemiAutomaticBearishConsole';
+import { FullyAutomaticBearishConsole } from './FullyAutomaticBearishConsole';
 
 interface BearishMarketDashboardProps {
   allStocks?: MinerviniTradeSetup[];
@@ -56,6 +58,9 @@ export const BearishMarketDashboard: React.FC<BearishMarketDashboardProps> = ({
   onSwitchToBullishMode,
   isObsidian = false,
 }) => {
+  // Navigation View Mode: Fully Automatic SEPA, Semi-Auto Execution Console, Stage 4 Deep Dive, or Full Screener
+  const [activeViewMode, setActiveViewMode] = useState<'FULLY_AUTO' | 'SEMI_AUTO' | 'DEEP_DIVE' | 'SCREENER'>('FULLY_AUTO');
+
   // Combine custom universe with dedicated bearish breakdown stocks
   const combinedBearishUniverse = useMemo(() => {
     const existingTickers = new Set(MOCK_BEARISH_STOCKS.map(s => s.ticker));
@@ -286,66 +291,179 @@ export const BearishMarketDashboard: React.FC<BearishMarketDashboardProps> = ({
         </div>
       </div>
 
-      {/* 2. SELECTED BEARISH STOCK OVERVIEW RIBBON */}
-      <div className={`border p-6 flex flex-wrap items-center justify-between gap-4 shadow-xs rounded-lg ${
-        isObsidian ? 'bg-slate-900 border-slate-800' : 'bg-white border-[#e5e4e1]'
+      {/* SUB-NAVIGATION CONTROL: SEMI-AUTOMATIC CONSOLE vs DEEP DIVE vs SCREENER */}
+      <div className={`p-1.5 rounded-lg border flex flex-wrap items-center justify-between gap-3 ${
+        isObsidian ? 'bg-slate-900/90 border-slate-800' : 'bg-gray-100 border-gray-200'
       }`}>
-        <div className="flex items-center space-x-4">
-          <div className="w-14 h-14 bg-rose-950 text-rose-300 border border-rose-800/60 flex flex-col items-center justify-center font-mono rounded">
-            <span className="text-lg font-bold">{activeBearStock.ticker}</span>
-            <span className="text-[9px] text-rose-400 uppercase tracking-widest">{activeBearStock.exchange}</span>
-          </div>
-          <div>
-            <div className="flex items-center space-x-2">
-              <h2 className="text-xl font-serif font-black flex items-center space-x-2">
-                <span>{activeBearStock.name}</span>
-              </h2>
-              <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border ${bearishEval.badgeBg} ${bearishEval.badgeBorder}`}>
-                {bearishEval.stageCode} ({bearishEval.passedCount}/8 Bear Rules)
-              </span>
-            </div>
-            <div className="flex flex-wrap items-center gap-3 text-xs font-mono mt-1 text-gray-400">
-              <span>{activeBearStock.sector} / {activeBearStock.industry}</span>
-              <span>•</span>
-              <span className="font-bold text-gray-200">
-                Price: {formatCurrency(activeBearStock.currentPrice, currencySymbol)}
-              </span>
-              <span className="text-rose-500 font-bold">
-                {activeBearStock.changePercent}%
-              </span>
-              <span>•</span>
-              <span className="bg-rose-950 text-rose-300 border border-rose-800 px-2 py-0.5 text-[10px] font-bold rounded">
-                RS Weakness: {activeBearStock.rsRating} (Underperformer)
-              </span>
-            </div>
-          </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setActiveViewMode('FULLY_AUTO')}
+            className={`px-4 py-2 rounded font-mono font-bold text-xs uppercase tracking-wider flex items-center space-x-2 transition-all cursor-pointer ${
+              activeViewMode === 'FULLY_AUTO'
+                ? 'bg-rose-600 text-white shadow-md'
+                : isObsidian
+                ? 'text-gray-400 hover:text-white hover:bg-slate-800'
+                : 'text-gray-600 hover:text-black hover:bg-white'
+            }`}
+          >
+            <Zap className="w-4 h-4 text-amber-300 animate-pulse" />
+            <span>Fully Automatic SEPA</span>
+            <span className="px-1.5 py-0.2 bg-black/40 text-amber-300 text-[10px] rounded font-bold">
+              AUTONOMOUS
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveViewMode('SEMI_AUTO')}
+            className={`px-4 py-2 rounded font-mono font-bold text-xs uppercase tracking-wider flex items-center space-x-2 transition-all cursor-pointer ${
+              activeViewMode === 'SEMI_AUTO'
+                ? 'bg-rose-600 text-white shadow-md'
+                : isObsidian
+                ? 'text-gray-400 hover:text-white hover:bg-slate-800'
+                : 'text-gray-600 hover:text-black hover:bg-white'
+            }`}
+          >
+            <Target className="w-4 h-4 text-amber-400" />
+            <span>Semi-Automatic Console</span>
+            <span className="px-1.5 py-0.2 bg-black/40 text-amber-300 text-[10px] rounded font-bold">
+              ARM &amp; STAGE
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveViewMode('DEEP_DIVE')}
+            className={`px-4 py-2 rounded font-mono font-bold text-xs uppercase tracking-wider flex items-center space-x-2 transition-all cursor-pointer ${
+              activeViewMode === 'DEEP_DIVE'
+                ? 'bg-rose-600 text-white shadow-md'
+                : isObsidian
+                ? 'text-gray-400 hover:text-white hover:bg-slate-800'
+                : 'text-gray-600 hover:text-black hover:bg-white'
+            }`}
+          >
+            <ShieldAlert className="w-4 h-4" />
+            <span>Stage 4 Checklist &amp; Plan ({activeBearStock.ticker})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveViewMode('SCREENER')}
+            className={`px-4 py-2 rounded font-mono font-bold text-xs uppercase tracking-wider flex items-center space-x-2 transition-all cursor-pointer ${
+              activeViewMode === 'SCREENER'
+                ? 'bg-rose-600 text-white shadow-md'
+                : isObsidian
+                ? 'text-gray-400 hover:text-white hover:bg-slate-800'
+                : 'text-gray-600 hover:text-black hover:bg-white'
+            }`}
+          >
+            <TrendingDown className="w-4 h-4" />
+            <span>Short Screener ({filteredBearishStocks.length})</span>
+          </button>
         </div>
 
-        <div className="flex items-center space-x-3">
-          <a
-            href={getChartLinkUrl(activeBearStock.ticker)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-3.5 py-2 rounded text-xs font-mono font-bold uppercase tracking-wider bg-slate-800 hover:bg-slate-700 text-blue-300 border border-blue-500/30 flex items-center space-x-1.5 transition-all"
-            title="Open Live ChartLink Breakdown"
-          >
-            <BarChart3 className="w-4 h-4 text-blue-400" />
-            <span>ChartLink</span>
-            <ExternalLink className="w-3 h-3 text-blue-400" />
-          </a>
-
-          {onViewChart && (
-            <button
-              type="button"
-              onClick={() => onViewChart(activeBearStock)}
-              className="px-4 py-2 rounded text-xs font-mono font-bold uppercase tracking-wider bg-rose-700 hover:bg-rose-600 text-white border border-rose-600 flex items-center space-x-1.5 shadow-sm transition-all cursor-pointer"
-            >
-              <TrendingDown className="w-4 h-4" />
-              <span>Inspect Breakdown Chart</span>
-            </button>
-          )}
+        <div className="text-xs font-mono text-gray-400 px-3 hidden sm:block">
+          {activeViewMode === 'FULLY_AUTO' && 'Autonomous SEPA Detection • Dynamic Stops • Auto Profit Scale'}
+          {activeViewMode === 'SEMI_AUTO' && 'Algo Screening • Trader Armed Watch • Staged Orders'}
+          {activeViewMode === 'DEEP_DIVE' && '8-Rule Inverse Template • 2x ATR Stops • Downside R:R'}
+          {activeViewMode === 'SCREENER' && 'Multi-Exchange Breakdown Radar (NSE/NASDAQ/NYSE)'}
         </div>
       </div>
+
+      {/* VIEW 0: FULLY AUTOMATIC BEARISH SEPA ENGINE */}
+      {activeViewMode === 'FULLY_AUTO' && (
+        <FullyAutomaticBearishConsole
+          stocks={combinedBearishUniverse}
+          onSelectStock={(stock) => {
+            handleSelectStock(stock);
+          }}
+          onViewChart={(stock) => {
+            handleSelectStock(stock);
+            if (onViewChart) onViewChart(stock);
+          }}
+          isObsidian={isObsidian}
+        />
+      )}
+
+      {/* VIEW 1: SEMI-AUTOMATIC BEARISH TREND CONSOLE */}
+      {activeViewMode === 'SEMI_AUTO' && (
+        <SemiAutomaticBearishConsole
+          stocks={combinedBearishUniverse}
+          onSelectStock={(stock) => {
+            handleSelectStock(stock);
+          }}
+          onViewChart={(stock) => {
+            handleSelectStock(stock);
+            if (onViewChart) onViewChart(stock);
+          }}
+          isObsidian={isObsidian}
+        />
+      )}
+
+      {/* VIEW 2: SINGLE STOCK DEEP DIVE & RISK CALCULATOR */}
+      {activeViewMode === 'DEEP_DIVE' && (
+        <div className="space-y-8">
+          {/* 2. SELECTED BEARISH STOCK OVERVIEW RIBBON */}
+          <div className={`border p-6 flex flex-wrap items-center justify-between gap-4 shadow-xs rounded-lg ${
+            isObsidian ? 'bg-slate-900 border-slate-800' : 'bg-white border-[#e5e4e1]'
+          }`}>
+            <div className="flex items-center space-x-4">
+              <div className="w-14 h-14 bg-rose-950 text-rose-300 border border-rose-800/60 flex flex-col items-center justify-center font-mono rounded">
+                <span className="text-lg font-bold">{activeBearStock.ticker}</span>
+                <span className="text-[9px] text-rose-400 uppercase tracking-widest">{activeBearStock.exchange}</span>
+              </div>
+              <div>
+                <div className="flex items-center space-x-2">
+                  <h2 className="text-xl font-serif font-black flex items-center space-x-2">
+                    <span>{activeBearStock.name}</span>
+                  </h2>
+                  <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border ${bearishEval.badgeBg} ${bearishEval.badgeBorder}`}>
+                    {bearishEval.stageCode} ({bearishEval.passedCount}/8 Bear Rules)
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-3 text-xs font-mono mt-1 text-gray-400">
+                  <span>{activeBearStock.sector} / {activeBearStock.industry}</span>
+                  <span>•</span>
+                  <span className="font-bold text-gray-200">
+                    Price: {formatCurrency(activeBearStock.currentPrice, currencySymbol)}
+                  </span>
+                  <span className="text-rose-500 font-bold">
+                    {activeBearStock.changePercent}%
+                  </span>
+                  <span>•</span>
+                  <span className="bg-rose-950 text-rose-300 border border-rose-800 px-2 py-0.5 text-[10px] font-bold rounded">
+                    RS Weakness: {activeBearStock.rsRating} (Underperformer)
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-3">
+              <a
+                href={getChartLinkUrl(activeBearStock.ticker)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3.5 py-2 rounded text-xs font-mono font-bold uppercase tracking-wider bg-slate-800 hover:bg-slate-700 text-blue-300 border border-blue-500/30 flex items-center space-x-1.5 transition-all"
+                title="Open Live ChartLink Breakdown"
+              >
+                <BarChart3 className="w-4 h-4 text-blue-400" />
+                <span>ChartLink</span>
+                <ExternalLink className="w-3 h-3 text-blue-400" />
+              </a>
+
+              {onViewChart && (
+                <button
+                  type="button"
+                  onClick={() => onViewChart(activeBearStock)}
+                  className="px-4 py-2 rounded text-xs font-mono font-bold uppercase tracking-wider bg-rose-700 hover:bg-rose-600 text-white border border-rose-600 flex items-center space-x-1.5 shadow-sm transition-all cursor-pointer"
+                >
+                  <TrendingDown className="w-4 h-4" />
+                  <span>Inspect Breakdown Chart</span>
+                </button>
+              )}
+            </div>
+          </div>
 
       {/* 3. TWO-COLUMN LAYOUT: INVERSE BEARISH TREND TEMPLATE & SHORT TRADE PLAN */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -605,8 +723,11 @@ export const BearishMarketDashboard: React.FC<BearishMarketDashboardProps> = ({
           </div>
         </div>
       </div>
+      </div>
+      )}
 
       {/* 4. BEARISH SCREENER TABLE */}
+      {activeViewMode === 'SCREENER' && (
       <div className={`border rounded-lg overflow-hidden shadow-sm ${
         isObsidian ? 'bg-slate-900 border-slate-800' : 'bg-white border-[#e5e4e1]'
       }`}>
@@ -759,9 +880,10 @@ export const BearishMarketDashboard: React.FC<BearishMarketDashboardProps> = ({
                         onClick={(e) => {
                           e.stopPropagation();
                           handleSelectStock(stock);
+                          setActiveViewMode('DEEP_DIVE');
                           if (onViewChart) onViewChart(stock);
                         }}
-                        className="px-2.5 py-1 text-[10px] font-mono font-bold uppercase rounded bg-rose-600 hover:bg-rose-500 text-white transition-all shadow-xs"
+                        className="px-2.5 py-1 text-[10px] font-mono font-bold uppercase rounded bg-rose-600 hover:bg-rose-500 text-white transition-all shadow-xs cursor-pointer"
                       >
                         Inspect
                       </button>
@@ -773,6 +895,7 @@ export const BearishMarketDashboard: React.FC<BearishMarketDashboardProps> = ({
           </table>
         </div>
       </div>
+      )}
 
       {/* 5. MINERVINI BEAR MARKET PLAYBOOK (CARDINAL RULES) */}
       <div className={`border p-6 rounded-lg space-y-4 ${
