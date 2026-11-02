@@ -44,14 +44,21 @@ import {
   Copy,
   Check,
   Calculator,
-  ExternalLink
+  ExternalLink,
+  Calendar,
+  Clock,
+  AlertTriangle,
+  ShieldAlert
 } from 'lucide-react';
+import { AnalysisTimeframe, getStockForTimeframe, calculateTimeframeMetrics } from '../utils/timeframeSepaEngine';
+import { detectRsiDivergence, RsiDivergenceResult } from '../utils/rsiDivergenceEngine';
 
 interface ScreenerTableProps {
   stocks: MinerviniTradeSetup[];
   selectedTicker: string;
   onSelectStock: (stock: MinerviniTradeSetup) => void;
   onViewChart: (stock: MinerviniTradeSetup) => void;
+  initialTimeframe?: AnalysisTimeframe;
 }
 
 export interface VcpHeatmapInfo {
@@ -236,8 +243,11 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
   stocks,
   selectedTicker,
   onSelectStock,
-  onViewChart
+  onViewChart,
+  initialTimeframe = 'DAILY'
 }) => {
+  const [timeframe, setTimeframe] = useState<AnalysisTimeframe>(initialTimeframe);
+  const [rsiDivergenceFilter, setRsiDivergenceFilter] = useState<'ALL' | 'ANY_DIVERGENCE' | 'BEARISH_DIVERGENCE' | 'BULLISH_DIVERGENCE' | 'HIDDEN_BULLISH'>('ALL');
   const [search, setSearch] = useState<string>('');
   const [filterCategory, setFilterCategory] = useState<string>('ALL');
   const [viewMode, setViewMode] = useState<'table' | 'risk_adjusted' | 'sector_heatmap' | 'heatmap' | 'sector_strength'>('table');
@@ -249,8 +259,35 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
   const [exportToast, setExportToast] = useState<string | null>(null);
   const [riskCalcModalStock, setRiskCalcModalStock] = useState<MinerviniTradeSetup | null>(null);
 
+  // Timeframe Adjusted Stocks (Daily 50d/150d/200d vs Weekly 10w/30w/40w)
+  const timeframeStocks = useMemo(() => {
+    return stocks.map((s) => getStockForTimeframe(s, timeframe));
+  }, [stocks, timeframe]);
+
+  // Pre-calculate RSI Divergences for each stock
+  const divergenceMap = useMemo(() => {
+    const map = new Map<string, RsiDivergenceResult>();
+    timeframeStocks.forEach((s) => {
+      map.set(s.ticker, detectRsiDivergence(s, timeframe));
+    });
+    return map;
+  }, [timeframeStocks, timeframe]);
+
   // Pre-calculate volatility metrics relative to broader market index
-  const volatilityMap = useMemo(() => buildUniverseVolatilityRankMap(stocks), [stocks]);
+  const volatilityMap = useMemo(() => buildUniverseVolatilityRankMap(timeframeStocks), [timeframeStocks]);
+
+  // Divergence counts
+  const divergenceCounts = useMemo(() => {
+    let bearishCount = 0;
+    let bullishCount = 0;
+    let hiddenCount = 0;
+    divergenceMap.forEach((d) => {
+      if (d.divergenceType === 'BEARISH_DIVERGENCE') bearishCount++;
+      if (d.divergenceType === 'BULLISH_DIVERGENCE') bullishCount++;
+      if (d.divergenceType === 'HIDDEN_BULLISH') hiddenCount++;
+    });
+    return { bearishCount, bullishCount, hiddenCount, total: bearishCount + bullishCount + hiddenCount };
+  }, [divergenceMap]);
 
   const handleCopyTicker = (ticker: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
@@ -423,8 +460,8 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
     );
   };
 
-  // Filtering logic
-  let filteredStocks = stocks.filter((stock) => {
+  // Filtering logic using timeframe-adjusted universe
+  let filteredStocks = timeframeStocks.filter((stock) => {
     const matchesSearch =
       stock.ticker.toLowerCase().includes(search.toLowerCase()) ||
       stock.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -432,6 +469,31 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
       stock.industry.toLowerCase().includes(search.toLowerCase());
 
     if (!matchesSearch) return false;
+
+    // RSI Divergence Dropdown Filter
+    if (rsiDivergenceFilter !== 'ALL') {
+      const div = divergenceMap.get(stock.ticker);
+      if (rsiDivergenceFilter === 'ANY_DIVERGENCE' && !div?.hasDivergence) return false;
+      if (rsiDivergenceFilter === 'BEARISH_DIVERGENCE' && div?.divergenceType !== 'BEARISH_DIVERGENCE') return false;
+      if (rsiDivergenceFilter === 'BULLISH_DIVERGENCE' && div?.divergenceType !== 'BULLISH_DIVERGENCE') return false;
+      if (rsiDivergenceFilter === 'HIDDEN_BULLISH' && div?.divergenceType !== 'HIDDEN_BULLISH') return false;
+    }
+
+    if (filterCategory === 'BEARISH_DIV') {
+      const div = divergenceMap.get(stock.ticker);
+      return div?.divergenceType === 'BEARISH_DIVERGENCE';
+    }
+    if (filterCategory === 'BULLISH_DIV') {
+      const div = divergenceMap.get(stock.ticker);
+      return div?.divergenceType === 'BULLISH_DIVERGENCE';
+    }
+    if (filterCategory === 'HIDDEN_BULL_DIV') {
+      const div = divergenceMap.get(stock.ticker);
+      return div?.divergenceType === 'HIDDEN_BULLISH';
+    }
+    if (filterCategory === 'WEEKLY_SEPA_LEADERS') {
+      return stock.trendScore >= 7 && (stock.rsRating || 0) >= 75;
+    }
 
     if (filterCategory === 'RS_80_PLUS') return (stock.rsRating || 0) >= 80;
     if (filterCategory === 'RS_70_PLUS') return (stock.rsRating || 0) >= 70;
@@ -808,6 +870,122 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
 
       </div>
 
+      {/* Timeframe & RSI Divergence Control Strip */}
+      <div className="bg-[#10141d] text-white p-4 border border-black flex flex-col md:flex-row md:items-center justify-between gap-4 font-mono shadow-xs">
+        
+        {/* Timeframe Toggle */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center space-x-1.5 text-xs">
+            <span className="text-gray-400 uppercase text-[10px] tracking-wider font-bold">
+              Timeframe:
+            </span>
+            <div className="inline-flex border border-gray-700 bg-black p-0.5 shadow-xs">
+              <button
+                type="button"
+                onClick={() => setTimeframe('DAILY')}
+                className={`px-3 py-1.5 text-xs font-mono font-bold uppercase tracking-wider flex items-center space-x-1.5 transition-all cursor-pointer ${
+                  timeframe === 'DAILY'
+                    ? 'bg-amber-400 text-black font-black shadow-xs'
+                    : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                }`}
+                title="Daily Analysis: 50d/150d/200d Moving Averages, 20-day Volume, Daily ATR"
+              >
+                <Clock className="w-3.5 h-3.5" />
+                <span>Daily (50d / 200d)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setTimeframe('WEEKLY')}
+                className={`px-3 py-1.5 text-xs font-mono font-bold uppercase tracking-wider flex items-center space-x-1.5 transition-all cursor-pointer ${
+                  timeframe === 'WEEKLY'
+                    ? 'bg-indigo-600 text-white font-black shadow-xs border border-indigo-400'
+                    : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                }`}
+                title="Weekly Analysis: 10w/30w/40w Moving Averages (Stan Weinstein Stage 2), 10-week Volume, Weekly ATR"
+              >
+                <Calendar className="w-3.5 h-3.5" />
+                <span>Weekly (10w / 40w)</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Active Period Indicator */}
+          <span className={`text-[10px] uppercase px-2 py-0.5 rounded font-bold border ${
+            timeframe === 'WEEKLY'
+              ? 'bg-indigo-950/80 text-indigo-300 border-indigo-500/50'
+              : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+          }`}>
+            {timeframe === 'WEEKLY' ? '40-Week Stage Analysis' : 'Daily SEPA Barometer'}
+          </span>
+        </div>
+
+        {/* RSI Divergence Filter Selector & Counters */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex items-center space-x-1.5">
+            <Activity className="w-3.5 h-3.5 text-amber-400" />
+            <span className="text-gray-400 uppercase text-[10px] tracking-wider font-bold">
+              RSI Divergence:
+            </span>
+          </div>
+
+          <select
+            value={rsiDivergenceFilter}
+            onChange={(e) => setRsiDivergenceFilter(e.target.value as any)}
+            className="bg-black border border-gray-700 text-amber-300 text-xs font-mono py-1.5 px-3 focus:outline-none focus:border-amber-400 cursor-pointer"
+          >
+            <option value="ALL">All Momentum Profiles</option>
+            <option value="ANY_DIVERGENCE">Any Active Divergence ({divergenceCounts.total})</option>
+            <option value="BEARISH_DIVERGENCE">⚠️ Bearish Divergence (Sell Warning) ({divergenceCounts.bearishCount})</option>
+            <option value="BULLISH_DIVERGENCE">⚡ Bullish Divergence (Reversal/Accumulation) ({divergenceCounts.bullishCount})</option>
+            <option value="HIDDEN_BULLISH">📈 Hidden Bullish (Continuation) ({divergenceCounts.hiddenCount})</option>
+          </select>
+
+          {divergenceCounts.bearishCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setRsiDivergenceFilter('BEARISH_DIVERGENCE')}
+              className={`px-2 py-1 text-[10px] font-bold rounded border flex items-center space-x-1 transition-all ${
+                rsiDivergenceFilter === 'BEARISH_DIVERGENCE'
+                  ? 'bg-rose-600 text-white border-rose-400'
+                  : 'bg-rose-950/60 text-rose-300 border-rose-800/60 hover:border-rose-600'
+              }`}
+            >
+              <AlertTriangle className="w-3 h-3 text-rose-400" />
+              <span>{divergenceCounts.bearishCount} Bearish Div</span>
+            </button>
+          )}
+
+          {divergenceCounts.bullishCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setRsiDivergenceFilter('BULLISH_DIVERGENCE')}
+              className={`px-2 py-1 text-[10px] font-bold rounded border flex items-center space-x-1 transition-all ${
+                rsiDivergenceFilter === 'BULLISH_DIVERGENCE'
+                  ? 'bg-emerald-600 text-white border-emerald-400'
+                  : 'bg-emerald-950/60 text-emerald-300 border-emerald-800/60 hover:border-emerald-600'
+              }`}
+            >
+              <Zap className="w-3 h-3 text-emerald-400" />
+              <span>{divergenceCounts.bullishCount} Bullish Div</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Weekly Stage 2 Contextual Notice */}
+      {timeframe === 'WEEKLY' && (
+        <div className="p-3 bg-indigo-950/30 border border-indigo-500/40 text-xs font-mono text-indigo-200 flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <Calendar className="w-4 h-4 text-indigo-400 shrink-0" />
+            <span>
+              <strong>Weekly Timeframe Analysis Mode:</strong> Recalculated moving averages to <strong>10-Week (~50d)</strong>, <strong>30-Week (~150d)</strong>, and <strong>40-Week (~200d)</strong> Stage 2 foundation lines with 10-week average volume checks.
+            </span>
+          </div>
+          <span className="text-[10px] text-indigo-400 uppercase font-bold shrink-0 ml-2">Weinstein &amp; Minervini</span>
+        </div>
+      )}
+
       {/* Search & Quick Category Filters Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#e5e4e1] pb-5">
         
@@ -830,6 +1008,9 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
             { id: 'ALL', label: `All Candidates (${stocks.length})` },
             { id: 'RS_80_PLUS', label: '🏆 RS ≥ 80 (Elite Leaders)' },
             { id: 'RS_70_PLUS', label: '🎯 RS ≥ 70 (Trend Continuation)' },
+            { id: 'BEARISH_DIV', label: `⚠️ Bearish Div (${divergenceCounts.bearishCount})` },
+            { id: 'BULLISH_DIV', label: `⚡ Bullish Div (${divergenceCounts.bullishCount})` },
+            { id: 'WEEKLY_SEPA_LEADERS', label: `📆 Weekly Stage 2 Leaders` },
             { id: 'VOL_LOW_COIL', label: '🛡️ Low-Vol Coils (≤35)' },
             { id: 'VOL_HIGH_BETA', label: '🚀 High-Beta Vol (≥70)' },
             { id: 'VOL_EXTREME', label: '⚡ Extreme Vol (≥90)' },
