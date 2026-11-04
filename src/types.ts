@@ -248,7 +248,9 @@ export interface PriceAlertHistoryRecord {
     | 'CUSTOM_BELOW'
     | 'VOLUME_SPIKE'
     | 'STAGE_2_COMPLETED'
-    | 'VCP_BASE_FORMED';
+    | 'VCP_BASE_FORMED'
+    | 'RSI_BULLISH_DIVERGENCE'
+    | 'RSI_BEARISH_DIVERGENCE';
   eventTypeLabel: string;
   volatilityEventType:
     | 'BREAKOUT_SURGE'
