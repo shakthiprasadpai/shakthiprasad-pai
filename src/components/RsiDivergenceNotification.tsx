@@ -5,6 +5,10 @@ import {
   simulate52wHighExhaustion,
   Rsi52wExhaustionResult,
 } from '../utils/rsiDivergenceEngine';
+import {
+  dispatchRsiDivergenceNotification,
+  simulateRsiDivergence,
+} from '../utils/technicalIndicatorsCalculator';
 import { getCurrencySymbol, formatCurrency } from '../utils/sepaCalculator';
 import { playAlertChime, appendTrackerLog } from '../utils/backgroundPriceChecker';
 import {
@@ -100,6 +104,10 @@ export const RsiDivergenceNotification: React.FC<RsiDivergenceNotificationProps>
       event: 'STOP_LOSS_HIT',
       triggered: true,
     });
+
+    const targetStock = stocks.find((s) => s.ticker === res.ticker) || currentTargetStock;
+    const simDiv = simulateRsiDivergence(targetStock, 'BEARISH');
+    dispatchRsiDivergenceNotification(targetStock, simDiv);
 
     setLastNotificationStatus(`Alert dispatched for ${res.ticker} @ ${new Date().toLocaleTimeString()}`);
     setTimeout(() => setLastNotificationStatus(null), 4000);

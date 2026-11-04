@@ -46,6 +46,7 @@ import {
 import {
   detectRsiDivergences,
   simulateRsiDivergence,
+  dispatchRsiDivergenceNotification,
 } from '../utils/technicalIndicatorsCalculator';
 import {
   detectRsiDivergence,
@@ -167,6 +168,8 @@ export const PriceAlertSystem: React.FC<PriceAlertSystemProps> = ({
       if (isBearishMatch || isBullishMatch) {
         hasUpdates = true;
         if (soundEnabled) playAlertChime();
+        const simDiv = simulateRsiDivergence(matchingStock, isBearishMatch ? 'BEARISH' : 'BULLISH');
+        dispatchRsiDivergenceNotification(matchingStock, simDiv);
         if ('Notification' in window && Notification.permission === 'granted') {
           new Notification(div.title, {
             body: `${alert.ticker}: ${div.description} ${div.actionAdvice}`,
@@ -329,6 +332,7 @@ export const PriceAlertSystem: React.FC<PriceAlertSystemProps> = ({
       });
     }
 
+    dispatchRsiDivergenceNotification(stock, simulatedDiv);
     window.dispatchEvent(new CustomEvent('minervini_alerts_updated'));
   };
 

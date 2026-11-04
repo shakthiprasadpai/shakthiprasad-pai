@@ -19,6 +19,7 @@ import {
   simulateRsiDivergence,
   dispatchRsiDivergenceNotification,
 } from '../utils/technicalIndicatorsCalculator';
+import { detectRsiDivergence } from '../utils/rsiDivergenceEngine';
 import {
   DailyStage2ScanPayload,
   checkAndRunScheduledScan,
@@ -603,6 +604,63 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
           }
         }
 
+        // Check 6: RSI Divergence Alert (Bearish Exhaustion or Bullish Accumulation)
+        if (alert.targetType === 'RSI_BEARISH_DIVERGENCE' || alert.targetType === 'RSI_BULLISH_DIVERGENCE') {
+          if (stockMatch && alert.status === 'ACTIVE') {
+            const divRes = detectRsiDivergence(stockMatch);
+            const isBearishMatch = alert.targetType === 'RSI_BEARISH_DIVERGENCE' && divRes.divergenceType === 'BEARISH_DIVERGENCE';
+            const isBullishMatch = alert.targetType === 'RSI_BULLISH_DIVERGENCE' && (divRes.divergenceType === 'BULLISH_DIVERGENCE' || divRes.divergenceType === 'HIDDEN_BULLISH');
+
+            if (isBearishMatch || isBullishMatch) {
+              hasUpdates = true;
+              playAlertChime();
+
+              const isBull = alert.targetType === 'RSI_BULLISH_DIVERGENCE';
+              const payload: RsiDivergenceAlertPayload = {
+                ticker: alert.ticker,
+                stockName: stockMatch.name,
+                exchange: alert.exchange || stockMatch.exchange,
+                divergenceType: isBull ? 'BULLISH' : 'BEARISH',
+                divergenceKind: divRes.divergenceType === 'HIDDEN_BULLISH' ? 'HIDDEN_BULLISH' : (isBull ? 'REGULAR_BULLISH' : 'REGULAR_BEARISH'),
+                strength: divRes.severity === 'HIGH' ? 'STRONG' : 'MODERATE',
+                convictionScore: divRes.severity === 'HIGH' ? 9 : 7,
+                startDate: '',
+                endDate: '',
+                startPrice: divRes.priorPrice,
+                endPrice: divRes.currentPrice,
+                startRsi: divRes.priorRsi,
+                endRsi: divRes.currentRsi,
+                rsiCurrent: divRes.currentRsi,
+                priceDiffPercent: Number((((divRes.currentPrice - divRes.priorPrice) / divRes.priorPrice) * 100).toFixed(1)),
+                rsiDiff: Number((divRes.currentRsi - divRes.priorRsi).toFixed(1)),
+                title: divRes.title,
+                description: divRes.description,
+                sepaPlaybook: divRes.actionAdvice,
+                triggeredAt: new Date().toLocaleTimeString(),
+              };
+
+              newToast = {
+                alert: { ...alert, status: 'TRIGGERED' as const },
+                previousPrice: divRes.priorPrice,
+                currentPrice: divRes.currentPrice,
+                crossoverType: alert.targetType,
+                triggeredAt: new Date().toLocaleTimeString(),
+                isPortfolioHolding: isPortfolio,
+                portfolioHolding: portfolioMatch,
+                rsiDivergencePayload: payload,
+              };
+
+              return {
+                ...alert,
+                currentPrice: divRes.currentPrice,
+                status: 'TRIGGERED' as const,
+                triggeredAt: new Date().toLocaleTimeString(),
+                notes: `${divRes.shortLabel}: ${divRes.description}`,
+              };
+            }
+          }
+        }
+
         return { ...alert, currentPrice: simulatedPrice };
       });
 
@@ -699,28 +757,34 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
     setActiveToast(null);
   };
 
-  // View Chart handler
-  const handleViewChart = () => {
+  // Immediate Jump-to-Chart action handler for the specific stock
+  const handleJumpToChart = (focusRsiSubchart: boolean = false) => {
     if (!activeToast) return;
     const match = stocks.find((s) => s.ticker === activeToast.alert.ticker);
-    if (match) onSelectStock(match);
+    if (match) {
+      onSelectStock(match);
+    }
     onNavigateTab('chart');
     setActiveToast(null);
+
+    // Smoothly scroll into VCP chart container or RSI subchart
+    setTimeout(() => {
+      const targetId = focusRsiSubchart ? 'rsi-subchart-container' : 'vcp-chart-container';
+      const el = document.getElementById(targetId) || document.getElementById('vcp-chart-container') || document.getElementById('rsi-subchart-container');
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 150);
+  };
+
+  // View Chart handler
+  const handleViewChart = () => {
+    handleJumpToChart(false);
   };
 
   // View RSI Subchart & Divergence handler
   const handleViewRsiSubchart = () => {
-    if (!activeToast) return;
-    const match = stocks.find((s) => s.ticker === activeToast.alert.ticker);
-    if (match) onSelectStock(match);
-    onNavigateTab('chart');
-    setActiveToast(null);
-    setTimeout(() => {
-      const el = document.getElementById('rsi-subchart-container') || document.getElementById('rsi-divergence-radar-card');
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
-    }, 200);
+    handleJumpToChart(true);
   };
 
   // Re-arm triggered alert
@@ -1268,15 +1332,51 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
     );
   }
 
-  // Render Specialized RSI Divergence (Bullish / Bearish) Alert Toast Card
-  const rsiDivergencePayload = activeToast.rsiDivergencePayload;
-  const isRsiDivergence =
-    (activeToast.crossoverType === 'RSI_BULLISH_DIVERGENCE' ||
-     activeToast.crossoverType === 'RSI_BEARISH_DIVERGENCE') &&
-    Boolean(rsiDivergencePayload);
+  // Render Dedicated RSI Divergence Alert Toast Card with Immediate Jump-to-Chart Action
+  const isRsiDivCrossover =
+    activeToast.crossoverType === 'RSI_BULLISH_DIVERGENCE' ||
+    activeToast.crossoverType === 'RSI_BEARISH_DIVERGENCE';
+  const existingRsiPayload = activeToast.rsiDivergencePayload;
 
-  if (isRsiDivergence && rsiDivergencePayload) {
-    const isBullish = rsiDivergencePayload.divergenceType === 'BULLISH';
+  if (isRsiDivCrossover || existingRsiPayload) {
+    const isBullish = activeToast.crossoverType === 'RSI_BULLISH_DIVERGENCE' || existingRsiPayload?.divergenceType === 'BULLISH';
+    const match = stocks.find((s) => s.ticker === activeToast.alert.ticker);
+
+    // Fallback payload if not attached directly
+    const rsiPayload: RsiDivergenceAlertPayload = existingRsiPayload || {
+      ticker: activeToast.alert.ticker,
+      stockName: activeToast.alert.stockName || match?.name || activeToast.alert.ticker,
+      exchange: (activeToast.alert.exchange as any) || (match?.exchange as any) || 'NASDAQ',
+      divergenceType: isBullish ? 'BULLISH' : 'BEARISH',
+      divergenceKind: isBullish ? 'REGULAR_BULLISH' : 'REGULAR_BEARISH',
+      strength: 'STRONG',
+      convictionScore: 9,
+      startDate: '',
+      endDate: '',
+      startPrice: activeToast.previousPrice || (match ? match.currentPrice * 0.96 : 100),
+      endPrice: activeToast.currentPrice,
+      startRsi: isBullish ? 38.5 : 78.4,
+      endRsi: isBullish ? 47.2 : 62.8,
+      rsiCurrent: match?.rsi14 || (isBullish ? 47.2 : 62.8),
+      priceDiffPercent: Number(
+        (
+          ((activeToast.currentPrice - (activeToast.previousPrice || activeToast.currentPrice * 0.96)) /
+            (activeToast.previousPrice || activeToast.currentPrice * 0.96)) *
+          100
+        ).toFixed(1)
+      ),
+      rsiDiff: isBullish ? 8.7 : -15.6,
+      title: activeToast.alert.notes || (isBullish ? '⚡ RSI Bullish Divergence Alert' : '⚠️ RSI Bearish Divergence Warning'),
+      description:
+        activeToast.alert.notes ||
+        (isBullish
+          ? 'Price printed lower low while 14-period RSI printed higher low (Selling Absorption / Spring).'
+          : 'Price printed new high / 52W high while 14-period RSI printed lower high (Waning Momentum Exhaustion).'),
+      sepaPlaybook: isBullish
+        ? 'Selling dry-up confirmed at support. Look for pocket pivot or handle contraction entry off key moving average.'
+        : 'Trend exhaustion detected. Tighten trailing stops to 20-day EMA and take 30% to 50% partial profits into extended strength.',
+      triggeredAt: activeToast.triggeredAt || new Date().toLocaleTimeString(),
+    };
 
     return (
       <div className="fixed top-5 right-5 z-50 max-w-xl w-full animate-slide-down shadow-2xl">
@@ -1291,8 +1391,10 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
           <div className="flex items-start justify-between border-b border-white/15 pb-2.5 mb-3">
             <div className="flex items-center space-x-2.5">
               <div
-                className={`w-8 h-8 flex items-center justify-center font-bold ${
-                  isBullish ? 'bg-emerald-400 text-slate-950 animate-pulse' : 'bg-rose-500 text-white animate-pulse'
+                className={`w-9 h-9 flex items-center justify-center font-bold ${
+                  isBullish
+                    ? 'bg-emerald-400 text-slate-950 animate-pulse'
+                    : 'bg-rose-500 text-white animate-pulse'
                 }`}
               >
                 {isBullish ? <TrendingUp className="w-5 h-5" /> : <TrendingDown className="w-5 h-5" />}
@@ -1305,22 +1407,22 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
                       isBullish ? 'text-emerald-300' : 'text-rose-300'
                     }`}
                   >
-                    {isBullish ? '⚡ RSI BULLISH DIVERGENCE IDENTIFIED' : '⚠️ RSI BEARISH DIVERGENCE IDENTIFIED'}
+                    {isBullish ? '⚡ RSI BULLISH DIVERGENCE IDENTIFIED' : '🚨 RSI BEARISH DIVERGENCE IDENTIFIED'}
                   </span>
                   <span
                     className={`text-[9px] font-black uppercase px-2 py-0.5 font-mono ${
                       isBullish ? 'bg-emerald-400 text-slate-950' : 'bg-rose-500 text-white'
                     }`}
                   >
-                    {rsiDivergencePayload.divergenceKind.replace('_', ' ')}
+                    {rsiPayload.divergenceKind.replace('_', ' ')}
                   </span>
-                  <span className="bg-white/10 text-gray-200 border border-white/20 text-[9px] font-black uppercase px-1.5 py-0.5 font-mono">
-                    Conviction: {rsiDivergencePayload.convictionScore}/10 ({rsiDivergencePayload.strength})
+                  <span className="bg-white/10 text-amber-300 border border-amber-400/40 text-[9px] font-black uppercase px-1.5 py-0.5 font-mono">
+                    Conviction: {rsiPayload.convictionScore}/10 ({rsiPayload.strength})
                   </span>
                 </div>
 
                 <h4 className="text-lg font-mono font-black text-white leading-tight mt-0.5">
-                  {rsiDivergencePayload.ticker} ({rsiDivergencePayload.exchange || 'NASDAQ'}) — {rsiDivergencePayload.stockName}
+                  {rsiPayload.ticker} ({rsiPayload.exchange || 'NASDAQ'}) — {rsiPayload.stockName}
                 </h4>
               </div>
             </div>
@@ -1342,15 +1444,15 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
                 </span>
                 <div className="flex items-baseline space-x-1.5 mt-0.5">
                   <span className="text-white font-bold text-sm">
-                    {currencySymbol}{rsiDivergencePayload.startPrice.toFixed(2)}
+                    {currencySymbol}{rsiPayload.startPrice.toFixed(2)}
                   </span>
                   <span className="text-gray-400 text-xs">➔</span>
                   <span className={`font-black text-sm ${isBullish ? 'text-rose-300' : 'text-emerald-300'}`}>
-                    {currencySymbol}{rsiDivergencePayload.endPrice.toFixed(2)}
+                    {currencySymbol}{rsiPayload.endPrice.toFixed(2)}
                   </span>
                 </div>
                 <span className={`text-[10px] font-bold block mt-0.5 ${isBullish ? 'text-rose-400' : 'text-emerald-400'}`}>
-                  {rsiDivergencePayload.priceDiffPercent > 0 ? '+' : ''}{rsiDivergencePayload.priceDiffPercent}% ({isBullish ? 'Lower Low formed' : 'Higher High formed'})
+                  {rsiPayload.priceDiffPercent > 0 ? '+' : ''}{rsiPayload.priceDiffPercent}% ({isBullish ? 'Lower Low formed' : 'Higher High formed'})
                 </span>
               </div>
 
@@ -1360,18 +1462,18 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
                 </span>
                 <div className="flex items-baseline space-x-1.5 mt-0.5">
                   <span className="text-white font-bold text-sm">
-                    {rsiDivergencePayload.startRsi}
+                    {rsiPayload.startRsi}
                   </span>
                   <span className="text-gray-400 text-xs">➔</span>
                   <span className={`font-black text-sm ${isBullish ? 'text-emerald-300' : 'text-rose-300'}`}>
-                    {rsiDivergencePayload.endRsi}
+                    {rsiPayload.endRsi}
                   </span>
                   <span className="text-gray-400 text-[10px]">
-                    (Now: {rsiDivergencePayload.rsiCurrent})
+                    (Now: {rsiPayload.rsiCurrent})
                   </span>
                 </div>
                 <span className={`text-[10px] font-bold block mt-0.5 ${isBullish ? 'text-emerald-400' : 'text-rose-400'}`}>
-                  {rsiDivergencePayload.rsiDiff > 0 ? '+' : ''}{rsiDivergencePayload.rsiDiff} pts ({isBullish ? 'Higher Low formed' : 'Lower High formed'})
+                  {rsiPayload.rsiDiff > 0 ? '+' : ''}{rsiPayload.rsiDiff} pts ({isBullish ? 'Higher Low formed' : 'Lower High formed'})
                 </span>
               </div>
             </div>
@@ -1381,7 +1483,7 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
               <span className="text-amber-400 font-mono font-bold uppercase text-[10px] block mb-0.5">
                 TECHNICAL DIVERGENCE DIAGNOSIS:
               </span>
-              {rsiDivergencePayload.description}
+              {rsiPayload.description}
             </div>
 
             {/* SEPA Playbook Recommendation */}
@@ -1395,50 +1497,60 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
                 </span>
               </div>
               <p className="text-[11px] leading-tight text-gray-100">
-                {rsiDivergencePayload.sepaPlaybook}
+                {rsiPayload.sepaPlaybook}
               </p>
             </div>
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex items-center justify-end space-x-2 text-xs font-mono">
-            <button
-              onClick={() => playSmartMoneyDivergenceChime(isBullish ? 'BULLISH' : 'BEARISH')}
-              title="Replay divergence chime"
-              className="bg-white/10 hover:bg-white/20 text-emerald-300 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider flex items-center space-x-1 transition-colors border border-emerald-400/40 cursor-pointer"
-            >
-              <Volume2 className="w-3.5 h-3.5" />
-              <span>Chime</span>
-            </button>
+          {/* Action Buttons with Dedicated Jump-To-Chart Action */}
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-mono pt-1">
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => playSmartMoneyDivergenceChime(isBullish ? 'BULLISH' : 'BEARISH')}
+                title="Replay divergence chime"
+                className="bg-white/10 hover:bg-white/20 text-emerald-300 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider flex items-center space-x-1 transition-colors border border-emerald-400/40 cursor-pointer"
+              >
+                <Volume2 className="w-3.5 h-3.5" />
+                <span>Chime</span>
+              </button>
 
-            <button
-              onClick={() => setActiveToast(null)}
-              className="bg-white/10 hover:bg-white/20 text-gray-200 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider transition-colors border border-white/20 cursor-pointer"
-            >
-              Dismiss
-            </button>
+              <button
+                onClick={() => setActiveToast(null)}
+                className="bg-white/10 hover:bg-white/20 text-gray-200 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider transition-colors border border-white/20 cursor-pointer"
+              >
+                Dismiss
+              </button>
+            </div>
 
-            <button
-              onClick={handleViewRsiSubchart}
-              className={`px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wider flex items-center space-x-1.5 transition-all border cursor-pointer ${
-                isBullish
-                  ? 'bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 border-emerald-400/60'
-                  : 'bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 border-rose-400/60'
-              }`}
-            >
-              <Activity className="w-3.5 h-3.5" />
-              <span>Inspect RSI Subchart</span>
-            </button>
+            <div className="flex items-center space-x-2">
+              {/* Secondary Option: Inspect RSI Subchart */}
+              <button
+                onClick={() => handleJumpToChart(true)}
+                className={`px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider flex items-center space-x-1.5 transition-all border cursor-pointer ${
+                  isBullish
+                    ? 'bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 border-emerald-400/60'
+                    : 'bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 border-rose-400/60'
+                }`}
+              >
+                <Activity className="w-3.5 h-3.5" />
+                <span>Inspect RSI</span>
+              </button>
 
-            <button
-              onClick={handleViewChart}
-              className={`px-4 py-1.5 text-[11px] font-black uppercase tracking-wider flex items-center space-x-1.5 transition-all shadow-md cursor-pointer ${
-                isBullish ? 'bg-emerald-400 hover:bg-emerald-300 text-slate-950' : 'bg-rose-500 hover:bg-rose-400 text-white'
-              }`}
-            >
-              <BarChart3 className="w-3.5 h-3.5" />
-              <span>View On VCP Chart</span>
-            </button>
+              {/* Dedicated Primary Action: Immediate Jump to Chart for Specific Stock */}
+              <button
+                onClick={() => handleJumpToChart(false)}
+                className={`px-4 py-2 text-xs font-black uppercase tracking-wider flex items-center space-x-2 transition-all shadow-lg hover:scale-105 cursor-pointer ${
+                  isBullish
+                    ? 'bg-emerald-400 hover:bg-emerald-300 text-slate-950 ring-2 ring-emerald-300/60'
+                    : 'bg-amber-400 hover:bg-amber-300 text-slate-950 ring-2 ring-amber-300/60'
+                }`}
+                title={`Immediately jump to ${rsiPayload.ticker} VCP Chart for technical divergence analysis`}
+              >
+                <Zap className="w-4 h-4 fill-current text-slate-950" />
+                <span>⚡ Jump to {rsiPayload.ticker} Chart</span>
+                <ArrowUpRight className="w-4 h-4 text-slate-950" />
+              </button>
+            </div>
           </div>
         </div>
       </div>
