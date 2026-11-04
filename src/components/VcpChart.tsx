@@ -14,6 +14,8 @@ import { RsiSubchart } from './RsiSubchart';
 import { PivotPointLevelsCard } from './PivotPointLevelsCard';
 import { RsiDivergenceRadarCard } from './RsiDivergenceRadarCard';
 import { TechnicalIndicatorsChart } from './TechnicalIndicatorsChart';
+import { VcpPatternHealthOverlay } from './VcpPatternHealthOverlay';
+import { calculateVcpPatternHealth } from '../utils/vcpPatternHealthCalculator';
 import {
   calculateEmaSeries,
   calculatePivotPoints,
@@ -427,6 +429,14 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
   // RSI Divergence Detection & Real-Time Alert State
   const [showRsiDivergences, setShowRsiDivergences] = useState(true);
   const [autoToastDivergence, setAutoToastDivergence] = useState(true);
+
+  // Visual VCP Pattern Health Indicator Overlay (Depth, Timing, Volume Dry-Up)
+  const [showPatternHealthOverlay, setShowPatternHealthOverlay] = useState<boolean>(true);
+
+  // Real-time calculation of classic Minervini VCP Pattern Health criteria
+  const patternHealthResult = useMemo(() => {
+    return calculateVcpPatternHealth(stock);
+  }, [stock]);
 
   // Detect RSI Divergences for the selected stock
   const detectedDivergences = useMemo(() => {
@@ -1566,6 +1576,33 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
             <span>Trailing SL {showTrailingStopLine ? 'ON' : 'OFF'}</span>
           </button>
 
+          {/* Visual Minervini Pattern Health Indicator Overlay Button */}
+          <button
+            onClick={() => setShowPatternHealthOverlay(!showPatternHealthOverlay)}
+            className={`px-3 py-1 border text-xs font-semibold uppercase tracking-wider font-mono transition-all flex items-center space-x-1.5 cursor-pointer ${
+              showPatternHealthOverlay
+                ? patternHealthResult.letterGrade === 'A+' || patternHealthResult.letterGrade === 'A'
+                  ? 'bg-emerald-800 text-white border-emerald-900 shadow-sm font-bold ring-1 ring-emerald-500/40'
+                  : patternHealthResult.letterGrade === 'B+' || patternHealthResult.letterGrade === 'B'
+                  ? 'bg-blue-800 text-white border-blue-900 shadow-sm font-bold'
+                  : 'bg-amber-700 text-white border-amber-800 shadow-sm font-bold'
+                : 'bg-[#f9f8f5] text-gray-400 border-[#e5e4e1]'
+            }`}
+            title="Toggle Visual 'Pattern Health' Indicator Overlay (Real-time Minervini Contraction Depth, Timing & Volume Dry-Up criteria)"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+            <span>Pattern Health {showPatternHealthOverlay ? 'ON' : 'OFF'}</span>
+            <span className={`text-[10px] px-1.5 py-0.2 font-black rounded ${
+              patternHealthResult.letterGrade === 'A+' || patternHealthResult.letterGrade === 'A'
+                ? 'bg-emerald-300 text-emerald-950 font-black'
+                : patternHealthResult.letterGrade === 'B+' || patternHealthResult.letterGrade === 'B'
+                ? 'bg-blue-300 text-blue-950 font-black'
+                : 'bg-amber-300 text-amber-950 font-black'
+            }`}>
+              {patternHealthResult.letterGrade} ({patternHealthResult.overallScore}%)
+            </span>
+          </button>
+
           <button
             onClick={() => setShowContractionStages(!showContractionStages)}
             className={`px-3 py-1 border text-xs font-semibold uppercase tracking-wider font-mono transition-all flex items-center space-x-1 cursor-pointer ${
@@ -2394,14 +2431,20 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
                     x2: c.endDate,
                     y1: c.lowPrice,
                     y2: c.highPrice,
-                    stroke: '#d97706',
-                    strokeOpacity: 0.5,
+                    stroke: showPatternHealthOverlay
+                      ? (patternHealthResult.contractions[idx]?.isDepthProgressive ? '#059669' : '#d97706')
+                      : '#d97706',
+                    strokeOpacity: showPatternHealthOverlay ? 0.7 : 0.5,
                     strokeDasharray: '3 3',
-                    fill: '#fef3c7',
+                    fill: showPatternHealthOverlay
+                      ? (patternHealthResult.contractions[idx]?.isDepthProgressive ? '#ecfdf5' : '#fef3c7')
+                      : '#fef3c7',
                     fillOpacity: 0.25,
                     label: {
-                      value: `T${c.contractionIndex}: -${c.depthPercent}%`,
-                      fill: '#b45309',
+                      value: showPatternHealthOverlay
+                        ? `T${c.contractionIndex}: -${Math.abs(c.depthPercent)}% (${c.durationDays}d | VDU: ${c.volumeDryUpPercent}%) ${idx === stock.contractions.length - 1 ? (Math.abs(c.depthPercent) <= 8 ? '✓ TIGHT' : '⚠ LOOSE') : (patternHealthResult.contractions[idx]?.isDepthProgressive ? '✓' : '⚠')}`
+                        : `T${c.contractionIndex}: -${c.depthPercent}%`,
+                      fill: showPatternHealthOverlay && patternHealthResult.contractions[idx]?.isDepthProgressive ? '#047857' : '#b45309',
                       fontSize: 10,
                       fontWeight: 'bold',
                       position: 'insideTopLeft'
@@ -2895,6 +2938,13 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
             })}
           </ComposedChart>
         </ResponsiveContainer>
+
+        {/* Visual Minervini Pattern Health Indicator Overlay */}
+        <VcpPatternHealthOverlay
+          stock={stock}
+          isOpen={showPatternHealthOverlay}
+          onToggle={() => setShowPatternHealthOverlay(!showPatternHealthOverlay)}
+        />
       </div>
     </div>
 
