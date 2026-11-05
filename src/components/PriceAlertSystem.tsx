@@ -81,6 +81,22 @@ export const PriceAlertSystem: React.FC<PriceAlertSystemProps> = ({
   });
 
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
+  const [rsiDivergenceAlertsEnabled, setRsiDivergenceAlertsEnabled] = useState<boolean>(() => {
+    return typeof window !== 'undefined'
+      ? localStorage.getItem('minervini_rsi_divergence_alerts_enabled') !== 'false'
+      : true;
+  });
+
+  const handleToggleRsiDivergenceAlerts = () => {
+    const nextState = !rsiDivergenceAlertsEnabled;
+    setRsiDivergenceAlertsEnabled(nextState);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('minervini_rsi_divergence_alerts_enabled', String(nextState));
+      window.dispatchEvent(
+        new CustomEvent('minervini_rsi_alerts_toggle', { detail: { enabled: nextState } })
+      );
+    }
+  };
   const [filterStatus, setFilterStatus] = useState<'ALL' | 'ACTIVE' | 'TRIGGERED'>('ALL');
   const [activeSubTab, setActiveSubTab] = useState<'ALERTS' | 'RSI_DIVERGENCE_RADAR' | 'PRICE_HISTORY' | 'AUDIT_LOGS'>('ALERTS');
 
@@ -148,6 +164,9 @@ export const PriceAlertSystem: React.FC<PriceAlertSystemProps> = ({
 
   // Surveillance effect: periodically scan active RSI divergence alerts
   useEffect(() => {
+    // Silence surveillance if RSI Divergence notifications are disabled globally
+    if (!rsiDivergenceAlertsEnabled) return;
+
     const activeDivergenceAlerts = alerts.filter(
       (a) => a.status === 'ACTIVE' && (a.targetType === 'RSI_BEARISH_DIVERGENCE' || a.targetType === 'RSI_BULLISH_DIVERGENCE')
     );
@@ -203,7 +222,7 @@ export const PriceAlertSystem: React.FC<PriceAlertSystemProps> = ({
       saveStoredAlerts(updatedAlerts);
       window.dispatchEvent(new CustomEvent('minervini_alerts_updated'));
     }
-  }, [stocks, alerts, soundEnabled, rsiTimeframe]);
+  }, [stocks, alerts, soundEnabled, rsiTimeframe, rsiDivergenceAlertsEnabled]);
 
   // Quick-Add Bearish RSI Divergence Alert (Reversal / Top Warning)
   const handleAddBearishRsiAlert = (stock: MinerviniTradeSetup) => {
@@ -719,8 +738,44 @@ export const PriceAlertSystem: React.FC<PriceAlertSystemProps> = ({
           </div>
         </div>
 
-        {/* Browser Web Notification Permission & Sound Controls */}
-        <div className="flex items-center space-x-3">
+        {/* Browser Web Notification Permission, RSI Divergence Global Toggle & Sound Controls */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* RSI Divergence Global Alert Toggle Switch */}
+          <button
+            onClick={handleToggleRsiDivergenceAlerts}
+            title={
+              rsiDivergenceAlertsEnabled
+                ? 'RSI Divergence alerts active. Click to mute / silence notifications.'
+                : 'RSI Divergence alerts muted. Click to enable notifications.'
+            }
+            className={`flex items-center space-x-2 px-3 py-1.5 text-xs font-bold transition-all border shadow-xs cursor-pointer ${
+              rsiDivergenceAlertsEnabled
+                ? 'bg-purple-950 text-purple-200 border-purple-700 hover:bg-purple-900'
+                : 'bg-gray-100 text-gray-500 border-gray-300 hover:bg-gray-200'
+            }`}
+          >
+            <div className="relative inline-flex items-center">
+              <span
+                className={`w-7 h-4 flex items-center rounded-full p-0.5 transition-colors duration-200 ease-in-out ${
+                  rsiDivergenceAlertsEnabled ? 'bg-purple-500' : 'bg-gray-300'
+                }`}
+              >
+                <span
+                  className={`bg-white w-3 h-3 rounded-full shadow-xs transform transition-transform duration-200 ease-in-out ${
+                    rsiDivergenceAlertsEnabled ? 'translate-x-3' : 'translate-x-0'
+                  }`}
+                />
+              </span>
+            </div>
+            <span className="flex items-center space-x-1">
+              <Zap className={`w-3.5 h-3.5 ${rsiDivergenceAlertsEnabled ? 'text-amber-400' : 'text-gray-400'}`} />
+              <span>RSI Alerts:</span>
+              <span className={`uppercase font-black ${rsiDivergenceAlertsEnabled ? 'text-purple-300' : 'text-gray-500'}`}>
+                {rsiDivergenceAlertsEnabled ? 'Active' : 'Muted'}
+              </span>
+            </span>
+          </button>
+
           {notifPermission === 'granted' ? (
             <div className="flex items-center space-x-2 bg-emerald-50 border border-emerald-300 text-emerald-900 px-3 py-1.5 text-xs font-mono font-bold">
               <CheckCircle2 className="w-4 h-4 text-emerald-700" />
@@ -766,6 +821,8 @@ export const PriceAlertSystem: React.FC<PriceAlertSystemProps> = ({
         selectedStock={selectedStock}
         onSelectStock={onSelectStock}
         soundEnabled={soundEnabled}
+        notificationsEnabled={rsiDivergenceAlertsEnabled}
+        onToggleNotifications={handleToggleRsiDivergenceAlerts}
         onArmAlert={(ticker, targetType, price, notes) => {
           const targetStock = stocks.find((s) => s.ticker === ticker) || selectedStock;
           if (!targetStock) return;
@@ -1081,6 +1138,37 @@ export const PriceAlertSystem: React.FC<PriceAlertSystemProps> = ({
 
               {/* Timeframe & Controls */}
               <div className="flex flex-wrap items-center gap-2">
+                {/* Global Toggle Switch inside Radar Tab */}
+                <button
+                  onClick={handleToggleRsiDivergenceAlerts}
+                  title={
+                    rsiDivergenceAlertsEnabled
+                      ? 'Click to disable RSI Divergence background notifications'
+                      : 'Click to enable RSI Divergence background notifications'
+                  }
+                  className={`flex items-center space-x-2 px-3 py-1 text-[11px] font-bold border transition cursor-pointer ${
+                    rsiDivergenceAlertsEnabled
+                      ? 'bg-purple-900/60 border-purple-500 text-purple-200 hover:bg-purple-900'
+                      : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <span
+                    className={`w-6 h-3.5 flex items-center rounded-full p-0.5 transition-colors ${
+                      rsiDivergenceAlertsEnabled ? 'bg-purple-500' : 'bg-slate-700'
+                    }`}
+                  >
+                    <span
+                      className={`bg-white w-2.5 h-2.5 rounded-full transform transition-transform ${
+                        rsiDivergenceAlertsEnabled ? 'translate-x-2.5' : 'translate-x-0'
+                      }`}
+                    />
+                  </span>
+                  <span>Surveillance:</span>
+                  <span className={`font-black uppercase ${rsiDivergenceAlertsEnabled ? 'text-purple-300' : 'text-slate-400'}`}>
+                    {rsiDivergenceAlertsEnabled ? 'ON' : 'OFF'}
+                  </span>
+                </button>
+
                 <div className="flex items-center space-x-1 bg-cyan-950 border border-cyan-800 p-0.5 text-[10px]">
                   <button
                     onClick={() => setRsiTimeframe('DAILY')}

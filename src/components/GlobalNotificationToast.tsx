@@ -261,6 +261,11 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
     };
 
     const handleRsiDivergenceEvent = (e: Event) => {
+      // Respect global RSI divergence alert toggle switch
+      if (typeof window !== 'undefined' && localStorage.getItem('minervini_rsi_divergence_alerts_enabled') === 'false') {
+        return;
+      }
+
       const customEvt = e as CustomEvent<RsiDivergenceAlertPayload>;
       const payload = customEvt.detail;
       if (!payload) return;
@@ -606,6 +611,11 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
 
         // Check 6: RSI Divergence Alert (Bearish Exhaustion or Bullish Accumulation)
         if (alert.targetType === 'RSI_BEARISH_DIVERGENCE' || alert.targetType === 'RSI_BULLISH_DIVERGENCE') {
+          // Check if RSI Divergence notifications are silenced globally
+          if (typeof window !== 'undefined' && localStorage.getItem('minervini_rsi_divergence_alerts_enabled') === 'false') {
+            return alert;
+          }
+
           if (stockMatch && alert.status === 'ACTIVE') {
             const divRes = detectRsiDivergence(stockMatch);
             const isBearishMatch = alert.targetType === 'RSI_BEARISH_DIVERGENCE' && divRes.divergenceType === 'BEARISH_DIVERGENCE';

@@ -161,7 +161,7 @@ const DEFAULT_SIMULATED_POSITIONS: FivePaisaPosition[] = [
 const DEFAULT_SIMULATED_ORDERS: FivePaisaOrder[] = [
   {
     orderId: '5P-ORD-98214',
-    clientCode: '5P88421943',
+    clientCode: 'DEMO-ACCOUNT',
     exchange: 'NSE',
     symbol: 'DIXON',
     transactionType: 'BUY',
@@ -178,7 +178,7 @@ const DEFAULT_SIMULATED_ORDERS: FivePaisaOrder[] = [
   },
   {
     orderId: '5P-ORD-98215',
-    clientCode: '5P88421943',
+    clientCode: 'DEMO-ACCOUNT',
     exchange: 'NSE',
     symbol: 'TATAELXSI',
     transactionType: 'BUY',
@@ -195,7 +195,7 @@ const DEFAULT_SIMULATED_ORDERS: FivePaisaOrder[] = [
   },
   {
     orderId: '5P-ORD-98218',
-    clientCode: '5P88421943',
+    clientCode: 'DEMO-ACCOUNT',
     exchange: 'NSE',
     symbol: 'KAYNES',
     transactionType: 'BUY',
@@ -211,7 +211,7 @@ const DEFAULT_SIMULATED_ORDERS: FivePaisaOrder[] = [
   },
   {
     orderId: '5P-ORD-98220',
-    clientCode: '5P88421943',
+    clientCode: 'DEMO-ACCOUNT',
     exchange: 'NSE',
     symbol: 'ZOMATO',
     transactionType: 'BUY',
@@ -272,7 +272,7 @@ export const fetchFivePaisaMargin = async (): Promise<FivePaisaAccountMargin> =>
   }
 
   const defaultMargin: FivePaisaAccountMargin = {
-    clientCode: '5P88421943',
+    clientCode: 'DEMO-ACCOUNT',
     accountType: 'EQUITY_CASH',
     availableCashMargin: 385420.0,
     usedMargin: 74580.0,
@@ -383,7 +383,7 @@ export const placeFivePaisaOrder = async (orderReq: FivePaisaOrderRequest): Prom
 
   const newOrder: FivePaisaOrder = {
     orderId: newOrderId,
-    clientCode: currentMargin.clientCode || '5P88421943',
+    clientCode: currentMargin.clientCode || 'DEMO-ACCOUNT',
     exchange: orderReq.exchange,
     symbol: orderReq.symbol,
     transactionType: orderReq.transactionType,

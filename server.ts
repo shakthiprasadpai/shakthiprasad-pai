@@ -1326,7 +1326,7 @@ Respond with valid JSON only.`;
 
   // In-memory trading account state for 5paisa session
   let fivePaisaState = {
-    clientCode: process.env.FIVEPAISA_CLIENT_CODE || '5P88421943',
+    clientCode: process.env.FIVEPAISA_CLIENT_CODE || '',
     availableCash: 385420.0,
     usedMargin: 74580.0,
     collateralMargin: 210000.0,
@@ -1473,7 +1473,7 @@ Respond with valid JSON only.`;
     orders: [
       {
         orderId: '5P-ORD-98214',
-        clientCode: '5P88421943',
+        clientCode: 'DEMO-ACCOUNT',
         exchange: 'NSE',
         symbol: 'DIXON',
         transactionType: 'BUY',
@@ -1490,7 +1490,7 @@ Respond with valid JSON only.`;
       },
       {
         orderId: '5P-ORD-98215',
-        clientCode: '5P88421943',
+        clientCode: 'DEMO-ACCOUNT',
         exchange: 'NSE',
         symbol: 'TATAELXSI',
         transactionType: 'BUY',
@@ -1507,7 +1507,7 @@ Respond with valid JSON only.`;
       },
       {
         orderId: '5P-ORD-98218',
-        clientCode: '5P88421943',
+        clientCode: 'DEMO-ACCOUNT',
         exchange: 'NSE',
         symbol: 'KAYNES',
         transactionType: 'BUY',
@@ -1523,7 +1523,7 @@ Respond with valid JSON only.`;
       },
       {
         orderId: '5P-ORD-98220',
-        clientCode: '5P88421943',
+        clientCode: 'DEMO-ACCOUNT',
         exchange: 'NSE',
         symbol: 'ZOMATO',
         transactionType: 'BUY',
@@ -1686,7 +1686,7 @@ Respond with valid JSON only.`;
   // 7. Connect / Verify 5paisa Credentials
   app.post('/api/5paisa/connect', (req, res) => {
     try {
-      const { clientCode, userKey, encryptionKey, passwordPin } = req.body;
+      const { clientCode } = req.body;
       if (clientCode) {
         fivePaisaState.clientCode = clientCode;
       }

@@ -598,66 +598,6 @@ export interface BhavcopyMarketSummary {
   stage2BreakoutCount: number;
 }
 
-export interface TradingViewWebhookPayload {
-  ticker: string;
-  action?: 'BUY' | 'SELL' | 'PIVOT_BREAKOUT' | 'STOP_LOSS' | 'TARGET_1' | 'TARGET_2' | 'VCP_DRYUP' | 'STAGE_2_CONFIRMED' | 'ALERT' | string;
-  price?: number;
-  volume?: number;
-  exchange?: string;
-  time?: string;
-  message?: string;
-  strategy?: string;
-  bar?: {
-    open?: number;
-    high?: number;
-    low?: number;
-    close?: number;
-    volume?: number;
-    time?: string;
-  };
-  passphrase?: string;
-  source?: string;
-}
-
-export type TradingViewSepaCategory =
-  | 'PIVOT_ENTRY'
-  | 'STOP_EXIT'
-  | 'TARGET_PROFIT'
-  | 'VOLUME_SURGE'
-  | 'VCP_CONTRACTION'
-  | 'STAGE_2_SIGNAL'
-  | 'GENERAL_ALERT';
-
-export interface TradingViewWebhookEvent {
-  id: string;
-  receivedAt: string;
-  formattedTime: string;
-  ticker: string;
-  stockName?: string;
-  action: string;
-  price: number;
-  volume?: number;
-  exchange: string;
-  message: string;
-  strategy?: string;
-  status: 'VALID' | 'WARNING' | 'UNAUTHORIZED';
-  sepaCategory: TradingViewSepaCategory;
-  rawPayload: string;
-  ip?: string;
-  httpStatus?: number;
-  diagnostics?: string;
-  contentType?: string;
-  requestDurationMs?: number;
-}
-
-export interface TradingViewWebhookConfig {
-  enabled: boolean;
-  passphrase: string;
-  autoAddToWatchlist: boolean;
-  soundAlertOnReceive: boolean;
-  desktopNotification: boolean;
-}
-
 // ---------------------------------------------------------------------------
 // SECOND BRAIN & CHROME EXTENSION TYPES
 // ---------------------------------------------------------------------------
@@ -725,13 +665,9 @@ export interface ChromeExtensionConfig {
 // 5PAISA TRADING ACCOUNT TYPES
 // ---------------------------------------------------------------------------
 export interface FivePaisaCredentials {
-  clientCode: string;
+  clientCode?: string;
   appName?: string;
   appSource?: string;
-  userKey?: string;
-  encryptionKey?: string;
-  passwordPin?: string;
-  totpSecret?: string;
   accessToken?: string;
   isSimulated?: boolean;
 }

@@ -206,7 +206,7 @@ export const FivePaisaOrderModal: React.FC<FivePaisaOrderModalProps> = ({
             </div>
 
             <div className="flex items-center space-x-3 text-[11px] font-mono text-gray-500">
-              <span>Client: <strong className="text-gray-700 dark:text-gray-300">{marginData?.clientCode || '5P88421943'}</strong></span>
+              <span>Client: <strong className="text-gray-700 dark:text-gray-300">{marginData?.clientCode || 'Demo Account'}</strong></span>
               <span>Account: <strong>Cash Equity</strong></span>
             </div>
           </div>

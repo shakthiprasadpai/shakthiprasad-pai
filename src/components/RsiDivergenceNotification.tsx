@@ -37,6 +37,8 @@ interface RsiDivergenceNotificationProps {
   onSelectStock?: (stock: MinerviniTradeSetup) => void;
   onArmAlert?: (ticker: string, targetType: string, price: number, notes: string) => void;
   soundEnabled?: boolean;
+  notificationsEnabled?: boolean;
+  onToggleNotifications?: () => void;
 }
 
 export const RsiDivergenceNotification: React.FC<RsiDivergenceNotificationProps> = ({
@@ -45,6 +47,8 @@ export const RsiDivergenceNotification: React.FC<RsiDivergenceNotificationProps>
   onSelectStock,
   onArmAlert,
   soundEnabled = true,
+  notificationsEnabled = true,
+  onToggleNotifications,
 }) => {
   const [isDismissed, setIsDismissed] = useState<boolean>(false);
   const [isExpanded, setIsExpanded] = useState<boolean>(true);
@@ -83,6 +87,12 @@ export const RsiDivergenceNotification: React.FC<RsiDivergenceNotificationProps>
 
   // Dispatches web notification and audio chime
   const handleTriggerNotification = (res: Rsi52wExhaustionResult) => {
+    if (!notificationsEnabled) {
+      setLastNotificationStatus(`⚠️ Divergence detected for ${res.ticker}, but notifications are currently MUTED (Global Toggle OFF)`);
+      setTimeout(() => setLastNotificationStatus(null), 4000);
+      return;
+    }
+
     if (soundEnabled) {
       playAlertChime();
     }
@@ -240,6 +250,39 @@ export const RsiDivergenceNotification: React.FC<RsiDivergenceNotificationProps>
                 ))}
               </div>
             </div>
+          )}
+
+          {/* Global Alert Toggle Switch */}
+          {onToggleNotifications && (
+            <button
+              onClick={onToggleNotifications}
+              title={
+                notificationsEnabled
+                  ? 'RSI Divergence alerts active. Click to mute / silence notifications.'
+                  : 'RSI Divergence alerts muted. Click to enable notifications.'
+              }
+              className={`flex items-center space-x-1.5 px-2.5 py-1 text-[10px] font-bold border transition cursor-pointer ${
+                notificationsEnabled
+                  ? 'bg-purple-950/80 border-purple-500 text-purple-200 hover:bg-purple-900'
+                  : 'bg-black/60 border-gray-700 text-gray-400 hover:text-gray-200'
+              }`}
+            >
+              <span
+                className={`w-5 h-3 flex items-center rounded-full p-0.5 transition-colors ${
+                  notificationsEnabled ? 'bg-purple-500' : 'bg-gray-600'
+                }`}
+              >
+                <span
+                  className={`bg-white w-2 h-2 rounded-full transform transition-transform ${
+                    notificationsEnabled ? 'translate-x-2' : 'translate-x-0'
+                  }`}
+                />
+              </span>
+              <span>Alerts:</span>
+              <span className={`font-black uppercase ${notificationsEnabled ? 'text-purple-300' : 'text-gray-400'}`}>
+                {notificationsEnabled ? 'ON' : 'MUTED'}
+              </span>
+            </button>
           )}
 
           <button

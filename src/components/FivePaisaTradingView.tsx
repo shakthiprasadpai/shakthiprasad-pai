@@ -88,12 +88,9 @@ export const FivePaisaTradingView: React.FC<FivePaisaTradingViewProps> = ({
   // Credentials State
   const [credentials, setCredentials] = useState<FivePaisaCredentials>(() => {
     return getStoredCredentials() || {
-      clientCode: '5P88421943',
+      clientCode: '',
       appName: 'GrowthStockAlpha',
       appSource: 'MinerviniSEPA',
-      userKey: 'LIVE_5P_API_DEMO_KEY',
-      encryptionKey: 'ENC_7849_ALPHA',
-      passwordPin: '••••••',
       isSimulated: true
     };
   });
@@ -228,12 +225,9 @@ export const FivePaisaTradingView: React.FC<FivePaisaTradingViewProps> = ({
 
   const handleUseDemoAccount = () => {
     const demoCreds: FivePaisaCredentials = {
-      clientCode: '5P88421943',
+      clientCode: 'DEMO_USER',
       appName: 'GrowthStockAlpha',
       appSource: 'MinerviniSEPA',
-      userKey: 'DEMO_USER_KEY_5P',
-      encryptionKey: 'ENC_KEY_DEMO',
-      passwordPin: '••••••',
       isSimulated: true
     };
     setCredentials(demoCreds);
@@ -881,12 +875,11 @@ export const FivePaisaTradingView: React.FC<FivePaisaTradingViewProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-mono font-bold text-gray-700 dark:text-gray-300 uppercase mb-1">
-                  5paisa Client Code / User ID *
+                  5paisa Client Code / User ID
                 </label>
                 <input
                   type="text"
-                  required
-                  value={credentials.clientCode}
+                  value={credentials.clientCode || ''}
                   onChange={(e) => setCredentials({ ...credentials, clientCode: e.target.value })}
                   placeholder="e.g. 5P12345678"
                   className="w-full p-2.5 text-xs font-mono border border-gray-300 dark:border-gray-700 bg-transparent focus:outline-none focus:border-amber-500"
@@ -895,65 +888,13 @@ export const FivePaisaTradingView: React.FC<FivePaisaTradingViewProps> = ({
 
               <div>
                 <label className="block text-xs font-mono font-bold text-gray-700 dark:text-gray-300 uppercase mb-1">
-                  App Name *
+                  App Name
                 </label>
                 <input
                   type="text"
                   value={credentials.appName || 'GrowthStockAlpha'}
                   onChange={(e) => setCredentials({ ...credentials, appName: e.target.value })}
                   placeholder="e.g. GrowthStockAlpha"
-                  className="w-full p-2.5 text-xs font-mono border border-gray-300 dark:border-gray-700 bg-transparent focus:outline-none focus:border-amber-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-mono font-bold text-gray-700 dark:text-gray-300 uppercase mb-1">
-                  User Key (from Developer Portal)
-                </label>
-                <input
-                  type="password"
-                  value={credentials.userKey || ''}
-                  onChange={(e) => setCredentials({ ...credentials, userKey: e.target.value })}
-                  placeholder="Enter 5paisa User Key"
-                  className="w-full p-2.5 text-xs font-mono border border-gray-300 dark:border-gray-700 bg-transparent focus:outline-none focus:border-amber-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-mono font-bold text-gray-700 dark:text-gray-300 uppercase mb-1">
-                  Encryption Key
-                </label>
-                <input
-                  type="password"
-                  value={credentials.encryptionKey || ''}
-                  onChange={(e) => setCredentials({ ...credentials, encryptionKey: e.target.value })}
-                  placeholder="Enter 5paisa Encryption Key"
-                  className="w-full p-2.5 text-xs font-mono border border-gray-300 dark:border-gray-700 bg-transparent focus:outline-none focus:border-amber-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-mono font-bold text-gray-700 dark:text-gray-300 uppercase mb-1">
-                  Account Password / PIN
-                </label>
-                <input
-                  type="password"
-                  value={credentials.passwordPin || ''}
-                  onChange={(e) => setCredentials({ ...credentials, passwordPin: e.target.value })}
-                  placeholder="Enter 6-digit MPIN"
-                  className="w-full p-2.5 text-xs font-mono border border-gray-300 dark:border-gray-700 bg-transparent focus:outline-none focus:border-amber-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-mono font-bold text-gray-700 dark:text-gray-300 uppercase mb-1">
-                  TOTP Secret (2FA Key)
-                </label>
-                <input
-                  type="password"
-                  value={credentials.totpSecret || ''}
-                  onChange={(e) => setCredentials({ ...credentials, totpSecret: e.target.value })}
-                  placeholder="Base32 TOTP Key for auto 2FA"
                   className="w-full p-2.5 text-xs font-mono border border-gray-300 dark:border-gray-700 bg-transparent focus:outline-none focus:border-amber-500"
                 />
               </div>
