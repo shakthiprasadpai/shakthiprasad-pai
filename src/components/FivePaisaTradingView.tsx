@@ -88,7 +88,6 @@ export const FivePaisaTradingView: React.FC<FivePaisaTradingViewProps> = ({
   // Credentials State
   const [credentials, setCredentials] = useState<FivePaisaCredentials>(() => {
     return getStoredCredentials() || {
-      clientCode: '',
       appName: 'GrowthStockAlpha',
       appSource: 'MinerviniSEPA',
       isSimulated: true
@@ -225,7 +224,6 @@ export const FivePaisaTradingView: React.FC<FivePaisaTradingViewProps> = ({
 
   const handleUseDemoAccount = () => {
     const demoCreds: FivePaisaCredentials = {
-      clientCode: 'DEMO_USER',
       appName: 'GrowthStockAlpha',
       appSource: 'MinerviniSEPA',
       isSimulated: true
@@ -296,7 +294,7 @@ export const FivePaisaTradingView: React.FC<FivePaisaTradingViewProps> = ({
               <h2 className="text-2xl font-serif font-black tracking-tight mt-1 flex items-center space-x-3">
                 <span>Trading & Demat Account</span>
                 <span className="text-sm font-mono text-gray-400 font-normal">
-                  [{margin?.clientCode || credentials.clientCode}]
+                  [Paper Trading Sandbox]
                 </span>
               </h2>
             </div>
@@ -875,19 +873,6 @@ export const FivePaisaTradingView: React.FC<FivePaisaTradingViewProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-mono font-bold text-gray-700 dark:text-gray-300 uppercase mb-1">
-                  5paisa Client Code / User ID
-                </label>
-                <input
-                  type="text"
-                  value={credentials.clientCode || ''}
-                  onChange={(e) => setCredentials({ ...credentials, clientCode: e.target.value })}
-                  placeholder="e.g. 5P12345678"
-                  className="w-full p-2.5 text-xs font-mono border border-gray-300 dark:border-gray-700 bg-transparent focus:outline-none focus:border-amber-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-mono font-bold text-gray-700 dark:text-gray-300 uppercase mb-1">
                   App Name
                 </label>
                 <input
@@ -895,6 +880,19 @@ export const FivePaisaTradingView: React.FC<FivePaisaTradingViewProps> = ({
                   value={credentials.appName || 'GrowthStockAlpha'}
                   onChange={(e) => setCredentials({ ...credentials, appName: e.target.value })}
                   placeholder="e.g. GrowthStockAlpha"
+                  className="w-full p-2.5 text-xs font-mono border border-gray-300 dark:border-gray-700 bg-transparent focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-mono font-bold text-gray-700 dark:text-gray-300 uppercase mb-1">
+                  App Source
+                </label>
+                <input
+                  type="text"
+                  value={credentials.appSource || 'MinerviniSEPA'}
+                  onChange={(e) => setCredentials({ ...credentials, appSource: e.target.value })}
+                  placeholder="e.g. MinerviniSEPA"
                   className="w-full p-2.5 text-xs font-mono border border-gray-300 dark:border-gray-700 bg-transparent focus:outline-none focus:border-amber-500"
                 />
               </div>

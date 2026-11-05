@@ -96,7 +96,7 @@ export const SecurityShieldPanel: React.FC = () => {
       { pct: 20, label: 'Checking Anti-Virus Definition Database & Malware Signatures...' },
       { pct: 40, label: 'Inspecting Anti-Phishing URL Filters & Domain Spoofing Databases...' },
       { pct: 60, label: 'Auditing LocalStorage Vault & Sandboxed Memory Environment...' },
-      { pct: 80, label: 'Analyzing Broker Webhook Endpoints & API Key Encryption...' },
+      { pct: 80, label: 'Analyzing Broker API Endpoints & Token Encryption...' },
       { pct: 100, label: 'Scan Complete: System Protected with Zero Vulnerabilities Found!' }
     ];
 
@@ -363,7 +363,7 @@ export const SecurityShieldPanel: React.FC = () => {
           </div>
 
           <p className="text-[10px] text-gray-400">
-            Paste any external broker authorization link, news URL, or webhook endpoint to scan for phishing homographs, SSL vulnerabilities, or credential harvesting traps.
+            Paste any external broker authorization link, news URL, or API endpoint to scan for phishing homographs, SSL vulnerabilities, or credential harvesting traps.
           </p>
 
           <form onSubmit={handleInspectUrl} className="flex gap-2">
@@ -425,7 +425,7 @@ export const SecurityShieldPanel: React.FC = () => {
           </div>
 
           <p className="text-[10px] text-gray-400">
-            Paste custom indicator code or JSON config payloads to verify there are no hidden keyloggers, cookie extractors, or unauthorized webhook exfiltrations.
+            Paste custom indicator code or JSON config payloads to verify there are no hidden keyloggers, cookie extractors, or unauthorized data exfiltrations.
           </p>
 
           <div className="space-y-2">

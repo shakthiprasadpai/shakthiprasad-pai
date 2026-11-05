@@ -1326,7 +1326,6 @@ Respond with valid JSON only.`;
 
   // In-memory trading account state for 5paisa session
   let fivePaisaState = {
-    clientCode: process.env.FIVEPAISA_CLIENT_CODE || '',
     availableCash: 385420.0,
     usedMargin: 74580.0,
     collateralMargin: 210000.0,
@@ -1473,7 +1472,6 @@ Respond with valid JSON only.`;
     orders: [
       {
         orderId: '5P-ORD-98214',
-        clientCode: 'DEMO-ACCOUNT',
         exchange: 'NSE',
         symbol: 'DIXON',
         transactionType: 'BUY',
@@ -1490,7 +1488,6 @@ Respond with valid JSON only.`;
       },
       {
         orderId: '5P-ORD-98215',
-        clientCode: 'DEMO-ACCOUNT',
         exchange: 'NSE',
         symbol: 'TATAELXSI',
         transactionType: 'BUY',
@@ -1507,7 +1504,6 @@ Respond with valid JSON only.`;
       },
       {
         orderId: '5P-ORD-98218',
-        clientCode: 'DEMO-ACCOUNT',
         exchange: 'NSE',
         symbol: 'KAYNES',
         transactionType: 'BUY',
@@ -1523,7 +1519,6 @@ Respond with valid JSON only.`;
       },
       {
         orderId: '5P-ORD-98220',
-        clientCode: 'DEMO-ACCOUNT',
         exchange: 'NSE',
         symbol: 'ZOMATO',
         transactionType: 'BUY',
@@ -1547,7 +1542,6 @@ Respond with valid JSON only.`;
     const mtm = fivePaisaState.positions.reduce((s, p) => s + p.mtm, 0);
 
     const marginData = {
-      clientCode: fivePaisaState.clientCode,
       accountType: 'EQUITY_CASH',
       availableCashMargin: fivePaisaState.availableCash,
       usedMargin: fivePaisaState.usedMargin,
@@ -1598,7 +1592,6 @@ Respond with valid JSON only.`;
 
       const newOrder = {
         orderId,
-        clientCode: fivePaisaState.clientCode,
         exchange,
         symbol: symbol.toUpperCase(),
         transactionType,
@@ -1686,13 +1679,8 @@ Respond with valid JSON only.`;
   // 7. Connect / Verify 5paisa Credentials
   app.post('/api/5paisa/connect', (req, res) => {
     try {
-      const { clientCode } = req.body;
-      if (clientCode) {
-        fivePaisaState.clientCode = clientCode;
-      }
       res.json({
         success: true,
-        clientCode: fivePaisaState.clientCode,
         message: 'Connected to 5paisa Trading Gateway successfully'
       });
     } catch (err: any) {

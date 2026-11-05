@@ -7,6 +7,9 @@ import {
   getRedirectResult,
   signOut,
   onAuthStateChanged,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  updateProfile,
   User,
 } from 'firebase/auth';
 import {
@@ -94,4 +97,10 @@ export async function logoutUser(): Promise<void> {
   await signOut(auth);
 }
 
-export { onAuthStateChanged, type User };
+export {
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  updateProfile,
+  type User,
+};

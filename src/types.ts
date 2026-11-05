@@ -665,7 +665,6 @@ export interface ChromeExtensionConfig {
 // 5PAISA TRADING ACCOUNT TYPES
 // ---------------------------------------------------------------------------
 export interface FivePaisaCredentials {
-  clientCode?: string;
   appName?: string;
   appSource?: string;
   accessToken?: string;
@@ -673,7 +672,6 @@ export interface FivePaisaCredentials {
 }
 
 export interface FivePaisaAccountMargin {
-  clientCode: string;
   accountType: 'EQUITY_CASH' | 'DERIVATIVES' | 'COMMODITY';
   availableCashMargin: number; // e.g. ₹3,85,420
   usedMargin: number; // e.g. ₹65,000
@@ -723,7 +721,6 @@ export interface FivePaisaPosition {
 
 export interface FivePaisaOrder {
   orderId: string;
-  clientCode: string;
   exchange: 'NSE' | 'BSE';
   symbol: string;
   transactionType: 'BUY' | 'SELL';
@@ -762,7 +759,6 @@ export interface FivePaisaOrderRequest {
 export interface FivePaisaAccountStatus {
   isConnected: boolean;
   isSimulated: boolean;
-  clientCode: string;
   lastSynced: string;
   brokerName: string;
 }

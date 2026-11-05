@@ -54,8 +54,11 @@ import { MinerviniTradeSetup } from './types';
 import { formatCurrency, formatVolume, getCurrencySymbol, calculateBreakoutProbability } from './utils/sepaCalculator';
 import { getChartLinkUrl } from './utils/chartLinkHelper';
 import { TrendingUp, TrendingDown, Skull, ShieldAlert, ShieldCheck, Target, Droplets, ArrowUpRight, Flame, BarChart3, Calculator, Sparkles, Gem, Bot, Bell, Keyboard, Command, Search, Zap, History, Brain, Bookmark, ExternalLink, Activity, BellRing } from 'lucide-react';
+import { useAuth } from './context/AuthContext';
+import { LoginScreen } from './components/LoginScreen';
 
 export default function App() {
+  const { user, loading } = useAuth();
   const [stocksList, setStocksList] = useState<MinerviniTradeSetup[]>(MOCK_STOCKS);
   const [selectedStock, setSelectedStock] = useState<MinerviniTradeSetup>(MOCK_STOCKS[0]);
   const [activeTab, setActiveTab] = useState<AppNavTab>('hermes_agent');
@@ -249,6 +252,22 @@ export default function App() {
   };
 
   const currencySymbol = getCurrencySymbol(selectedStock.exchange);
+
+  // Authenticate first: display sleek loading or Login & Password portal
+  if (loading) {
+    return (
+      <div className="min-h-screen w-full bg-[#07090e] flex flex-col items-center justify-center font-mono text-xs text-amber-400 space-y-4">
+        <div className="w-10 h-10 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+        <span className="tracking-widest uppercase font-bold text-slate-300">
+          Loading Minervini SEPA® Terminal...
+        </span>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <LoginScreen onLoginSuccess={() => setActiveTab('hermes_agent')} />;
+  }
 
   return (
     <div className={`min-h-screen font-sans antialiased selection:bg-[#1a1a1a] selection:text-white pb-28 md:pb-16 transition-colors duration-300 ${

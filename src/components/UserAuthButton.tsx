@@ -149,10 +149,15 @@ export const UserAuthButton: React.FC<UserAuthButtonProps> = ({ isObsidian = fal
               )}
               <div className="flex-1 min-w-0">
                 <p className="font-bold text-xs truncate text-white">{displayName}</p>
-                <p className="text-[10px] text-gray-400 truncate">{user.email}</p>
                 <span className="inline-flex items-center space-x-1 text-[9px] font-bold text-emerald-400 mt-1">
                   <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                  <span>Google Authenticated</span>
+                  <span>
+                    {(user as any)?.isDemo
+                      ? 'Demo Paper Account'
+                      : (user as any)?.provider === 'password'
+                      ? 'Verified SEPA Login'
+                      : 'Google Authenticated'}
+                  </span>
                 </span>
               </div>
             </div>
