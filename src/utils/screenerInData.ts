@@ -8,6 +8,7 @@ export interface ScreenerInPreset {
   description: string;
   sepaRationale: string;
   screenerInQuery: string;
+  screenerUrl?: string;
   keyRatios: string[];
   filterFn: (stock: MinerviniTradeSetup) => boolean;
 }
@@ -31,12 +32,13 @@ export interface FundamentalSepaScorecard {
 export const SCREENER_IN_PRESETS: ScreenerInPreset[] = [
   {
     id: 'code-33-leaders',
-    name: 'Mark Minervini Code 33 Fundamental Leaders',
+    name: 'Pai Minervini Code 33 Fundamental Screen',
     category: 'CODE_33',
-    badge: 'MINERVINI CORE',
-    description: 'High-growth compounders passing Mark Minervini\'s strict Code 33 test: 3Y Sales & PAT CAGR > 20%, ROE > 18%, ROCE > 20%, and conservative Debt/Equity.',
+    badge: 'PAI MINERVINI',
+    description: 'High-growth compounders passing Mark Minervini\'s strict Code 33 test (Pai Minervini screen on Screener.in): 3Y Sales & PAT CAGR > 20%, ROE > 18%, ROCE > 20%, and conservative Debt/Equity.',
     sepaRationale: 'Over 90% of monster market leaders show 3-year annual earnings growth above 25% combined with superior capital efficiency before embarking on triple-digit advances.',
     screenerInQuery: 'Sales growth 3Years > 20 AND Profit growth 3Years > 25 AND Return on equity > 18 AND Return on capital employed > 20 AND Debt to equity < 0.6 AND Market Capitalization > 1000',
+    screenerUrl: 'https://www.screener.in/screens/3778508/pai-minervini/',
     keyRatios: ['Sales 3Y > 20%', 'PAT 3Y > 25%', 'ROE > 18%', 'ROCE > 20%', 'D/E < 0.6'],
     filterFn: (stock) => {
       const s3 = stock.salesGrowth3Y ?? 0;

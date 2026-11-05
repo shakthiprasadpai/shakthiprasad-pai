@@ -7,6 +7,12 @@ export type StockOrTicker =
   | null
   | undefined;
 
+export const CHARTINK_MINERVINI_SCREENER_URL =
+  'https://chartink.com/screener/mark-minervini-trend-template-with-volume';
+
+export const SCREENER_IN_MINERVINI_SCREENER_URL =
+  'https://www.screener.in/screens/3778508/pai-minervini/';
+
 /**
  * Generates direct technical chart URL for Chartink / ChartLink.
  * Handles MinerviniTradeSetup stock objects, raw ticker strings (e.g. "RELIANCE", "TCS"),
@@ -14,7 +20,7 @@ export type StockOrTicker =
  */
 export function getChartLinkUrl(item?: StockOrTicker): string {
   if (!item) {
-    return 'https://chartink.com/stocks/reliance.html';
+    return CHARTINK_MINERVINI_SCREENER_URL;
   }
 
   let ticker = '';
@@ -28,7 +34,7 @@ export function getChartLinkUrl(item?: StockOrTicker): string {
   }
 
   if (!ticker) {
-    return 'https://chartink.com';
+    return CHARTINK_MINERVINI_SCREENER_URL;
   }
 
   // Strip exchange prefix if present (e.g. "NSE:TATASTEEL" or "BSE:500325")
@@ -83,7 +89,7 @@ export function getTradingViewUrl(item?: StockOrTicker): string {
  */
 export function getScreenerInUrl(item?: StockOrTicker): string {
   if (!item) {
-    return 'https://www.screener.in/company/RELIANCE/consolidated/';
+    return SCREENER_IN_MINERVINI_SCREENER_URL;
   }
 
   let ticker = '';
@@ -94,7 +100,7 @@ export function getScreenerInUrl(item?: StockOrTicker): string {
   }
 
   if (!ticker) {
-    return 'https://www.screener.in';
+    return SCREENER_IN_MINERVINI_SCREENER_URL;
   }
 
   // Strip prefix (e.g. "NSE:TRENT" -> "TRENT")
@@ -110,7 +116,11 @@ export function getScreenerInUrl(item?: StockOrTicker): string {
  * Generates URL for running a raw query directly on Screener.in's query runner.
  */
 export function getScreenerInQueryUrl(query: string): string {
+  if (!query || !query.trim()) {
+    return SCREENER_IN_MINERVINI_SCREENER_URL;
+  }
   return `https://www.screener.in/screen/raw/?sort=&order=&source=&query=${encodeURIComponent(query.trim())}`;
 }
 
 export default getChartLinkUrl;
+

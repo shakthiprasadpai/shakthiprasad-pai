@@ -101,8 +101,9 @@ export const ChartLinkScannerView: React.FC<ChartLinkScannerViewProps> = ({
   };
 
   const handleLaunchChartink = (preset: ChartlinkScannerPreset) => {
-    // Open Chartink Screener in new tab
-    window.open('https://chartink.com/screener', '_blank', 'noopener,noreferrer');
+    // Open Chartink Minervini Screener in new tab
+    const targetUrl = preset.chartinkUrl || 'https://chartink.com/screener/mark-minervini-trend-template-with-volume';
+    window.open(targetUrl, '_blank', 'noopener,noreferrer');
   };
 
   const handleProcessImport = () => {
@@ -202,13 +203,13 @@ export const ChartLinkScannerView: React.FC<ChartLinkScannerViewProps> = ({
           {/* Quick Header Action Buttons */}
           <div className="flex flex-wrap items-center gap-2.5 text-xs font-mono">
             <a
-              href="https://chartink.com/screener"
+              href="https://chartink.com/screener/mark-minervini-trend-template-with-volume"
               target="_blank"
               rel="noopener noreferrer"
               className="px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold uppercase tracking-wider flex items-center space-x-2 transition-all shadow-md cursor-pointer"
             >
               <BarChart3 className="w-4 h-4" />
-              <span>Open Chartink Screener</span>
+              <span>Minervini Trend Template (Chartink)</span>
               <ExternalLink className="w-3.5 h-3.5 text-blue-200" />
             </a>
 
@@ -366,13 +367,13 @@ export const ChartLinkScannerView: React.FC<ChartLinkScannerViewProps> = ({
                 </button>
 
                 <a
-                  href="https://chartink.com/screener"
+                  href={activePreset.chartinkUrl || 'https://chartink.com/screener/mark-minervini-trend-template-with-volume'}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-white font-bold flex items-center space-x-1.5 cursor-pointer shadow-xs"
                 >
                   <ExternalLink className="w-3.5 h-3.5" />
-                  <span>Open Chartink.com</span>
+                  <span>Run on Chartink.com</span>
                 </a>
               </div>
             </div>
@@ -383,7 +384,7 @@ export const ChartLinkScannerView: React.FC<ChartLinkScannerViewProps> = ({
             </div>
 
             <p className="text-xs text-slate-400 font-sans">
-              <strong>How to run on Chartink:</strong> Click &ldquo;Copy Query&rdquo; above, open <a href="https://chartink.com/screener" target="_blank" rel="noreferrer" className="text-blue-400 underline">Chartink Screener</a>, click &ldquo;Create Scan&rdquo; or paste into the filter builder to scan all 2,000+ NSE cash stocks in real time.
+              <strong>How to run on Chartink:</strong> Click &ldquo;Copy Query&rdquo; above or open <a href="https://chartink.com/screener/mark-minervini-trend-template-with-volume" target="_blank" rel="noreferrer" className="text-blue-400 underline font-bold">Chartink Minervini Screener</a> to scan all 2,000+ NSE cash stocks in real time.
             </p>
           </div>
 

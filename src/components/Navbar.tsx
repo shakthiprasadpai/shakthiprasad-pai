@@ -732,7 +732,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   ? 'border-blue-400 text-blue-400 font-bold bg-blue-500/10 px-2 rounded-t'
                   : 'border-transparent text-gray-400 hover:text-blue-400 hover:border-blue-300'
               }`}
-              title="Open Chartink / ChartLink Scanner Connector & Webhook Hub"
+              title="Open Chartink Minervini Trend Template with Volume (chartink.com/screener/mark-minervini-trend-template-with-volume)"
             >
               <BarChart3 className="w-3.5 h-3.5 text-blue-400" />
               <span className="flex items-center space-x-1">
@@ -751,7 +751,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   ? 'border-emerald-400 text-emerald-400 font-bold bg-emerald-500/10 px-2 rounded-t'
                   : 'border-transparent text-gray-400 hover:text-emerald-400 hover:border-emerald-300'
               }`}
-              title="Open Screener.in Fundamental Screener & Code 33 Hub"
+              title="Open Screener.in Pai Minervini Screen (screener.in/screens/3778508/pai-minervini/)"
             >
               <Zap className="w-3.5 h-3.5 text-emerald-400" />
               <span className="flex items-center space-x-1">

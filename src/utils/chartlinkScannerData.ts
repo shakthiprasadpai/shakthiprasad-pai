@@ -15,13 +15,13 @@ export interface ChartlinkScannerPreset {
 export const CHARTLINK_SCANNER_PRESETS: ChartlinkScannerPreset[] = [
   {
     id: 'stage2_trend_template',
-    name: 'Minervini Stage 2 Trend Template (8 Criteria)',
+    name: 'Mark Minervini Stage 2 Trend Template with Volume',
     category: 'STAGE_2',
     tag: 'STAGE 2 UPTREND',
     badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
-    description: 'Filters Indian NSE cash equities trading above rising 50, 150, and 200 daily SMAs, at least 25% off 52-week lows, and within 25% of 52-week highs.',
+    description: 'Filters Indian NSE cash equities trading above rising 50, 150, and 200 daily SMAs, at least 25% off 52-week lows, and within 25% of 52-week highs with heavy volume support.',
     chartinkFormula: '( {cash} ( latest close > latest sma( latest close , 50 ) and latest sma( latest close , 50 ) > latest sma( latest close , 150 ) and latest sma( latest close , 150 ) > latest sma( latest close , 200 ) and latest sma( latest close , 200 ) > 20 days ago sma( latest close , 200 ) and latest close >= 1.25 * 52 week low and latest close >= 0.75 * 52 week high and latest volume > 100000 ) )',
-    chartinkUrl: 'https://chartink.com/screener',
+    chartinkUrl: 'https://chartink.com/screener/mark-minervini-trend-template-with-volume',
     filterFn: (stock) => {
       return stock.trendScore >= 6 && stock.currentPrice > stock.stopLossPrice;
     },
@@ -34,7 +34,7 @@ export const CHARTLINK_SCANNER_PRESETS: ChartlinkScannerPreset[] = [
     badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
     description: 'Pinpoints stocks undergoing narrow 3-day contraction (< 3.8% depth) with daily volume drying up by -40% to -65% compared to 50-day average volume.',
     chartinkFormula: '( {cash} ( latest close > latest sma( latest close , 50 ) and latest volume < 0.5 * latest sma( latest volume , 50 ) and ( ( latest high - latest low ) / latest close * 100 ) < 3.8 and latest close > 0.95 * latest max( 20 , latest high ) ) )',
-    chartinkUrl: 'https://chartink.com/screener',
+    chartinkUrl: 'https://chartink.com/screener/mark-minervini-trend-template-with-volume',
     filterFn: (stock) => {
       const volDry = stock.volumeDryUpPercent < -35;
       const tight = stock.isTightVolume || (stock.contractions && stock.contractions.length >= 2);
@@ -49,7 +49,7 @@ export const CHARTLINK_SCANNER_PRESETS: ChartlinkScannerPreset[] = [
     badgeColor: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40',
     description: 'Detects stocks crossing above their 20-day resistance pivot level with volume surging at least 200% above 50-day average volume.',
     chartinkFormula: '( {cash} ( latest close > 1 day ago max( 20 , latest high ) and latest volume > 2 * latest sma( latest volume , 50 ) and latest close > latest open ) )',
-    chartinkUrl: 'https://chartink.com/screener',
+    chartinkUrl: 'https://chartink.com/screener/mark-minervini-trend-template-with-volume',
     filterFn: (stock) => {
       const isAboveOrAtPivot = stock.currentPrice >= stock.pivotPrice * 0.985;
       const strongVolume = (stock.volumeDryUpPercent && stock.volumeDryUpPercent < -20) || stock.rsRating >= 85;
@@ -64,7 +64,7 @@ export const CHARTLINK_SCANNER_PRESETS: ChartlinkScannerPreset[] = [
     badgeColor: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40',
     description: 'Volume on an up-day is higher than the single largest down-volume day in the prior 10 sessions while price hugs the rising 10 EMA / 21 EMA.',
     chartinkFormula: '( {cash} ( latest close > latest ema( latest close , 10 ) and latest close > 1 day ago close and latest volume > 100000 and latest volume > 1 day ago max( 10 , [ if latest close < 1 day ago close then latest volume else 0 ] ) ) )',
-    chartinkUrl: 'https://chartink.com/screener',
+    chartinkUrl: 'https://chartink.com/screener/mark-minervini-trend-template-with-volume',
     filterFn: (stock) => {
       return stock.rsRating >= 80 && stock.trendScore >= 7;
     },
@@ -77,7 +77,7 @@ export const CHARTLINK_SCANNER_PRESETS: ChartlinkScannerPreset[] = [
     badgeColor: 'bg-purple-500/20 text-purple-300 border-purple-500/40',
     description: 'Stocks printing brand new 52-week highs with top decile Relative Strength (RS Rating > 85), exhibiting classic Minervini momentum leadership.',
     chartinkFormula: '( {cash} ( latest close >= 52 week high and latest volume > 1.5 * latest sma( latest volume , 50 ) and latest close > latest sma( latest close , 50 ) and latest rsi( 14 ) > 60 ) )',
-    chartinkUrl: 'https://chartink.com/screener',
+    chartinkUrl: 'https://chartink.com/screener/mark-minervini-trend-template-with-volume',
     filterFn: (stock) => {
       const near52w = stock.currentPrice >= stock.pivotPrice * 0.97;
       return stock.rsRating >= 88 && near52w;
@@ -91,7 +91,7 @@ export const CHARTLINK_SCANNER_PRESETS: ChartlinkScannerPreset[] = [
     badgeColor: 'bg-rose-500/20 text-rose-300 border-rose-500/40',
     description: 'Identifies institutional distribution breakdown setups where price slices below the declining 200 SMA on heavy selling volume.',
     chartinkFormula: '( {cash} ( latest close < latest sma( latest close , 200 ) and latest sma( latest close , 50 ) < latest sma( latest close , 200 ) and latest volume > 1.3 * latest sma( latest volume , 50 ) and latest close < latest open ) )',
-    chartinkUrl: 'https://chartink.com/screener',
+    chartinkUrl: 'https://chartink.com/screener/mark-minervini-trend-template-with-volume',
     filterFn: (stock) => {
       return stock.trendScore < 6;
     },

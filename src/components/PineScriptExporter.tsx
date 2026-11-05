@@ -251,12 +251,12 @@ export const PineScriptExporter: React.FC<PineScriptExporterProps> = ({
         <div className="bg-[#161b22] px-6 py-3 border-t border-[#2d3748] flex items-center justify-between text-xs font-mono text-gray-400">
           <span>Mark Minervini SEPA Architecture • Stage 2 Trend Template</span>
           <a
-            href="https://chartink.com"
+            href="https://chartink.com/screener/mark-minervini-trend-template-with-volume"
             target="_blank"
             rel="noopener noreferrer"
             className="text-amber-400 hover:underline flex items-center space-x-1"
           >
-            <span>Open ChartLink</span>
+            <span>Open Minervini Trend Template (Chartink)</span>
             <ExternalLink className="w-3 h-3" />
           </a>
         </div>

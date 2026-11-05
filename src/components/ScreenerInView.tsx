@@ -273,16 +273,17 @@ export const ScreenerInView: React.FC<ScreenerInViewProps> = ({
 
           <div className="flex items-center gap-2 self-stretch md:self-auto">
             <a
-              href="https://www.screener.in/screens/"
+              href="https://www.screener.in/screens/3778508/pai-minervini/"
               target="_blank"
               rel="noopener noreferrer"
               className="px-3.5 py-2 text-xs font-mono font-medium rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center space-x-1.5 transition-colors"
             >
-              <span>Explore Screener.in</span>
+              <Zap className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Pai Minervini Screen</span>
               <ExternalLink className="w-3.5 h-3.5" />
             </a>
             <a
-              href={getScreenerInQueryUrl(activePreset.screenerInQuery)}
+              href={activePreset.screenerUrl || getScreenerInQueryUrl(activePreset.screenerInQuery)}
               target="_blank"
               rel="noopener noreferrer"
               className="px-4 py-2 text-xs font-mono font-bold rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 flex items-center space-x-1.5 transition-all shadow-md"
@@ -410,13 +411,13 @@ export const ScreenerInView: React.FC<ScreenerInViewProps> = ({
                 </button>
 
                 <a
-                  href={getScreenerInQueryUrl(activePreset.screenerInQuery)}
+                  href={activePreset.screenerUrl || getScreenerInQueryUrl(activePreset.screenerInQuery)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="px-3.5 py-1.5 text-xs font-mono font-bold rounded bg-emerald-500 hover:bg-emerald-400 text-slate-950 flex items-center space-x-1.5 transition-all shadow-sm"
                 >
                   <Zap className="w-3.5 h-3.5" />
-                  <span>Run on Screener.in ↗</span>
+                  <span>{activePreset.screenerUrl ? 'Open Pai Minervini Screen ↗' : 'Run on Screener.in ↗'}</span>
                 </a>
               </div>
             </div>
