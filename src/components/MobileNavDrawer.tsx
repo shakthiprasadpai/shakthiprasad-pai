@@ -35,7 +35,8 @@ import {
   Wallet,
   HardDrive,
   Mail,
-  History
+  History,
+  Activity
 } from 'lucide-react';
 import { AppNavTab } from './Navbar';
 
@@ -197,6 +198,33 @@ const NAV_ITEMS: NavItemDef[] = [
   },
 
   // Category: Data Export & Tools
+  {
+    id: 'chartlink_scanner',
+    title: 'Chartink / ChartLink Scanner',
+    subtitle: 'Live Minervini SEPA formulas, webhook sync & ticker import',
+    category: 'tools',
+    icon: BarChart3,
+    badge: 'LIVE SYNC',
+    badgeColor: 'bg-blue-500/25 text-blue-300 border border-blue-400',
+  },
+  {
+    id: 'screener_in',
+    title: 'Screener.in Fundamentals',
+    subtitle: 'Minervini Code 33 screeners, financial ratios & 1-click import',
+    category: 'tools',
+    icon: Zap,
+    badge: 'CODE 33',
+    badgeColor: 'bg-emerald-500/25 text-emerald-300 border border-emerald-400',
+  },
+  {
+    id: 'market_volatility',
+    title: 'Market Volatility Gauge',
+    subtitle: 'VIX-equivalent rank, benchmark spread & risk appetite meter',
+    category: 'market',
+    icon: Activity,
+    badge: 'VRANK',
+    badgeColor: 'bg-purple-500/25 text-purple-300 border border-purple-400',
+  },
   {
     id: 'google_drive',
     title: 'Google Drive Vault',

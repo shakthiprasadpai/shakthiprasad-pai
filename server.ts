@@ -1687,6 +1687,44 @@ Respond with valid JSON only.`;
       res.status(500).json({ success: false, message: err.message });
     }
   });
+
+  // =========================================================================
+  // CHARTINK / CHARTLINK SCANNER CONNECTOR & WEBHOOK
+  // =========================================================================
+  const chartlinkRecentAlerts: any[] = [];
+
+  app.get('/api/chartlink/alerts', (req, res) => {
+    res.json({ success: true, alerts: chartlinkRecentAlerts });
+  });
+
+  app.post('/api/chartlink/webhook', (req, res) => {
+    try {
+      const { scan_name, stocks, triggered_at, query } = req.body;
+      const stockList = typeof stocks === 'string' 
+        ? stocks.split(',').map((s: string) => s.trim().toUpperCase())
+        : Array.isArray(stocks) ? stocks : [];
+
+      const alertPayload = {
+        id: `chartlink-${Date.now()}`,
+        scanName: scan_name || 'Minervini SEPA Scanner',
+        stocks: stockList,
+        query: query || '',
+        triggeredAt: triggered_at || new Date().toLocaleTimeString() + ' IST',
+        timestamp: Date.now(),
+      };
+
+      chartlinkRecentAlerts.unshift(alertPayload);
+      if (chartlinkRecentAlerts.length > 50) chartlinkRecentAlerts.pop();
+
+      res.json({
+        success: true,
+        message: `Received Chartink scan alert for ${stockList.length} stocks`,
+        alert: alertPayload
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
   const distPath = path.join(process.cwd(), 'dist');
   const distIndexHtml = path.join(distPath, 'index.html');
   const hasDist = fs.existsSync(distIndexHtml);

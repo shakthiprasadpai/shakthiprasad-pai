@@ -77,4 +77,40 @@ export function getTradingViewUrl(item?: StockOrTicker): string {
   return `https://www.tradingview.com/chart/?symbol=${exchange}:${cleanTicker}`;
 }
 
+/**
+ * Generates direct fundamental analysis URL for Screener.in.
+ * Handles Indian equities (NSE/BSE), linking to consolidated company financials.
+ */
+export function getScreenerInUrl(item?: StockOrTicker): string {
+  if (!item) {
+    return 'https://www.screener.in/company/RELIANCE/consolidated/';
+  }
+
+  let ticker = '';
+  if (typeof item === 'string') {
+    ticker = item.trim();
+  } else if (typeof item === 'object') {
+    ticker = (item as { ticker?: string; symbol?: string }).ticker || (item as { ticker?: string; symbol?: string }).symbol || '';
+  }
+
+  if (!ticker) {
+    return 'https://www.screener.in';
+  }
+
+  // Strip prefix (e.g. "NSE:TRENT" -> "TRENT")
+  if (ticker.includes(':')) {
+    ticker = ticker.split(':')[1];
+  }
+
+  const cleanTicker = ticker.trim().toUpperCase();
+  return `https://www.screener.in/company/${cleanTicker}/consolidated/`;
+}
+
+/**
+ * Generates URL for running a raw query directly on Screener.in's query runner.
+ */
+export function getScreenerInQueryUrl(query: string): string {
+  return `https://www.screener.in/screen/raw/?sort=&order=&source=&query=${encodeURIComponent(query.trim())}`;
+}
+
 export default getChartLinkUrl;

@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MinerviniTradeSetup } from '../types';
 import { formatCurrency, calculateTrendStrengthMeter, getCurrencySymbol, calculateTrendReadinessScore, calculateDailyPivotPoints, calculateDailyVolatilityMetrics } from '../utils/sepaCalculator';
-import { getChartLinkUrl } from '../utils/chartLinkHelper';
+import { getChartLinkUrl, getScreenerInUrl } from '../utils/chartLinkHelper';
 import { exportTradePlansToCsv } from '../utils/csvExport';
 import { SectorStrengthView } from './SectorStrengthView';
 import { SectorPerformanceWidget } from './SectorPerformanceWidget';
@@ -1431,6 +1431,18 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
                             <span className="hidden xl:inline">ChartLink</span>
                           </a>
 
+                          <a
+                            href={getScreenerInUrl(stock)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold px-2 py-1.5 text-xs transition-all flex items-center space-x-1 border border-emerald-300 shadow-2xs cursor-pointer"
+                            title={`Open Screener.in Fundamentals for ${stock.ticker}`}
+                          >
+                            <Zap className="w-3.5 h-3.5 text-emerald-600" />
+                            <span className="hidden xl:inline">Screener.in</span>
+                          </a>
+
                           <button
                             type="button"
                             onClick={(e) => {
@@ -1644,6 +1656,18 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
                     >
                       <ExternalLink className="w-3.5 h-3.5 text-blue-600" />
                       <span>ChartLink</span>
+                    </a>
+
+                    <a
+                      href={getScreenerInUrl(stock)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold py-2 px-2 text-xs uppercase tracking-wider flex items-center justify-center space-x-1 border border-emerald-300 transition-all cursor-pointer shadow-2xs"
+                      title={`Open Screener.in Fundamentals for ${stock.ticker}`}
+                    >
+                      <Zap className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Screener</span>
                     </a>
 
                     <button

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { TrendingUp, TrendingDown, Skull, ShieldAlert, BarChart3, Calculator, BookOpen, SlidersHorizontal, Briefcase, Calendar, Video, Gem, Moon, Sun, Zap, Target, BookMarked, Layers, BellRing, Download, Sparkles, Bot, Cpu, Bookmark, ShieldCheck, CheckSquare, Award, Monitor, FileSpreadsheet, Radio, Menu, X, Compass, Brain, HardDrive, Mail, ExternalLink, History } from 'lucide-react';
+import { TrendingUp, TrendingDown, Skull, ShieldAlert, BarChart3, Calculator, BookOpen, SlidersHorizontal, Briefcase, Calendar, Video, Gem, Moon, Sun, Zap, Target, BookMarked, Layers, BellRing, Download, Sparkles, Bot, Cpu, Bookmark, ShieldCheck, CheckSquare, Award, Monitor, FileSpreadsheet, Radio, Menu, X, Compass, Brain, HardDrive, Mail, ExternalLink, History, Activity } from 'lucide-react';
 import { DesktopRemixGuideModal } from './DesktopRemixGuideModal';
 import { MobileNavDrawer } from './MobileNavDrawer';
 import { UserAuthButton } from './UserAuthButton';
@@ -33,6 +33,9 @@ export type AppNavTab =
   | 'export_data'
   | 'security_shield'
   | 'five_paisa'
+  | 'chartlink_scanner'
+  | 'screener_in'
+  | 'market_volatility'
   | 'google_drive'
   | 'google_sheets'
   | 'gmail';
@@ -64,6 +67,9 @@ export const TAB_LABELS: Record<AppNavTab, string> = {
   export_data: 'Export Data',
   security_shield: 'Security Shield',
   five_paisa: '5paisa Trading',
+  chartlink_scanner: 'Chartink Scanner',
+  screener_in: 'Screener.in',
+  market_volatility: 'Market Volatility',
   google_drive: 'Google Drive',
   google_sheets: 'Google Sheets',
   gmail: 'Gmail Alerts',
@@ -718,18 +724,62 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span className="font-bold">Price Alert History</span>
             </button>
 
-            <a
-              id="nav-tab-chart-link"
-              href={getChartLinkUrl(selectedStockTicker || 'RELIANCE')}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center space-x-1.5 py-2 transition-all border-b-2 border-transparent text-gray-500 hover:text-blue-500 hover:border-blue-400"
-              title={`Open Live ChartLink for ${selectedStockTicker || 'RELIANCE'} in a new tab`}
+            <button
+              id="nav-tab-chartlink-scanner"
+              onClick={() => setActiveTab('chartlink_scanner')}
+              className={`flex items-center space-x-1.5 py-2 transition-all border-b-2 ${
+                activeTab === 'chartlink_scanner'
+                  ? 'border-blue-400 text-blue-400 font-bold bg-blue-500/10 px-2 rounded-t'
+                  : 'border-transparent text-gray-400 hover:text-blue-400 hover:border-blue-300'
+              }`}
+              title="Open Chartink / ChartLink Scanner Connector & Webhook Hub"
             >
-              <BarChart3 className="w-3.5 h-3.5 text-blue-500" />
-              <span className="font-bold">ChartLink ({selectedStockTicker || 'RELIANCE'})</span>
-              <ExternalLink className="w-3 h-3 text-blue-400" />
-            </a>
+              <BarChart3 className="w-3.5 h-3.5 text-blue-400" />
+              <span className="flex items-center space-x-1">
+                <span className="font-bold">Chartink Scanner</span>
+                <span className="px-1 py-0.2 bg-blue-500/20 text-blue-300 text-[8px] font-mono rounded font-black border border-blue-500/30">
+                  CONNECT
+                </span>
+              </span>
+            </button>
+
+            <button
+              id="nav-tab-screener-in"
+              onClick={() => setActiveTab('screener_in')}
+              className={`flex items-center space-x-1.5 py-2 transition-all border-b-2 ${
+                activeTab === 'screener_in'
+                  ? 'border-emerald-400 text-emerald-400 font-bold bg-emerald-500/10 px-2 rounded-t'
+                  : 'border-transparent text-gray-400 hover:text-emerald-400 hover:border-emerald-300'
+              }`}
+              title="Open Screener.in Fundamental Screener & Code 33 Hub"
+            >
+              <Zap className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="flex items-center space-x-1">
+                <span className="font-bold">Screener.in</span>
+                <span className="px-1 py-0.2 bg-emerald-500/20 text-emerald-300 text-[8px] font-mono rounded font-black border border-emerald-500/30">
+                  FUNDAMENTAL
+                </span>
+              </span>
+            </button>
+
+            <button
+              id="nav-tab-market-volatility"
+              onClick={() => setActiveTab('market_volatility')}
+              className={`flex items-center space-x-1.5 py-2 transition-all border-b-2 ${
+                activeTab === 'market_volatility'
+                  ? 'border-purple-400 text-purple-400 font-bold bg-purple-500/10 px-2 rounded-t'
+                  : 'border-transparent text-gray-400 hover:text-purple-400 hover:border-purple-300'
+              }`}
+              title="Open Market Volatility Dashboard & VIX-Equivalent Rank Gauge"
+            >
+              <Activity className="w-3.5 h-3.5 text-purple-400" />
+              <span className="flex items-center space-x-1">
+                <span className="font-bold">Market Volatility</span>
+                <span className="px-1 py-0.2 bg-purple-500/20 text-purple-300 text-[8px] font-mono rounded font-black border border-purple-500/30">
+                  VIX RANK
+                </span>
+              </span>
+            </button>
 
             <button
               id="nav-tab-pattern-library"

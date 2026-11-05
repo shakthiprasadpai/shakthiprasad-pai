@@ -42,6 +42,9 @@ import { FivePaisaTradingView } from './components/FivePaisaTradingView';
 import { GoogleDriveView } from './components/GoogleDriveView';
 import { GoogleSheetsView } from './components/GoogleSheetsView';
 import { GmailAlertsView } from './components/GmailAlertsView';
+import { ChartLinkScannerView } from './components/ChartLinkScannerView';
+import { ScreenerInView } from './components/ScreenerInView';
+import { MarketVolatilityDashboard } from './components/MarketVolatilityDashboard';
 import { QuickInsightModal } from './components/QuickInsightModal';
 import { BearishMarketDashboard } from './components/BearishMarketDashboard';
 import { TrendTemplateBacktestView } from './components/TrendTemplateBacktestView';
@@ -624,14 +627,34 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="flex items-center space-x-3 shrink-0">
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('market_volatility')}
+                    className="px-3 py-2 rounded font-mono font-bold text-xs uppercase tracking-wider bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/40 shadow-sm flex items-center space-x-1.5 transition-all cursor-pointer"
+                    title="View Market Volatility Rank & VIX Regime Gauge"
+                  >
+                    <Activity className="w-3.5 h-3.5 text-purple-400" />
+                    <span>Volatility Rank</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('screener_in')}
+                    className="px-3 py-2 rounded font-mono font-bold text-xs uppercase tracking-wider bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 shadow-sm flex items-center space-x-1.5 transition-all cursor-pointer"
+                    title="Open Screener.in Fundamental Screens & Code 33 Ratios"
+                  >
+                    <Zap className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Screener.in</span>
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => setActiveTab('trend_backtest')}
-                    className="px-4 py-2.5 rounded font-mono font-bold text-xs uppercase tracking-wider bg-indigo-600 hover:bg-indigo-500 text-white shadow-md flex items-center space-x-2 transition-all cursor-pointer hover:scale-[1.02]"
+                    className="px-3.5 py-2 rounded font-mono font-bold text-xs uppercase tracking-wider bg-indigo-600 hover:bg-indigo-500 text-white shadow-md flex items-center space-x-1.5 transition-all cursor-pointer hover:scale-[1.02]"
                   >
                     <Sparkles className="w-3.5 h-3.5 text-indigo-200" />
-                    <span>Launch SEPA Backtester</span>
+                    <span>SEPA Backtest</span>
                   </button>
                 </div>
               </div>
@@ -1012,6 +1035,67 @@ export default function App() {
                   setActiveTab('chart');
                 }}
                 onNavigateToPortfolio={() => setActiveTab('portfolio')}
+                isObsidian={isObsidian}
+              />
+            </motion.div>
+          )}
+
+          {/* TAB: CHARTINK / CHARTLINK SCANNER CONNECTOR */}
+          {activeTab === 'chartlink_scanner' && (
+            <motion.div
+              key="chartlink_scanner"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.25, ease: 'easeInOut' }}
+              className="space-y-8"
+            >
+              <ChartLinkScannerView
+                stocks={stocksList}
+                selectedStock={selectedStock}
+                onSelectStock={(stock) => setSelectedStock(stock)}
+                onNavigateTab={(tab) => setActiveTab(tab)}
+                onAddToWatchlist={(ticker) => handleAddToWatchlistFromBhavcopy({ ticker })}
+                isObsidian={isObsidian}
+              />
+            </motion.div>
+          )}
+
+          {/* TAB: SCREENER.IN FUNDAMENTALS & CODE 33 SCREENERS */}
+          {activeTab === 'screener_in' && (
+            <motion.div
+              key="screener_in"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.25, ease: 'easeInOut' }}
+              className="space-y-8"
+            >
+              <ScreenerInView
+                stocks={stocksList}
+                selectedStock={selectedStock}
+                onSelectStock={(stock) => setSelectedStock(stock)}
+                onNavigateTab={(tab) => setActiveTab(tab)}
+                onAddToWatchlist={(ticker) => handleAddToWatchlistFromBhavcopy({ ticker })}
+                isObsidian={isObsidian}
+              />
+            </motion.div>
+          )}
+
+          {/* TAB: MARKET VOLATILITY & VIX-EQUIVALENT RISK APPETITE */}
+          {activeTab === 'market_volatility' && (
+            <motion.div
+              key="market_volatility"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.25, ease: 'easeInOut' }}
+              className="space-y-8"
+            >
+              <MarketVolatilityDashboard
+                stocks={stocksList}
+                onOpenScreener={() => setActiveTab('screener')}
+                onOpenTradePlan={() => setActiveTab('calculator')}
                 isObsidian={isObsidian}
               />
             </motion.div>

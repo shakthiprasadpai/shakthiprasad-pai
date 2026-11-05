@@ -68,7 +68,7 @@ import {
 interface GlobalNotificationToastProps {
   stocks: MinerviniTradeSetup[];
   onSelectStock: (stock: MinerviniTradeSetup) => void;
-  onNavigateTab: (tab: 'screener' | 'chart' | 'calculator' | 'portfolio' | 'watchlist') => void;
+  onNavigateTab: (tab: any) => void;
   onOpenDailyScanner?: () => void;
 }
 
@@ -91,7 +91,8 @@ export interface ActiveToastNotification {
     | 'SMART_MONEY_DIVERGENCE'
     | 'STAGE_2_DAILY_SCAN'
     | 'RSI_BULLISH_DIVERGENCE'
-    | 'RSI_BEARISH_DIVERGENCE';
+    | 'RSI_BEARISH_DIVERGENCE'
+    | 'CHARTLINK_SCAN_ALERT';
   triggeredAt: string;
   isPortfolioHolding?: boolean;
   portfolioHolding?: PortfolioHolding;
@@ -100,6 +101,11 @@ export interface ActiveToastNotification {
   divergencePayload?: SmartMoneyDivergenceAlertPayload;
   stage2ScanPayload?: DailyStage2ScanPayload;
   rsiDivergencePayload?: RsiDivergenceAlertPayload;
+  chartlinkScanPayload?: {
+    scanName: string;
+    stocks: string[];
+    triggeredAt: string;
+  };
 }
 
 export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = ({
@@ -114,6 +120,9 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
   const [checksCount, setChecksCount] = useState<number>(0);
   const [isTestDrawerOpen, setIsTestDrawerOpen] = useState<boolean>(false);
   const [audioSettings, setAudioSettings] = useState<AudioSettings>(() => getAudioSettings());
+
+  const stocksRef = useRef(stocks);
+  stocksRef.current = stocks;
 
   // Initialize LocalStorage Alerts & Portfolio Sync on mount
   useEffect(() => {
@@ -295,6 +304,39 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
       });
     };
 
+    const handleChartlinkScanEvent = (e: Event) => {
+      const customEvt = e as CustomEvent<{ scanName: string; stocks: string[]; triggeredAt: string }>;
+      const detail = customEvt.detail;
+      if (!detail || !detail.stocks || detail.stocks.length === 0) return;
+
+      const firstTicker = detail.stocks[0];
+      const match = stocksRef.current.find((s) => s.ticker === firstTicker) || stocksRef.current[0];
+      playVolumeSpikeChime();
+
+      const alertItem: PriceAlert = {
+        id: `chartlink-${Date.now()}`,
+        ticker: firstTicker,
+        stockName: `${match?.name || firstTicker}${detail.stocks.length > 1 ? ` (+${detail.stocks.length - 1} stocks)` : ''}`,
+        targetType: 'PIVOT_ENTRY',
+        targetPrice: match ? match.pivotPrice : 100,
+        triggerProximityPercent: 0,
+        currentPrice: match ? match.currentPrice : 100,
+        status: 'TRIGGERED',
+        createdAt: new Date().toLocaleDateString(),
+        exchange: (match?.exchange as any) || 'NSE',
+        notes: `Chartink Scanner: ${detail.scanName} triggered for [${detail.stocks.join(', ')}]`,
+      };
+
+      setActiveToast({
+        alert: alertItem,
+        previousPrice: match ? match.currentPrice * 0.99 : 99,
+        currentPrice: match ? match.currentPrice : 100,
+        crossoverType: 'CHARTLINK_SCAN_ALERT',
+        triggeredAt: detail.triggeredAt || new Date().toLocaleTimeString(),
+        chartlinkScanPayload: detail,
+      });
+    };
+
     window.addEventListener('minervini_portfolio_updated', handleSync);
     window.addEventListener('minervini_alerts_updated', handleSync);
     window.addEventListener('minervini_major_news_detected', handleMajorNewsEvent);
@@ -302,6 +344,7 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
     window.addEventListener('minervini_sentiment_divergence_alert', handleDivergenceEvent);
     window.addEventListener('minervini_stage2_daily_scan_alert', handleStage2DailyScanEvent);
     window.addEventListener('minervini_rsi_divergence_alert', handleRsiDivergenceEvent);
+    window.addEventListener('minervini_chartlink_scan_received', handleChartlinkScanEvent);
     window.addEventListener('minervini_audio_settings_updated', handleAudioSettingsUpdate);
     return () => {
       window.removeEventListener('minervini_portfolio_updated', handleSync);
@@ -311,14 +354,12 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
       window.removeEventListener('minervini_sentiment_divergence_alert', handleDivergenceEvent);
       window.removeEventListener('minervini_stage2_daily_scan_alert', handleStage2DailyScanEvent);
       window.removeEventListener('minervini_rsi_divergence_alert', handleRsiDivergenceEvent);
+      window.removeEventListener('minervini_chartlink_scan_received', handleChartlinkScanEvent);
       window.removeEventListener('minervini_audio_settings_updated', handleAudioSettingsUpdate);
     };
   }, []);
 
   // Background Price Checker Loop
-  const stocksRef = useRef(stocks);
-  stocksRef.current = stocks;
-
   useEffect(() => {
     if (!backgroundRunning) return;
 
@@ -1561,6 +1602,146 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
                 <ArrowUpRight className="w-4 h-4 text-slate-950" />
               </button>
             </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Render Specialized Chartink Scanner Alert Toast Card
+  const chartlinkScanPayload = activeToast.chartlinkScanPayload;
+  const isChartlinkAlert = activeToast.crossoverType === 'CHARTLINK_SCAN_ALERT' && Boolean(chartlinkScanPayload);
+
+  if (isChartlinkAlert && chartlinkScanPayload) {
+    const { scanName, stocks: scannedTickers, triggeredAt } = chartlinkScanPayload;
+
+    return (
+      <div className="fixed top-5 right-5 z-50 max-w-xl w-full animate-slide-down shadow-2xl">
+        <div className="p-5 border-2 bg-[#09151c] text-white border-emerald-400 shadow-emerald-500/30">
+          {/* Top Header Tag */}
+          <div className="flex items-start justify-between border-b border-white/15 pb-2.5 mb-3">
+            <div className="flex items-center space-x-2.5">
+              <div className="w-8 h-8 bg-emerald-400 text-slate-950 flex items-center justify-center font-black animate-pulse shadow-md">
+                <Zap className="w-5 h-5" />
+              </div>
+
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[10px] uppercase font-mono tracking-[0.2em] font-extrabold text-emerald-300 block">
+                    📡 CHARTINK SCANNER TRIGGER
+                  </span>
+                  <span className="bg-emerald-400 text-slate-950 text-[9px] font-black uppercase px-2 py-0.5 font-mono">
+                    {scannedTickers.length} {scannedTickers.length === 1 ? 'Candidate' : 'Candidates'}
+                  </span>
+                </div>
+
+                <h4 className="text-lg font-mono font-black text-white leading-tight mt-0.5">
+                  {scanName}
+                </h4>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setActiveToast(null)}
+              className="text-gray-400 hover:text-white p-1 transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Triggered Candidates Summary List */}
+          <div className="bg-white/5 border border-white/10 p-3.5 mb-3 font-mono text-xs space-y-2.5">
+            <div className="flex items-center justify-between text-[10px] text-gray-300 border-b border-white/10 pb-1.5">
+              <span>Triggered at {triggeredAt}</span>
+              <span className="text-emerald-400 font-bold">Chartink NSE/BSE Cash</span>
+            </div>
+
+            <div className="flex flex-wrap gap-2 pt-1">
+              {scannedTickers.map((ticker) => {
+                const stockMatch = stocks.find((s) => s.ticker === ticker);
+                return (
+                  <div
+                    key={ticker}
+                    onClick={() => {
+                      if (stockMatch) {
+                        onSelectStock(stockMatch);
+                        onNavigateTab('chart');
+                      }
+                      setActiveToast(null);
+                    }}
+                    className="flex items-center space-x-1.5 bg-black/50 hover:bg-black/80 border border-emerald-500/40 hover:border-emerald-400 px-2.5 py-1.5 rounded cursor-pointer transition-all"
+                  >
+                    <span className="font-extrabold text-emerald-300 font-mono text-xs">
+                      {ticker}
+                    </span>
+                    {stockMatch && (
+                      <span className="text-[10px] text-gray-300 font-sans">
+                        ₹{stockMatch.currentPrice.toFixed(2)}
+                      </span>
+                    )}
+                    <a
+                      href={`https://chartink.com/stocks/${ticker.toLowerCase()}.html`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      title={`Open ${ticker} on Chartink`}
+                      className="text-gray-400 hover:text-emerald-300 transition-colors ml-1"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                );
+              })}
+            </div>
+
+            <p className="text-[11px] font-sans text-gray-300 mt-2">
+              Formula triggered matching Mark Minervini SEPA criteria. Inspect individual setups on the chart or review full scanner conditions in the Chartink Scanner Hub.
+            </p>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex flex-wrap items-center justify-end gap-2 text-xs font-mono">
+            <button
+              onClick={() => playVolumeSpikeChime()}
+              title="Replay alert chime"
+              className="bg-white/10 hover:bg-white/20 text-emerald-300 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider flex items-center space-x-1 transition-colors border border-emerald-400/40 cursor-pointer"
+            >
+              <Volume2 className="w-3.5 h-3.5" />
+              <span>Chime</span>
+            </button>
+
+            <button
+              onClick={() => setActiveToast(null)}
+              className="bg-white/10 hover:bg-white/20 text-gray-200 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider transition-colors border border-white/20 cursor-pointer"
+            >
+              Dismiss
+            </button>
+
+            <button
+              onClick={() => {
+                const stockMatch = stocks.find((s) => s.ticker === scannedTickers[0]);
+                if (stockMatch) {
+                  onSelectStock(stockMatch);
+                  onNavigateTab('chart');
+                }
+                setActiveToast(null);
+              }}
+              className="bg-white/10 hover:bg-white/20 text-cyan-300 px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wider flex items-center space-x-1.5 transition-all border border-cyan-400/40 cursor-pointer"
+            >
+              <BarChart3 className="w-3.5 h-3.5" />
+              <span>View Chart</span>
+            </button>
+
+            <button
+              onClick={() => {
+                onNavigateTab('chartlink_scanner');
+                setActiveToast(null);
+              }}
+              className="bg-emerald-400 hover:bg-emerald-300 text-slate-950 px-4 py-1.5 text-[11px] font-black uppercase tracking-wider flex items-center space-x-1.5 transition-all shadow-md cursor-pointer"
+            >
+              <Zap className="w-3.5 h-3.5" />
+              <span>Open Chartink Hub</span>
+            </button>
           </div>
         </div>
       </div>
