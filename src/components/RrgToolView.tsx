@@ -65,7 +65,29 @@ import {
   Sliders,
   X,
   RotateCcw,
+  Bell,
+  BellRing,
+  Trash2,
+  ShieldAlert,
+  AlertTriangle,
+  ListOrdered,
 } from 'lucide-react';
+import { RrgWatchlistEditorModal } from './RrgWatchlistEditorModal';
+import {
+  getStoredRrgNotifications,
+  saveStoredRrgNotifications,
+  markRrgNotificationAsRead,
+  markAllRrgNotificationsAsRead,
+  clearAllRrgNotifications,
+  deleteRrgNotification,
+  getRrgNotificationSettings,
+  saveRrgNotificationSettings,
+  evaluateRrgLeadingTransitions,
+  simulateLeadingTransition,
+  RrgQuadrantNotification,
+  RrgNotificationSettings,
+  RrgLeadingTransitionType,
+} from '../utils/rrgNotificationEngine';
 
 export type RrgUniverseMode = 'WATCHLIST_SECTORS' | 'WATCHLIST_STOCKS' | 'SECTORS' | 'SEPA_SETUPS';
 
@@ -91,9 +113,23 @@ export const RrgToolView: React.FC<RrgToolViewProps> = ({
   // Mode: Watchlist Sectors, Watchlist Stocks, All Sectors, or All Setups
   const [universeMode, setUniverseMode] = useState<RrgUniverseMode>('WATCHLIST_SECTORS');
 
-  // Watchlist source selection
-  const [availableWatchlists] = useState<CustomWatchlist[]>(() => getStoredWatchlists());
+  // Watchlist source selection & management state
+  const [availableWatchlists, setAvailableWatchlists] = useState<CustomWatchlist[]>(() => getStoredWatchlists());
   const [activeWatchlistId, setActiveWatchlistId] = useState<string>(() => availableWatchlists[0]?.id || 'wl-stage2-leaders');
+  const [showWatchlistEditorModal, setShowWatchlistEditorModal] = useState<boolean>(false);
+
+  // Sync available watchlists across tabs and custom events
+  useEffect(() => {
+    const handleWatchlistsUpdate = () => {
+      setAvailableWatchlists(getStoredWatchlists());
+    };
+    window.addEventListener('minervini_watchlists_updated', handleWatchlistsUpdate);
+    window.addEventListener('storage', handleWatchlistsUpdate);
+    return () => {
+      window.removeEventListener('minervini_watchlists_updated', handleWatchlistsUpdate);
+      window.removeEventListener('storage', handleWatchlistsUpdate);
+    };
+  }, []);
 
   const [benchmark, setBenchmark] = useState<RrgBenchmark>('SPY');
   const [timeframe, setTimeframe] = useState<RrgTimeframe>('WEEKLY');
@@ -203,6 +239,47 @@ export const RrgToolView: React.FC<RrgToolViewProps> = ({
     return () => clearInterval(timer);
   }, [is90DayPlaying, replaySpeed]);
 
+  // Persistent RRG Notification System State
+  const [notifications, setNotifications] = useState<RrgQuadrantNotification[]>(() => {
+    return getStoredRrgNotifications();
+  });
+  const [notifSettings, setNotifSettings] = useState<RrgNotificationSettings>(() => {
+    return getRrgNotificationSettings();
+  });
+  const [showNotificationDrawer, setShowNotificationDrawer] = useState<boolean>(false);
+  const [notifFilter, setNotifFilter] = useState<'ALL' | 'UNREAD' | 'ENTERED' | 'EXITED'>('ALL');
+  const [activeToastNotif, setActiveToastNotif] = useState<RrgQuadrantNotification | null>(null);
+
+  // Sync notifications from storage events
+  useEffect(() => {
+    const handleNotifUpdate = () => {
+      setNotifications(getStoredRrgNotifications());
+    };
+    const handleTransitionEvent = (e: any) => {
+      const newItems: RrgQuadrantNotification[] = e.detail?.notifications || [];
+      if (newItems.length > 0) {
+        setActiveToastNotif(newItems[0]);
+        setTimeout(() => setActiveToastNotif(null), 6000);
+      }
+      setNotifications(getStoredRrgNotifications());
+    };
+    const handleSettingsUpdate = (e: any) => {
+      setNotifSettings(e.detail || getRrgNotificationSettings());
+    };
+
+    window.addEventListener('minervini_rrg_notifications_updated', handleNotifUpdate);
+    window.addEventListener('minervini_rrg_leading_transition_event', handleTransitionEvent);
+    window.addEventListener('minervini_rrg_notif_settings_updated', handleSettingsUpdate);
+    window.addEventListener('storage', handleNotifUpdate);
+
+    return () => {
+      window.removeEventListener('minervini_rrg_notifications_updated', handleNotifUpdate);
+      window.removeEventListener('minervini_rrg_leading_transition_event', handleTransitionEvent);
+      window.removeEventListener('minervini_rrg_notif_settings_updated', handleSettingsUpdate);
+      window.removeEventListener('storage', handleNotifUpdate);
+    };
+  }, []);
+
   // Audio setting sync
   const toggleAudio = () => {
     const next = !audioEnabled;
@@ -267,6 +344,67 @@ export const RrgToolView: React.FC<RrgToolViewProps> = ({
       setSelectedItemId(leadingItem.id);
     }
   }, [rrgItems, selectedItemId]);
+
+  // Current quadrant map for watchlist editor modal
+  const currentQuadrantMap = useMemo(() => {
+    const map: Record<string, RrgQuadrant> = {};
+    rrgItems.forEach((item) => {
+      if (item.type === 'STOCK') {
+        map[item.id] = item.quadrant;
+      }
+    });
+    return map;
+  }, [rrgItems]);
+
+  // Surveillance: evaluate if any stock in the tracked watchlist has moved into or out of 'Leading'
+  useEffect(() => {
+    if (!rrgItems || rrgItems.length === 0) return;
+    evaluateRrgLeadingTransitions(rrgItems, effectiveWatchlistTickers, benchmark);
+  }, [rrgItems, effectiveWatchlistTickers, benchmark]);
+
+  // Unread notification count
+  const unreadNotifCount = useMemo(() => {
+    return notifications.filter((n) => !n.read).length;
+  }, [notifications]);
+
+  // Filtered notifications
+  const filteredNotifications = useMemo(() => {
+    if (notifFilter === 'UNREAD') return notifications.filter((n) => !n.read);
+    if (notifFilter === 'ENTERED') return notifications.filter((n) => n.transitionType === 'ENTERED_LEADING');
+    if (notifFilter === 'EXITED') return notifications.filter((n) => n.transitionType === 'EXITED_LEADING');
+    return notifications;
+  }, [notifications, notifFilter]);
+
+  const handleSimulateTransition = (type: RrgLeadingTransitionType) => {
+    const candidate =
+      activeItem?.stockRef ||
+      stocks.find((s) => effectiveWatchlistTickers.includes(s.ticker)) ||
+      stocks[0];
+    const notif = simulateLeadingTransition(candidate, type, benchmark);
+    setActiveToastNotif(notif);
+    setTimeout(() => setActiveToastNotif(null), 6000);
+    setNotifications(getStoredRrgNotifications());
+  };
+
+  const handleToggleNotifSetting = (key: keyof RrgNotificationSettings) => {
+    const updated = saveRrgNotificationSettings({ [key]: !notifSettings[key] });
+    setNotifSettings(updated);
+  };
+
+  const handleMarkAllNotificationsRead = () => {
+    const updated = markAllRrgNotificationsAsRead();
+    setNotifications(updated);
+  };
+
+  const handleClearAllNotifications = () => {
+    clearAllRrgNotifications();
+    setNotifications([]);
+  };
+
+  const handleDeleteNotification = (id: string) => {
+    const updated = deleteRrgNotification(id);
+    setNotifications(updated);
+  };
 
   // Animation Playback Loop
   useEffect(() => {
@@ -494,6 +632,14 @@ export const RrgToolView: React.FC<RrgToolViewProps> = ({
                 <span className="px-2 py-0.5 text-[9px] font-mono font-bold uppercase rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
                   Audio Sonification Active
                 </span>
+                <button
+                  onClick={() => setShowNotificationDrawer(!showNotificationDrawer)}
+                  className="px-2 py-0.5 text-[9px] font-mono font-bold uppercase rounded bg-sky-500/20 text-sky-300 border border-sky-500/30 hover:bg-sky-500/30 transition-colors flex items-center space-x-1.5 cursor-pointer"
+                  title="Click to toggle Persistent Watchlist Leading Quadrant Surveillance Center"
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping inline-block" />
+                  <span>Tracking {effectiveWatchlistTickers.length} Watchlist Stocks</span>
+                </button>
                 <span
                   className={`px-2 py-0.5 text-[9px] font-mono font-bold uppercase rounded ${
                     isObsidian ? 'bg-slate-800 text-gray-300' : 'bg-gray-100 text-gray-700'
@@ -517,6 +663,55 @@ export const RrgToolView: React.FC<RrgToolViewProps> = ({
 
           {/* Top Actions & Sound Controls */}
           <div className="flex flex-wrap items-center gap-3 shrink-0">
+            {/* Watchlist Leading Quadrant Notifications Center Button */}
+            <button
+              id="rrg-notification-drawer-btn"
+              onClick={() => setShowNotificationDrawer(!showNotificationDrawer)}
+              className={`px-3.5 py-2.5 rounded-lg border text-xs font-mono font-bold uppercase flex items-center space-x-2 transition-all cursor-pointer relative shadow-sm active:scale-95 ${
+                showNotificationDrawer
+                  ? 'bg-amber-500 text-slate-950 border-amber-400 font-black shadow-md'
+                  : unreadNotifCount > 0
+                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 hover:bg-amber-500/30 animate-pulse'
+                    : isObsidian
+                      ? 'bg-[#181f2c] text-gray-300 border-[#29354a] hover:border-amber-500/50 hover:text-white'
+                      : 'bg-white text-gray-700 border-gray-300 hover:border-amber-500'
+              }`}
+              title="Persistent Surveillance Center: Alerts when tracked watchlist stocks move into or out of the Leading quadrant"
+            >
+              {unreadNotifCount > 0 ? (
+                <BellRing className="w-4 h-4 text-amber-400" />
+              ) : (
+                <Bell className="w-4 h-4 text-gray-400" />
+              )}
+              <span>Leading Alerts</span>
+              {unreadNotifCount > 0 ? (
+                <span className="px-1.5 py-0.5 rounded-full bg-amber-500 text-slate-950 text-[10px] font-black font-mono leading-none shadow-xs">
+                  {unreadNotifCount}
+                </span>
+              ) : (
+                <span className="px-1.5 py-0.5 rounded-full bg-slate-800 text-gray-400 text-[10px] font-mono leading-none">
+                  {notifications.length}
+                </span>
+              )}
+            </button>
+
+            {/* Manage Watchlist Tickers Modal Button */}
+            <button
+              id="rrg-manage-watchlist-btn-header"
+              onClick={() => setShowWatchlistEditorModal(true)}
+              className={`px-3.5 py-2.5 rounded-lg border text-xs font-mono font-bold uppercase flex items-center space-x-2 transition-all cursor-pointer shadow-sm active:scale-95 ${
+                showWatchlistEditorModal
+                  ? 'bg-amber-500 text-slate-950 border-amber-400 font-black shadow-md'
+                  : isObsidian
+                  ? 'bg-[#181f2c] text-amber-300 border-amber-500/40 hover:bg-amber-500/10 hover:border-amber-400'
+                  : 'bg-white text-amber-700 border-amber-300 hover:bg-amber-50'
+              }`}
+              title="Add, remove, or reorder stock tickers in your RRG watchlist"
+            >
+              <ListOrdered className="w-4 h-4 text-amber-400" />
+              <span>Watchlist Tickers</span>
+            </button>
+
             {/* CSV Download Button */}
             <button
               id="rrg-export-csv-btn-header"
@@ -669,6 +864,451 @@ export const RrgToolView: React.FC<RrgToolViewProps> = ({
         </AnimatePresence>
 
         {/* ========================================================================= */}
+        {/* PERSISTENT REAL-TIME LEADING QUADRANT TOAST ALERT                         */}
+        {/* ========================================================================= */}
+        <AnimatePresence>
+          {activeToastNotif && (
+            <motion.div
+              initial={{ opacity: 0, y: -20, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -20, scale: 0.98 }}
+              className="mt-4 p-4 rounded-xl border shadow-2xl relative overflow-hidden transition-all bg-[#0f172a] border-[#38bdf8]/40"
+            >
+              <div
+                className={`absolute top-0 left-0 bottom-0 w-1.5 ${
+                  activeToastNotif.transitionType === 'ENTERED_LEADING'
+                    ? 'bg-emerald-400'
+                    : 'bg-amber-400'
+                }`}
+              />
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pl-2">
+                <div className="flex items-center space-x-3">
+                  <div
+                    className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 border ${
+                      activeToastNotif.transitionType === 'ENTERED_LEADING'
+                        ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400'
+                        : 'bg-amber-500/20 border-amber-500/40 text-amber-400'
+                    }`}
+                  >
+                    {activeToastNotif.transitionType === 'ENTERED_LEADING' ? (
+                      <ArrowUpRight className="w-5 h-5 animate-pulse" />
+                    ) : (
+                      <ArrowDownRight className="w-5 h-5 animate-pulse" />
+                    )}
+                  </div>
+                  <div>
+                    <div className="flex items-center space-x-2">
+                      <span className="font-mono font-black text-sm text-white">
+                        {activeToastNotif.ticker}
+                      </span>
+                      <span className="text-xs text-gray-400 truncate max-w-[180px]">
+                        {activeToastNotif.name}
+                      </span>
+                      <span
+                        className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase tracking-wider ${
+                          activeToastNotif.transitionType === 'ENTERED_LEADING'
+                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                            : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                        }`}
+                      >
+                        {activeToastNotif.transitionType === 'ENTERED_LEADING'
+                          ? '★ ENTERED LEADING QUADRANT'
+                          : '⚠️ EXITED LEADING QUADRANT'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-300 mt-0.5">
+                      {activeToastNotif.message}
+                    </p>
+                    <div className="flex items-center space-x-3 mt-1 text-[11px] font-mono text-gray-400">
+                      <span>
+                        Phase: <strong className="text-gray-200">{activeToastNotif.fromQuadrant}</strong> ➔{' '}
+                        <strong
+                          className={
+                            activeToastNotif.toQuadrant === 'LEADING'
+                              ? 'text-emerald-400'
+                              : 'text-amber-400'
+                          }
+                        >
+                          {activeToastNotif.toQuadrant}
+                        </strong>
+                      </span>
+                      <span>•</span>
+                      <span>
+                        RS-Ratio: <strong className="text-white">{activeToastNotif.rsRatio.toFixed(2)}</strong>
+                      </span>
+                      <span>•</span>
+                      <span>
+                        RS-Mom: <strong className="text-white">{activeToastNotif.rsMomentum.toFixed(2)}</strong>
+                      </span>
+                      <span>•</span>
+                      <span>Price: {formatCurrency(activeToastNotif.currentPrice || 0, getCurrencySymbol(activeToastNotif.ticker))}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-2 shrink-0 self-end sm:self-center">
+                  <button
+                    onClick={() => {
+                      const stock = stocks.find((s) => s.ticker === activeToastNotif.ticker);
+                      if (stock) onSelectStock(stock);
+                      setSelectedItemId(activeToastNotif.ticker);
+                      const updated = markRrgNotificationAsRead(activeToastNotif.id);
+                      setNotifications(updated);
+                      setActiveToastNotif(null);
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-slate-950 font-mono text-xs font-bold uppercase transition-all cursor-pointer shadow-sm"
+                  >
+                    Inspect in RRG
+                  </button>
+                  <button
+                    onClick={() => setActiveToastNotif(null)}
+                    className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                    title="Dismiss"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* ========================================================================= */}
+        {/* PERSISTENT WATCHLIST LEADING NOTIFICATION CENTER DRAWER                   */}
+        {/* ========================================================================= */}
+        <AnimatePresence>
+          {showNotificationDrawer && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="overflow-hidden border-b border-white/10 py-5 mt-4"
+            >
+              <div
+                className={`p-5 rounded-xl border shadow-xl ${
+                  isObsidian ? 'bg-[#0f141f] border-[#253046]' : 'bg-gray-50 border-gray-200'
+                }`}
+              >
+                {/* Drawer Header */}
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-4 border-b border-white/10">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-400 flex items-center justify-center shrink-0">
+                      <BellRing className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center space-x-2">
+                        <h3 className="text-base font-bold font-serif text-white tracking-wide">
+                          Watchlist Leading Quadrant Surveillance Center
+                        </h3>
+                        {unreadNotifCount > 0 && (
+                          <span className="px-2 py-0.5 rounded-full bg-amber-500 text-slate-950 text-[10px] font-black font-mono">
+                            {unreadNotifCount} UNREAD
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        Surveillance active on <strong>{effectiveWatchlistTickers.length}</strong> tracked watchlist stocks vs <strong>{RRG_BENCHMARKS[benchmark].label}</strong>. Notifications persist in browser storage across sessions.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-2 self-end sm:self-center">
+                    <button
+                      onClick={handleMarkAllNotificationsRead}
+                      disabled={unreadNotifCount === 0}
+                      className="px-3 py-1.5 rounded border border-white/10 text-xs font-mono text-gray-300 hover:text-white hover:bg-white/5 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer flex items-center space-x-1"
+                      title="Mark all notifications as read"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>Mark All Read</span>
+                    </button>
+                    <button
+                      onClick={handleClearAllNotifications}
+                      disabled={notifications.length === 0}
+                      className="px-3 py-1.5 rounded border border-rose-500/30 text-xs font-mono text-rose-300 hover:bg-rose-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer flex items-center space-x-1"
+                      title="Clear persistent notification history"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Clear Log</span>
+                    </button>
+                    <button
+                      onClick={() => setShowNotificationDrawer(false)}
+                      className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                      title="Close drawer"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Settings & Simulation Bar */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-3 border-b border-white/10 font-mono text-xs">
+                  {/* Settings toggles */}
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className="text-[10px] uppercase font-bold text-gray-400">Settings:</span>
+                    <button
+                      onClick={() => handleToggleNotifSetting('soundEnabled')}
+                      className={`px-2.5 py-1 rounded border text-[11px] font-bold flex items-center space-x-1 cursor-pointer transition-all ${
+                        notifSettings.soundEnabled
+                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                          : 'bg-black/20 text-gray-500 border-white/10'
+                      }`}
+                    >
+                      <span>{notifSettings.soundEnabled ? '🔊 Sound: ON' : '🔈 Sound: OFF'}</span>
+                    </button>
+                    <button
+                      onClick={() => handleToggleNotifSetting('browserNotifsEnabled')}
+                      className={`px-2.5 py-1 rounded border text-[11px] font-bold flex items-center space-x-1 cursor-pointer transition-all ${
+                        notifSettings.browserNotifsEnabled
+                          ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
+                          : 'bg-black/20 text-gray-500 border-white/10'
+                      }`}
+                    >
+                      <span>{notifSettings.browserNotifsEnabled ? '🔔 Web Push: ON' : '🔕 Web Push: OFF'}</span>
+                    </button>
+                    <button
+                      onClick={() => handleToggleNotifSetting('alertOnEnterLeading')}
+                      className={`px-2 py-1 rounded border text-[11px] font-bold flex items-center space-x-1 cursor-pointer transition-all ${
+                        notifSettings.alertOnEnterLeading
+                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                          : 'bg-black/20 text-gray-500 border-white/10'
+                      }`}
+                    >
+                      <span>🟢 Enter Alerts</span>
+                    </button>
+                    <button
+                      onClick={() => handleToggleNotifSetting('alertOnExitLeading')}
+                      className={`px-2 py-1 rounded border text-[11px] font-bold flex items-center space-x-1 cursor-pointer transition-all ${
+                        notifSettings.alertOnExitLeading
+                          ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                          : 'bg-black/20 text-gray-500 border-white/10'
+                      }`}
+                    >
+                      <span>🟡 Exit Alerts</span>
+                    </button>
+                  </div>
+
+                  {/* Quick Simulation / Test Buttons */}
+                  <div className="flex flex-wrap items-center justify-start md:justify-end gap-2">
+                    <span className="text-[10px] uppercase font-bold text-gray-400">Test Shift:</span>
+                    <button
+                      onClick={() => handleSimulateTransition('ENTERED_LEADING')}
+                      className="px-3 py-1 rounded bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-500/60 text-emerald-300 font-bold text-[11px] flex items-center space-x-1.5 transition-all cursor-pointer shadow-sm active:scale-95"
+                      title="Simulate active stock rotating into Leading quadrant (plays Leading chime and logs persistent alert)"
+                    >
+                      <Zap className="w-3 h-3 text-emerald-400" />
+                      <span>⚡ Sim Enter Leading</span>
+                    </button>
+                    <button
+                      onClick={() => handleSimulateTransition('EXITED_LEADING')}
+                      className="px-3 py-1 rounded bg-amber-950/80 hover:bg-amber-900 border border-amber-500/60 text-amber-300 font-bold text-[11px] flex items-center space-x-1.5 transition-all cursor-pointer shadow-sm active:scale-95"
+                      title="Simulate active stock rotating out of Leading quadrant into Weakening (plays warning tone and logs persistent alert)"
+                    >
+                      <AlertTriangle className="w-3 h-3 text-amber-400" />
+                      <span>⚠️ Sim Exit Leading</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Filter Tabs */}
+                <div className="flex items-center space-x-2 py-3 border-b border-white/5 font-mono text-xs">
+                  <span className="text-[10px] uppercase font-bold text-gray-500">Filter:</span>
+                  {(['ALL', 'UNREAD', 'ENTERED', 'EXITED'] as const).map((filterKey) => {
+                    const count =
+                      filterKey === 'ALL'
+                        ? notifications.length
+                        : filterKey === 'UNREAD'
+                        ? unreadNotifCount
+                        : filterKey === 'ENTERED'
+                        ? notifications.filter((n) => n.transitionType === 'ENTERED_LEADING').length
+                        : notifications.filter((n) => n.transitionType === 'EXITED_LEADING').length;
+                    return (
+                      <button
+                        key={filterKey}
+                        onClick={() => setNotifFilter(filterKey)}
+                        className={`px-3 py-1 rounded text-[11px] font-bold uppercase transition-all cursor-pointer flex items-center space-x-1.5 ${
+                          notifFilter === filterKey
+                            ? 'bg-amber-500 text-slate-950 font-black shadow-xs'
+                            : 'bg-black/20 text-gray-400 hover:text-white border border-white/5'
+                        }`}
+                      >
+                        <span>
+                          {filterKey === 'ALL'
+                            ? 'All'
+                            : filterKey === 'UNREAD'
+                            ? 'Unread'
+                            : filterKey === 'ENTERED'
+                            ? 'Entered Leading'
+                            : 'Exited Leading'}
+                        </span>
+                        <span className="px-1.5 py-0.2 rounded bg-black/30 text-[10px]">
+                          {count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Notification Records List */}
+                <div className="mt-3 space-y-2 max-h-80 overflow-y-auto pr-1">
+                  {filteredNotifications.length === 0 ? (
+                    <div className="py-8 text-center text-gray-400 font-mono text-xs border border-dashed border-white/10 rounded-lg">
+                      <Bell className="w-8 h-8 text-gray-600 mx-auto mb-2" />
+                      <p className="font-bold text-gray-300">No quadrant shift notifications found in this view.</p>
+                      <p className="text-[11px] text-gray-500 max-w-md mx-auto mt-1">
+                        As tracked watchlist stocks rotate into or out of the Leading quadrant (RS-Ratio &gt; 100, RS-Momentum &gt; 100), persistent notifications will appear here.
+                      </p>
+                      <div className="mt-3">
+                        <button
+                          onClick={() => handleSimulateTransition('ENTERED_LEADING')}
+                          className="px-3 py-1.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-xs font-bold hover:bg-emerald-500/30 transition-all cursor-pointer"
+                        >
+                          Trigger a Test Quadrant Transition Now
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    filteredNotifications.map((notif) => {
+                      const isEntered = notif.transitionType === 'ENTERED_LEADING';
+                      return (
+                        <div
+                          key={notif.id}
+                          className={`p-3 rounded-lg border transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 ${
+                            !notif.read
+                              ? isEntered
+                                ? 'bg-emerald-950/20 border-emerald-500/40 shadow-sm'
+                                : 'bg-amber-950/20 border-amber-500/40 shadow-sm'
+                              : isObsidian
+                              ? 'bg-[#141b27]/70 border-[#222b3d] opacity-80'
+                              : 'bg-white border-gray-200 opacity-90'
+                          }`}
+                        >
+                          <div className="flex items-start space-x-3">
+                            <div
+                              className={`w-8 h-8 rounded flex items-center justify-center shrink-0 border mt-0.5 ${
+                                isEntered
+                                  ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400'
+                                  : 'bg-amber-500/20 border-amber-500/40 text-amber-400'
+                              }`}
+                            >
+                              {isEntered ? (
+                                <ArrowUpRight className="w-4 h-4" />
+                              ) : (
+                                <ArrowDownRight className="w-4 h-4" />
+                              )}
+                            </div>
+
+                            <div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="font-mono font-black text-sm text-white">
+                                  {notif.ticker}
+                                </span>
+                                <span className="text-xs text-gray-400 truncate max-w-[160px]">
+                                  {notif.name}
+                                </span>
+                                <span
+                                  className={`px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase ${
+                                    isEntered
+                                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                      : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                  }`}
+                                >
+                                  {isEntered ? 'Entered Leading' : 'Exited Leading'}
+                                </span>
+                                {!notif.read && (
+                                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping inline-block" />
+                                )}
+                              </div>
+
+                              <p className="text-xs text-gray-300 mt-0.5">{notif.message}</p>
+
+                              <div className="flex flex-wrap items-center gap-3 mt-1 text-[10px] font-mono text-gray-400">
+                                <span>
+                                  Rotation:{' '}
+                                  <strong className="text-gray-300">{notif.fromQuadrant}</strong> ➔{' '}
+                                  <strong
+                                    className={
+                                      notif.toQuadrant === 'LEADING'
+                                        ? 'text-emerald-400'
+                                        : 'text-amber-400'
+                                    }
+                                  >
+                                    {notif.toQuadrant}
+                                  </strong>
+                                </span>
+                                <span>•</span>
+                                <span>
+                                  RS-Ratio:{' '}
+                                  <strong className="text-white">{notif.rsRatio.toFixed(2)}</strong>
+                                </span>
+                                <span>•</span>
+                                <span>
+                                  RS-Mom:{' '}
+                                  <strong className="text-white">{notif.rsMomentum.toFixed(2)}</strong>
+                                </span>
+                                <span>•</span>
+                                <span>
+                                  Price:{' '}
+                                  {formatCurrency(notif.currentPrice || 0, getCurrencySymbol(notif.ticker))}
+                                </span>
+                                <span>•</span>
+                                <span className="text-gray-500">
+                                  {new Date(notif.timestamp).toLocaleTimeString([], {
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                    second: '2-digit',
+                                  })}{' '}
+                                  ({new Date(notif.timestamp).toLocaleDateString()})
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center space-x-2 shrink-0 self-end sm:self-center">
+                            <button
+                              onClick={() => {
+                                const stock = stocks.find((s) => s.ticker === notif.ticker);
+                                if (stock) onSelectStock(stock);
+                                setSelectedItemId(notif.ticker);
+                                const updated = markRrgNotificationAsRead(notif.id);
+                                setNotifications(updated);
+                              }}
+                              className="px-2.5 py-1 rounded bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 text-xs font-mono font-bold transition-all cursor-pointer"
+                              title="Focus this security in RRG and open in chart"
+                            >
+                              Inspect
+                            </button>
+                            {!notif.read && (
+                              <button
+                                onClick={() => {
+                                  const updated = markRrgNotificationAsRead(notif.id);
+                                  setNotifications(updated);
+                                }}
+                                className="p-1 rounded text-gray-400 hover:text-white transition-colors cursor-pointer"
+                                title="Mark read"
+                              >
+                                <Check className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleDeleteNotification(notif.id)}
+                              className="p-1 rounded text-gray-500 hover:text-rose-400 transition-colors cursor-pointer"
+                              title="Delete notification"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* ========================================================================= */}
         {/* CONFIGURATION & FILTER CONTROLS                                           */}
         {/* ========================================================================= */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-5 font-mono text-xs">
@@ -751,6 +1391,15 @@ export const RrgToolView: React.FC<RrgToolViewProps> = ({
                   ))}
                   <option value="ALL_COMBINED">All Watchlists Combined ({Array.from(new Set([...availableWatchlists.flatMap(w => w.tickers), ...watchlistTickers])).length} stocks)</option>
                 </select>
+                <button
+                  id="rrg-edit-tickers-btn-source"
+                  onClick={() => setShowWatchlistEditorModal(true)}
+                  className="px-2.5 py-1 rounded border border-amber-500/50 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 font-mono text-[11px] font-bold uppercase transition-all cursor-pointer flex items-center space-x-1 shrink-0 shadow-xs active:scale-95"
+                  title="Add, remove, or reorder stock tickers in this watchlist"
+                >
+                  <ListOrdered className="w-3.5 h-3.5" />
+                  <span>Manage Tickers</span>
+                </button>
               </div>
             )}
           </div>
@@ -2457,6 +3106,21 @@ export const RrgToolView: React.FC<RrgToolViewProps> = ({
           </table>
         </div>
       </div>
+
+      {/* ========================================================================= */}
+      {/* INTERACTIVE RRG WATCHLIST TICKER EDITOR MODAL                              */}
+      {/* ========================================================================= */}
+      <RrgWatchlistEditorModal
+        isOpen={showWatchlistEditorModal}
+        onClose={() => setShowWatchlistEditorModal(false)}
+        availableWatchlists={availableWatchlists}
+        activeWatchlistId={activeWatchlistId}
+        onSelectWatchlistId={(id) => setActiveWatchlistId(id)}
+        onSaveWatchlists={(updated) => setAvailableWatchlists(updated)}
+        stocks={stocks}
+        currentQuadrantMap={currentQuadrantMap}
+        isObsidian={isObsidian}
+      />
     </div>
   );
 };
