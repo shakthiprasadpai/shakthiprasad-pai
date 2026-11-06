@@ -521,6 +521,7 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
     if (filterCategory === 'NSE') return stock.exchange === 'NSE' || stock.exchange === 'BSE';
     if (filterCategory === 'US') return stock.exchange === 'NASDAQ' || stock.exchange === 'NYSE';
     if (filterCategory === 'PENDING') return stock.vcpStage === 'Breakout Pending';
+    if (filterCategory === 'OPTIONS_STOCKS') return !!stock.isOptionsEligible;
 
     return true;
   });
@@ -1015,6 +1016,7 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
             { id: 'VOL_HIGH_BETA', label: '🚀 High-Beta Vol (≥70)' },
             { id: 'VOL_EXTREME', label: '⚡ Extreme Vol (≥90)' },
             { id: 'TIER_1_POWER', label: '⚡ Tier-1 Power Slope' },
+            { id: 'OPTIONS_STOCKS', label: '🎯 Options / F&O' },
             { id: 'ULTRA_TIGHT', label: '🔥 Ultra Tight (-60%+)' },
             { id: 'PERFECT', label: '⭐ Perfect 8/8 SEPA' },
             { id: 'TIGHT_VOL', label: '💧 Tight Dry-Up (-45%+)' },
@@ -1144,10 +1146,28 @@ export const ScreenerTable: React.FC<ScreenerTableProps> = ({
                           <span className="text-[9px] px-1.5 py-0.5 uppercase tracking-wider bg-[#1a1a1a] text-white font-mono font-semibold">
                             {stock.exchange}
                           </span>
+
+                          {stock.isOptionsEligible && (
+                            <span
+                              className="text-[9px] px-1.5 py-0.5 uppercase font-mono font-black bg-amber-400 text-slate-950 border border-amber-500 shadow-2xs"
+                              title={`Options / F&O Eligible Stock · Lot Size: ${stock.optionLotSize} · ATM Strike: ${currency}${stock.atmStrike} · IV: ${stock.callIv}% · PCR: ${stock.putCallRatio}`}
+                            >
+                              F&O · {stock.optionLotSize ? `Lot ${stock.optionLotSize}` : 'Active'}
+                            </span>
+                          )}
                         </div>
-                        <div className="text-[11px] text-gray-600 truncate max-w-[150px] mt-0.5 font-sans">
+                        <div className="text-[11px] text-gray-600 truncate max-w-[180px] mt-0.5 font-sans">
                           {stock.name}
                         </div>
+                        {stock.isOptionsEligible && (
+                          <div className="text-[10px] text-amber-800 font-mono flex items-center space-x-1.5 mt-0.5">
+                            <span>ATM {currency}{stock.atmStrike}</span>
+                            <span>•</span>
+                            <span>IV {stock.callIv}%</span>
+                            <span>•</span>
+                            <span>PCR {stock.putCallRatio}</span>
+                          </div>
+                        )}
                       </td>
 
                       {/* Price */}

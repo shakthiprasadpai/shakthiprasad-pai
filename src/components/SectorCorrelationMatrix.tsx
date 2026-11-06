@@ -22,6 +22,7 @@ import {
   Compass,
   RefreshCw,
 } from 'lucide-react';
+import { SectorCorrelationLeadershipCard } from './SectorCorrelationLeadershipCard';
 
 interface SectorCorrelationMatrixProps {
   stocks: MinerviniTradeSetup[];
@@ -761,6 +762,23 @@ export const SectorCorrelationMatrix: React.FC<SectorCorrelationMatrixProps> = (
             </table>
           </div>
         )}
+
+        {/* Interactive Line Chart Component for Sector Correlation Leadership Confirmation */}
+        <div className="pt-4 border-t border-[#e5e4e1]">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-[10px] font-mono uppercase tracking-widest text-gray-500 font-bold">
+              Leadership Confirmation: Performance Overlay Line Chart
+            </span>
+            <span className="text-[10px] font-mono text-emerald-700 font-bold">
+              Active Stock: {activeStock.ticker} vs {activeStock.sector || 'Sector'} Index
+            </span>
+          </div>
+          <SectorCorrelationLeadershipCard
+            stock={activeStock}
+            allStocks={stocks}
+            onSelectStock={onSelectStock}
+          />
+        </div>
       </div>
     </div>
   );

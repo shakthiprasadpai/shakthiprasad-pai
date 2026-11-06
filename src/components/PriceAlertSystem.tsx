@@ -51,6 +51,10 @@ import {
 import {
   detectRsiDivergence,
   RsiDivergenceResult,
+  detectKeySupportBreachAnticipation,
+  detectAllSupportBreachAnticipations,
+  KeySupportBreachAnticipation,
+  DivergenceCategory,
 } from '../utils/rsiDivergenceEngine';
 import { logAlertTrigger } from '../utils/priceAlertHistoryStorage';
 import { RsiDivergenceNotification } from './RsiDivergenceNotification';
@@ -98,9 +102,10 @@ export const PriceAlertSystem: React.FC<PriceAlertSystemProps> = ({
     }
   };
   const [filterStatus, setFilterStatus] = useState<'ALL' | 'ACTIVE' | 'TRIGGERED'>('ALL');
-  const [activeSubTab, setActiveSubTab] = useState<'ALERTS' | 'RSI_DIVERGENCE_RADAR' | 'PRICE_HISTORY' | 'AUDIT_LOGS'>('ALERTS');
+  const [activeSubTab, setActiveSubTab] = useState<'ALERTS' | 'RSI_DIVERGENCE_RADAR' | 'SUPPORT_BREACH_ANTICIPATION' | 'PRICE_HISTORY' | 'AUDIT_LOGS'>('ALERTS');
 
-  // RSI Divergence Detection Radar Filter State
+  // RSI Divergence & Support Breach Anticipation State
+  const [supportBreachFilter, setSupportBreachFilter] = useState<'ALL' | 'CRITICAL' | 'BEARISH' | 'BULLISH'>('ALL');
   const [rsiDivergenceFilter, setRsiDivergenceFilter] = useState<'ALL' | 'BEARISH' | 'BULLISH' | 'HIGH_SEVERITY'>('ALL');
   const [rsiTimeframe, setRsiTimeframe] = useState<'DAILY' | 'WEEKLY'>('DAILY');
 
@@ -139,6 +144,36 @@ export const PriceAlertSystem: React.FC<PriceAlertSystemProps> = ({
       };
     });
   }, [stocks, alerts, rsiTimeframe]);
+
+  // Key Support Breach Anticipation Scan List
+  const supportBreachList = useMemo(() => {
+    return detectAllSupportBreachAnticipations(stocks, rsiTimeframe);
+  }, [stocks, rsiTimeframe]);
+
+  const filteredSupportBreachList = useMemo(() => {
+    if (supportBreachFilter === 'CRITICAL') {
+      return supportBreachList.filter(
+        (item) => item.urgencyTier === 'CRITICAL_BREACH_IMMINENT' || item.bufferToSupportPct < 2.5
+      );
+    }
+    if (supportBreachFilter === 'BEARISH') {
+      return supportBreachList.filter(
+        (item) => item.divergenceCategory === 'REGULAR_BEARISH' || item.divergenceCategory === 'HIDDEN_BEARISH'
+      );
+    }
+    if (supportBreachFilter === 'BULLISH') {
+      return supportBreachList.filter(
+        (item) => item.divergenceCategory === 'REGULAR_BULLISH' || item.divergenceCategory === 'HIDDEN_BULLISH'
+      );
+    }
+    return supportBreachList;
+  }, [supportBreachList, supportBreachFilter]);
+
+  const criticalBreachCount = useMemo(() => {
+    return supportBreachList.filter(
+      (item) => item.urgencyTier === 'CRITICAL_BREACH_IMMINENT' || item.bufferToSupportPct < 2.5
+    ).length;
+  }, [supportBreachList]);
 
   // Sync state with LocalStorage when background price checker updates
   useEffect(() => {
@@ -278,6 +313,138 @@ export const PriceAlertSystem: React.FC<PriceAlertSystemProps> = ({
     setAlerts(updated);
     saveStoredAlerts(updated);
     window.dispatchEvent(new CustomEvent('minervini_alerts_updated'));
+  };
+
+  // Arm Pre-Emptive Key Support Breach Alert
+  const handleArmSupportBreachAlert = (item: KeySupportBreachAnticipation) => {
+    const existing = alerts.find(
+      (a) => a.ticker === item.ticker && a.targetType === 'RSI_SUPPORT_BREACH_ALERT' && a.status === 'ACTIVE'
+    );
+    if (existing) return;
+
+    const newAlert: PriceAlert = {
+      id: `alert-${item.ticker}-support-breach-${Date.now()}`,
+      ticker: item.ticker,
+      stockName: item.stockName,
+      targetType: 'RSI_SUPPORT_BREACH_ALERT',
+      targetPrice: item.preemptiveAlertPrice,
+      triggerProximityPercent: 0.5,
+      currentPrice: item.currentPrice,
+      status: 'ACTIVE',
+      createdAt: new Date().toLocaleDateString(),
+      exchange: item.exchange as any,
+      supportLevelName: item.keySupportType as any,
+      supportPrice: item.keySupportPrice,
+      bufferToSupportPct: item.bufferToSupportPct,
+      notes: `🚨 ${item.divergenceTypeBadge}: Preemptive alert armed at ${item.preemptiveAlertPrice.toFixed(2)} (0.4% above ${item.keySupportLabel} @ ${item.keySupportPrice.toFixed(2)}) to anticipate breakdown. Buffer: ${item.bufferToSupportPct}%`,
+    };
+
+    const updated = [newAlert, ...alerts];
+    setAlerts(updated);
+    saveStoredAlerts(updated);
+    window.dispatchEvent(new CustomEvent('minervini_alerts_updated'));
+    if (soundEnabled) {
+      playAlertChime();
+    }
+  };
+
+  // Auto-Arm All Support Breach Alerts
+  const handleAutoArmAllSupportBreachAlerts = () => {
+    const newAlerts: PriceAlert[] = [];
+    supportBreachList.forEach((item) => {
+      const isArmed = alerts.some(
+        (a) => a.ticker === item.ticker && a.targetType === 'RSI_SUPPORT_BREACH_ALERT' && a.status === 'ACTIVE'
+      );
+      if (!isArmed) {
+        newAlerts.push({
+          id: `alert-${item.ticker}-support-breach-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+          ticker: item.ticker,
+          stockName: item.stockName,
+          targetType: 'RSI_SUPPORT_BREACH_ALERT',
+          targetPrice: item.preemptiveAlertPrice,
+          triggerProximityPercent: 0.5,
+          currentPrice: item.currentPrice,
+          status: 'ACTIVE',
+          createdAt: new Date().toLocaleDateString(),
+          exchange: item.exchange as any,
+          supportLevelName: item.keySupportType as any,
+          supportPrice: item.keySupportPrice,
+          bufferToSupportPct: item.bufferToSupportPct,
+          notes: `🚨 Pre-emptive Support Alert: ${item.keySupportLabel} @ ${item.keySupportPrice.toFixed(2)} (${item.bufferToSupportPct}% buffer). Divergence: ${item.divergenceTitle}`,
+        });
+      }
+    });
+
+    if (newAlerts.length > 0) {
+      const updated = [...newAlerts, ...alerts];
+      setAlerts(updated);
+      saveStoredAlerts(updated);
+      window.dispatchEvent(new CustomEvent('minervini_alerts_updated'));
+      if (soundEnabled) {
+        playAlertChime();
+      }
+    }
+  };
+
+  // Simulate Support Breach Trigger
+  const triggerSimulatedSupportBreachAlert = (item: KeySupportBreachAnticipation) => {
+    const stored = getStoredAlerts();
+    let targetAlert = stored.find(
+      (a) => a.ticker === item.ticker && a.targetType === 'RSI_SUPPORT_BREACH_ALERT'
+    );
+
+    if (!targetAlert) {
+      targetAlert = {
+        id: `alert-${item.ticker}-support-breach-${Date.now()}`,
+        ticker: item.ticker,
+        stockName: item.stockName,
+        targetType: 'RSI_SUPPORT_BREACH_ALERT',
+        targetPrice: item.preemptiveAlertPrice,
+        triggerProximityPercent: 0.5,
+        currentPrice: item.currentPrice,
+        status: 'ACTIVE',
+        createdAt: new Date().toLocaleDateString(),
+        exchange: item.exchange as any,
+        supportLevelName: item.keySupportType as any,
+        supportPrice: item.keySupportPrice,
+        bufferToSupportPct: item.bufferToSupportPct,
+        notes: `🚨 ${item.divergenceTypeBadge}: Preemptive alert armed before breaking ${item.keySupportLabel}`,
+      };
+      stored.unshift(targetAlert);
+    }
+
+    const updatedAlerts = stored.map((a) => {
+      if (a.id === targetAlert!.id) {
+        return {
+          ...a,
+          status: 'TRIGGERED' as const,
+          triggeredAt: new Date().toLocaleTimeString(),
+          notes: `🚨 SUPPORT BREACH CRITICAL: ${item.ticker} collapsed to ${item.keySupportPrice.toFixed(2)}, breaching ${item.keySupportLabel} following ${item.divergenceCategory}. Automated institutional stop loss cascades engaged!`,
+        };
+      }
+      return a;
+    });
+
+    setAlerts(updatedAlerts);
+    saveStoredAlerts(updatedAlerts);
+    window.dispatchEvent(new CustomEvent('minervini_alerts_updated'));
+
+    if (soundEnabled) {
+      playAlertChime();
+    }
+
+    // Background tracker log
+    appendTrackerLog({
+      ticker: item.ticker,
+      exchange: item.exchange,
+      event: 'STOP_LOSS_HIT',
+      previousPrice: item.currentPrice,
+      currentPrice: item.keySupportPrice,
+      targetPrice: item.preemptiveAlertPrice,
+      targetType: 'RSI_SUPPORT_BREACH_ALERT',
+      triggered: true,
+    });
+    setLogs(getTrackerLogs());
   };
 
   // Instant Simulated RSI Divergence Notification Trigger
@@ -1082,6 +1249,17 @@ export const PriceAlertSystem: React.FC<PriceAlertSystemProps> = ({
             <span>RSI Divergence Radar ({divergenceScanList.filter((d) => d.hasDivergence).length} Active)</span>
           </button>
           <button
+            onClick={() => setActiveSubTab('SUPPORT_BREACH_ANTICIPATION')}
+            className={`px-4 py-2 font-bold uppercase tracking-wider flex items-center space-x-1.5 transition-all border cursor-pointer ${
+              activeSubTab === 'SUPPORT_BREACH_ANTICIPATION'
+                ? 'bg-[#1c080e] text-rose-300 border-rose-800 shadow-xs ring-1 ring-rose-500/50'
+                : 'bg-white text-gray-600 border-[#e5e4e1] hover:text-black'
+            }`}
+          >
+            <ShieldAlert className="w-3.5 h-3.5 text-rose-500" />
+            <span>Support Breach Anticipation ({criticalBreachCount > 0 ? `🚨 ${criticalBreachCount} Critical` : `${supportBreachList.length} Active`})</span>
+          </button>
+          <button
             onClick={() => setActiveSubTab('PRICE_HISTORY')}
             className={`px-4 py-2 font-bold uppercase tracking-wider flex items-center space-x-1.5 transition-all border ${
               activeSubTab === 'PRICE_HISTORY'
@@ -1400,6 +1578,285 @@ export const PriceAlertSystem: React.FC<PriceAlertSystemProps> = ({
                   </div>
                 );
               })}
+          </div>
+        </div>
+      ) : activeSubTab === 'SUPPORT_BREACH_ANTICIPATION' ? (
+        /* ========================================================================= */
+        /* RSI DIVERGENCE KEY SUPPORT BREACH ANTICIPATION MODULE                    */
+        /* ========================================================================= */
+        <div className="space-y-5 font-mono text-xs">
+          {/* Top Control Banner */}
+          <div className="bg-[#12070b] border border-rose-900/80 p-5 text-white space-y-4 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-rose-900/60 pb-3">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-rose-950 border border-rose-600 flex items-center justify-center text-rose-300 font-bold">
+                  <ShieldAlert className="w-5 h-5 text-rose-400" />
+                </div>
+                <div>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-[10px] uppercase font-mono tracking-[0.2em] font-bold text-amber-400">
+                      Minervini SEPA Sentinel
+                    </span>
+                    <span className="bg-rose-950 border border-rose-700 text-rose-200 text-[9px] px-2 py-0.5 font-bold uppercase">
+                      Pre-Emptive Support Defense
+                    </span>
+                  </div>
+                  <h4 className="text-base font-serif font-black text-white mt-0.5">
+                    RSI Divergence Key Support Breach Anticipation Engine
+                  </h4>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={handleAutoArmAllSupportBreachAlerts}
+                  className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-500 text-white font-black text-[11px] uppercase tracking-wider border border-rose-400 shadow-md flex items-center space-x-1.5 cursor-pointer transition-all"
+                  title="Arm pre-emptive price alerts for all candidate stocks within 4% of key institutional support"
+                >
+                  <Zap className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
+                  <span>Auto-Arm All Support Alerts ({filteredSupportBreachList.length})</span>
+                </button>
+
+                <div className="flex items-center space-x-1 bg-rose-950/80 border border-rose-800 p-0.5 text-[10px]">
+                  <button
+                    onClick={() => setRsiTimeframe('DAILY')}
+                    className={`px-2.5 py-1 font-bold uppercase transition cursor-pointer ${
+                      rsiTimeframe === 'DAILY' ? 'bg-rose-500 text-white font-black' : 'text-rose-300 hover:text-white'
+                    }`}
+                  >
+                    Daily
+                  </button>
+                  <button
+                    onClick={() => setRsiTimeframe('WEEKLY')}
+                    className={`px-2.5 py-1 font-bold uppercase transition cursor-pointer ${
+                      rsiTimeframe === 'WEEKLY' ? 'bg-rose-500 text-white font-black' : 'text-rose-300 hover:text-white'
+                    }`}
+                  >
+                    Weekly
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* SEPA Institutional Rationale Text */}
+            <p className="font-sans text-slate-300 text-[11px] leading-relaxed border-l-2 border-rose-500 pl-3 py-0.5">
+              <strong className="text-rose-300 font-mono">SEPA Defense Principle:</strong> Anticipate, don't react. When price prints a regular bearish (climax exhaustion) or hidden bearish (downtrend continuation) divergence, institutional distribution begins while price is still floating above the 50-Day SMA, 21-Day EMA, or Floor Pivot S1. Pre-emptive alerts are armed <strong>0.4% above key support</strong> to notify you before automated institutional stop cascades break the floor.
+            </p>
+
+            {/* KPI Cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+              <div className="bg-[#19090f] border border-rose-950 p-3">
+                <span className="text-[10px] text-rose-400 block uppercase">Scanned Setups</span>
+                <strong className="text-lg font-black text-white">{supportBreachList.length} Monitored</strong>
+              </div>
+              <div className="bg-[#240a12] border border-rose-800/80 p-3">
+                <span className="text-[10px] text-rose-300 block uppercase flex items-center gap-1">
+                  <AlertTriangle className="w-3 h-3 text-rose-400" />
+                  Critical Breach (&lt; 2.5%)
+                </span>
+                <strong className="text-lg font-black text-rose-400">
+                  {criticalBreachCount} High Risk
+                </strong>
+              </div>
+              <div className="bg-[#1f0d06] border border-amber-900/80 p-3">
+                <span className="text-[10px] text-amber-300 block uppercase flex items-center gap-1">
+                  <TrendingDown className="w-3 h-3 text-amber-400" />
+                  Bearish Divergences
+                </span>
+                <strong className="text-lg font-black text-amber-400">
+                  {supportBreachList.filter(s => s.divergenceCategory === 'REGULAR_BEARISH' || s.divergenceCategory === 'HIDDEN_BEARISH').length} Setups
+                </strong>
+              </div>
+              <div className="bg-[#051c14] border border-emerald-900/80 p-3">
+                <span className="text-[10px] text-emerald-300 block uppercase flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                  Armed Breach Alerts
+                </span>
+                <strong className="text-lg font-black text-emerald-400">
+                  {alerts.filter(a => a.targetType === 'RSI_SUPPORT_BREACH_ALERT' && a.status === 'ACTIVE').length} Active
+                </strong>
+              </div>
+            </div>
+
+            {/* Filter Pills */}
+            <div className="flex flex-wrap items-center gap-2 pt-1 text-[10px]">
+              {(['ALL', 'CRITICAL', 'BEARISH', 'BULLISH'] as const).map((flt) => (
+                <button
+                  key={flt}
+                  onClick={() => setSupportBreachFilter(flt)}
+                  className={`px-3 py-1 font-bold uppercase tracking-wider border transition cursor-pointer ${
+                    supportBreachFilter === flt
+                      ? 'bg-rose-500 text-white border-rose-400 font-black'
+                      : 'bg-rose-950/60 text-rose-300 border-rose-900 hover:border-rose-700'
+                  }`}
+                >
+                  {flt === 'ALL'
+                    ? `All Monitored Candidates (${supportBreachList.length})`
+                    : flt === 'CRITICAL'
+                    ? `🚨 Critical Proximity < 2.5% (${criticalBreachCount})`
+                    : flt === 'BEARISH'
+                    ? `⚠️ Bearish Reversals (${supportBreachList.filter(s => s.divergenceCategory === 'REGULAR_BEARISH' || s.divergenceCategory === 'HIDDEN_BEARISH').length})`
+                    : `⚡ Bullish Absorptions (${supportBreachList.filter(s => s.divergenceCategory === 'REGULAR_BULLISH' || s.divergenceCategory === 'HIDDEN_BULLISH').length})`}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Cards Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {filteredSupportBreachList.map((item) => {
+              const currSymbol = getCurrencySymbol(item.exchange);
+              const isArmed = alerts.some(
+                (a) => a.ticker === item.ticker && a.targetType === 'RSI_SUPPORT_BREACH_ALERT' && a.status === 'ACTIVE'
+              );
+              const isBearish = item.divergenceCategory === 'REGULAR_BEARISH' || item.divergenceCategory === 'HIDDEN_BEARISH';
+              const matchedStock = stocks.find(s => s.ticker === item.ticker);
+
+              return (
+                <div
+                  key={`breach-card-${item.ticker}`}
+                  className={`p-4 border shadow-sm transition-all flex flex-col justify-between space-y-3 ${
+                    item.urgencyTier === 'CRITICAL_BREACH_IMMINENT'
+                      ? 'bg-[#19090d] border-rose-600/90'
+                      : item.urgencyTier === 'HIGH_PREEMPTIVE_WARNING'
+                      ? 'bg-[#180f08] border-amber-700/80'
+                      : 'bg-[#0f141f] border-slate-700/80'
+                  }`}
+                >
+                  {/* Card Header */}
+                  <div className="flex items-start justify-between border-b border-white/10 pb-2.5">
+                    <div>
+                      <div className="flex items-center space-x-2">
+                        <span className="text-base font-black text-white">{item.ticker}</span>
+                        <span className="text-[10px] text-gray-400">{item.exchange}</span>
+                        <span
+                          className={`text-[9px] font-bold px-1.5 py-0.5 border ${
+                            isBearish
+                              ? 'bg-rose-950/80 text-rose-300 border-rose-800'
+                              : 'bg-emerald-950/80 text-emerald-300 border-emerald-800'
+                          }`}
+                        >
+                          {item.divergenceTypeBadge}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-gray-300 font-sans mt-0.5">
+                        {item.stockName}
+                      </div>
+                    </div>
+
+                    <div className="text-right">
+                      <div className="text-sm font-bold text-white">
+                        {currSymbol}{item.currentPrice.toFixed(2)}
+                      </div>
+                      <div className="text-[10px] font-bold text-gray-400">
+                        RSI: <strong className={item.currentRsi > 70 ? 'text-rose-400' : item.currentRsi < 40 ? 'text-emerald-400' : 'text-amber-300'}>{item.currentRsi.toFixed(1)}</strong>
+                        <span className="text-gray-500 ml-1">vs {item.priorRsi.toFixed(1)} ({item.rsiDelta > 0 ? '+' : ''}{item.rsiDelta})</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Urgency Badge & Support Level Highlight */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-gray-400 uppercase text-[10px]">Primary Key Support:</span>
+                      <strong className="text-white font-bold">{item.keySupportLabel}</strong>
+                    </div>
+
+                    <div className="p-2.5 bg-black/40 border border-white/10 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] text-gray-300">Support Level:</span>
+                        <span className="text-sm font-mono font-black text-amber-300">
+                          {currSymbol}{item.keySupportPrice.toFixed(2)}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] text-gray-300">Buffer to Support:</span>
+                        <span className={`text-sm font-mono font-black ${
+                          item.bufferToSupportPct < 2.0 ? 'text-rose-400' : item.bufferToSupportPct < 4.0 ? 'text-amber-400' : 'text-emerald-400'
+                        }`}>
+                          {item.bufferToSupportPct.toFixed(2)}% ({currSymbol}{item.bufferPoints.toFixed(2)})
+                        </span>
+                      </div>
+
+                      {/* Visual Buffer Bar */}
+                      <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden mt-1 relative">
+                        <div
+                          className={`h-full transition-all duration-500 ${
+                            item.bufferToSupportPct < 2.0
+                              ? 'bg-rose-500'
+                              : item.bufferToSupportPct < 4.0
+                              ? 'bg-amber-400'
+                              : 'bg-emerald-500'
+                          }`}
+                          style={{ width: `${Math.min(100, Math.max(8, item.bufferToSupportPct * 12))}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Pre-emptive Alert Recommendation */}
+                    <div className="p-2 bg-rose-950/40 border border-rose-900/60 flex items-center justify-between text-[11px]">
+                      <div className="flex items-center space-x-1.5 text-rose-300">
+                        <Target className="w-3.5 h-3.5 text-rose-400" />
+                        <span>Pre-Emptive Trigger (0.4% Above Support):</span>
+                      </div>
+                      <strong className="text-white font-mono font-bold text-xs">
+                        {currSymbol}{item.preemptiveAlertPrice.toFixed(2)}
+                      </strong>
+                    </div>
+                  </div>
+
+                  {/* Diagnostic Text */}
+                  <div className="text-[10px] text-gray-300 font-sans leading-relaxed border-t border-white/10 pt-2 space-y-1">
+                    <div>
+                      <strong className="text-amber-300 font-mono">Setup Context: </strong>
+                      {item.divergenceDescription}
+                    </div>
+                    <div>
+                      <strong className="text-rose-300 font-mono">Action Protocol: </strong>
+                      {item.preemptiveActionAdvice}
+                    </div>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="flex items-center gap-2 pt-2 border-t border-white/10">
+                    <button
+                      onClick={() => handleArmSupportBreachAlert(item)}
+                      disabled={isArmed}
+                      className={`flex-1 py-1.5 px-3 text-[10px] font-bold uppercase tracking-wider border transition cursor-pointer flex items-center justify-center space-x-1.5 ${
+                        isArmed
+                          ? 'bg-rose-950 text-rose-300 border-rose-800 cursor-default'
+                          : 'bg-rose-600 hover:bg-rose-500 text-white border-rose-500 shadow-sm'
+                      }`}
+                    >
+                      <Bell className="w-3.5 h-3.5" />
+                      <span>{isArmed ? '✓ Breach Alert Active' : 'Arm Support Alert'}</span>
+                    </button>
+
+                    <button
+                      onClick={() => triggerSimulatedSupportBreachAlert(item)}
+                      className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer"
+                      title="Simulate support breach event notification"
+                    >
+                      <Zap className="w-3 h-3 text-amber-400" />
+                      <span>Simulate</span>
+                    </button>
+
+                    {matchedStock && onSelectStock && (
+                      <button
+                        onClick={() => onSelectStock(matchedStock)}
+                        className="px-2.5 py-1.5 bg-[#1a1a1a] hover:bg-black text-amber-300 border border-black text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer"
+                        title="Inspect on Chart"
+                      >
+                        <Eye className="w-3 h-3" />
+                        <span>Chart</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       ) : activeSubTab === 'PRICE_HISTORY' ? (

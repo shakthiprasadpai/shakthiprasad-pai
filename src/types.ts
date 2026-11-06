@@ -160,6 +160,38 @@ export interface MinerviniTradeSetup {
 
   // Custom User Trendlines & Technical Annotations Persistence
   customTrendlines?: CustomTrendline[];
+
+  // Options & F&O Derivatives Setup
+  isOptionsEligible?: boolean;
+  optionLotSize?: number;
+  atmStrike?: number;
+  callIv?: number;
+  putIv?: number;
+  putCallRatio?: number;
+  maxPainStrike?: number;
+  optionsExpiryDate?: string;
+  optionsSentiment?: 'CALL_ACCUMULATION' | 'PUT_PROTECTION' | 'NEUTRAL_RANGE' | 'HIGH_VOLATILITY_EXPANSION';
+  openInterestCallOi?: number;
+  openInterestPutOi?: number;
+  syntheticStraddleCost?: number;
+}
+
+export interface OptionContract {
+  strike: number;
+  type: 'CE' | 'PE';
+  ltp: number;
+  change: number;
+  changePercent: number;
+  impliedVolatility: number;
+  openInterest: number;
+  oiChangePercent: number;
+  volume: number;
+  delta: number;
+  theta: number;
+  vega: number;
+  gamma: number;
+  isAtm?: boolean;
+  isInTheMoney?: boolean;
 }
 
 export interface ScreenerFilters {
@@ -170,6 +202,7 @@ export interface ScreenerFilters {
   tightVolumeOnly: boolean;
   minRsRating: number;
   maxStopLossPercent: number;
+  optionsOnly?: boolean;
 }
 
 export interface PositionSizeResult {
@@ -203,14 +236,15 @@ export interface PriceAlert {
     | 'SMART_MONEY_DIVERGENCE'
     | 'STAGE_2_DAILY_SCAN'
     | 'RSI_BULLISH_DIVERGENCE'
-    | 'RSI_BEARISH_DIVERGENCE';
+    | 'RSI_BEARISH_DIVERGENCE'
+    | 'RSI_SUPPORT_BREACH_ALERT';
   targetPrice: number;
   triggerProximityPercent: number; // e.g. within 1.5% of target
   currentPrice: number;
   status: 'ACTIVE' | 'TRIGGERED' | 'MUTED';
   createdAt: string;
   triggeredAt?: string;
-  exchange: 'NASDAQ' | 'NYSE' | 'NSE' | 'BSE';
+  exchange: 'NASDAQ' | 'NSE' | 'BSE' | 'NYSE';
   notes?: string;
   // Volatility Dry-Up Specific Settings
   volatilityTightnessTargetPct?: number; // e.g. <= 5.0% price range tightening
@@ -224,6 +258,10 @@ export interface PriceAlert {
   // Divergence Specific Settings
   divergenceType?: 'BULLISH_ACCUMULATION' | 'BEARISH_DISTRIBUTION' | 'HIDDEN_ACCUMULATION' | 'HIDDEN_DISTRIBUTION';
   divergenceConviction?: number;
+  // Support Breach Anticipation Settings
+  supportLevelName?: '50_SMA' | '21_EMA' | 'PIVOT_S1' | 'CUSTOM_SUPPORT';
+  supportPrice?: number;
+  bufferToSupportPct?: number;
 }
 
 export interface PriceAlertHistoryRecord {

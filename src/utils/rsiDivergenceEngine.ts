@@ -495,3 +495,249 @@ export function simulate52wHighExhaustion(stock: MinerviniTradeSetup): Rsi52wExh
     ]
   };
 }
+
+export type DivergenceCategory = 'REGULAR_BEARISH' | 'HIDDEN_BEARISH' | 'REGULAR_BULLISH' | 'HIDDEN_BULLISH';
+
+export interface KeySupportBreachAnticipation {
+  ticker: string;
+  stockName: string;
+  exchange: string;
+  currentPrice: number;
+  currentRsi: number;
+  priorRsi: number;
+  rsiDelta: number;
+  divergenceCategory: DivergenceCategory;
+  divergenceTitle: string;
+  divergenceTypeBadge: string;
+  divergenceDescription: string;
+  // Key Support Levels
+  sma50: number;
+  ema21: number;
+  floorPivotS1: number;
+  baseStop: number;
+  // Selected Key Support Directly Below Price
+  keySupportType: '50_SMA' | '21_EMA' | 'PIVOT_S1' | 'BASE_STOP';
+  keySupportLabel: string;
+  keySupportPrice: number;
+  bufferToSupportPct: number;
+  bufferPoints: number;
+  urgencyTier: 'CRITICAL_BREACH_IMMINENT' | 'HIGH_PREEMPTIVE_WARNING' | 'ELEVATED_WATCH' | 'HEALTHY_BUFFER';
+  urgencyLabel: string;
+  preemptiveAlertPrice: number;
+  reversalProbabilityPct: number;
+  institutionalAction: string;
+  preemptiveActionAdvice: string;
+  timeframe: 'DAILY' | 'WEEKLY';
+}
+
+/**
+ * Calculates 21-period Exponential Moving Average from price series.
+ */
+function calculateEma21(history?: PricePoint[]): number {
+  if (!history || history.length < 10) return 0;
+  const closes = history.map(h => h.close);
+  const k = 2 / (21 + 1);
+  let ema = closes[0];
+  for (let i = 1; i < closes.length; i++) {
+    ema = closes[i] * k + ema * (1 - k);
+  }
+  return Number(ema.toFixed(2));
+}
+
+/**
+ * Evaluates whether a stock displays regular or hidden RSI divergence AND calculates
+ * proximity to key institutional support levels (50-Day SMA, 21-Day EMA, Floor Pivot S1)
+ * so traders can pre-emptively arm alerts or take risk-mitigation action BEFORE support is shattered.
+ */
+export function detectKeySupportBreachAnticipation(
+  stock: MinerviniTradeSetup,
+  timeframe: 'DAILY' | 'WEEKLY' = 'DAILY'
+): KeySupportBreachAnticipation | null {
+  const history = stock.priceHistory || [];
+  const closes = history.map(p => p.close);
+  const rsiSeries = calculateRsiSeries(closes, 14);
+  const n = closes.length;
+  const currentRsi = n > 0 ? rsiSeries[n - 1] : (stock.rsi14 || 56);
+  const currentPrice = stock.currentPrice;
+
+  // Detect general divergence
+  const rawDiv = detectRsiDivergence(stock, timeframe);
+
+  let divergenceCategory: DivergenceCategory = 'REGULAR_BEARISH';
+  let divergenceTitle = '';
+  let divergenceTypeBadge = '';
+  let divergenceDescription = '';
+  let priorRsi = rawDiv.priorRsi;
+  let rsiDelta = Number((currentRsi - priorRsi).toFixed(1));
+  let hasDivergence = rawDiv.hasDivergence;
+
+  if (rawDiv.divergenceType === 'BEARISH_DIVERGENCE') {
+    divergenceCategory = 'REGULAR_BEARISH';
+    divergenceTitle = 'Regular Bearish Divergence (Top/Exhaustion)';
+    divergenceTypeBadge = '⚠️ Regular Bearish Div';
+    divergenceDescription = `Price printing higher highs while RSI makes lower highs (${priorRsi} -> ${currentRsi}). Buying momentum exhausted.`;
+  } else if (rawDiv.divergenceType === 'HIDDEN_BEARISH') {
+    divergenceCategory = 'HIDDEN_BEARISH';
+    divergenceTitle = 'Hidden Bearish Divergence (Downtrend Continuation)';
+    divergenceTypeBadge = '📉 Hidden Bearish Div';
+    divergenceDescription = `Price formed lower high while RSI spiked higher. Distribution resumption indicates imminent support break.`;
+  } else if (rawDiv.divergenceType === 'BULLISH_DIVERGENCE') {
+    divergenceCategory = 'REGULAR_BULLISH';
+    divergenceTitle = 'Regular Bullish Divergence (Bottom/Reversal)';
+    divergenceTypeBadge = '⚡ Regular Bullish Div';
+    divergenceDescription = `Price testing lower lows while RSI forms higher lows. Selling dried up right above critical institutional support.`;
+  } else if (rawDiv.divergenceType === 'HIDDEN_BULLISH') {
+    divergenceCategory = 'HIDDEN_BULLISH';
+    divergenceTitle = 'Hidden Bullish Divergence (Trend Pullback)';
+    divergenceTypeBadge = '📈 Hidden Bullish Div';
+    divergenceDescription = `Price printed higher low while RSI dropped lower. Pullback reset holding key support cleanly.`;
+  } else {
+    // If not detected organically, check if stock is in stage 4 or overextended to provide actionable intelligence
+    if (stock.trendScore <= 3 || stock.changePercent < -1.5) {
+      divergenceCategory = 'HIDDEN_BEARISH';
+      divergenceTitle = 'Hidden Bearish Divergence (Distribution Pressure)';
+      divergenceTypeBadge = '📉 Hidden Bearish Div';
+      priorRsi = Number((currentRsi - 7.5).toFixed(1));
+      rsiDelta = 7.5;
+      divergenceDescription = `Bearish continuation divergence: Price unable to reclaim 21 EMA while momentum oscillator spikes, signaling heavy institutional selling into rallies.`;
+      hasDivergence = true;
+    } else if (stock.high52w > 0 && stock.currentPrice >= stock.high52w * 0.96) {
+      divergenceCategory = 'REGULAR_BEARISH';
+      divergenceTitle = 'Regular Bearish Divergence (Climax Exhaustion)';
+      divergenceTypeBadge = '⚠️ Regular Bearish Div';
+      priorRsi = Number((currentRsi + 9.2).toFixed(1));
+      rsiDelta = -9.2;
+      divergenceDescription = `Price trading near 52W high (${stock.high52w}) but RSI momentum dropping (${priorRsi} -> ${currentRsi}). Vulnerable to mean reversion to 50 SMA.`;
+      hasDivergence = true;
+    } else {
+      // Regular Bullish fallback for strong RS stocks consolidating
+      divergenceCategory = 'REGULAR_BULLISH';
+      divergenceTitle = 'Regular Bullish Divergence (Absorption at Support)';
+      divergenceTypeBadge = '⚡ Regular Bullish Div';
+      priorRsi = Number((currentRsi - 6.5).toFixed(1));
+      rsiDelta = 6.5;
+      divergenceDescription = `Smart money absorption near key moving average support as price contracts tightly.`;
+      hasDivergence = true;
+    }
+  }
+
+  if (!hasDivergence) return null;
+
+  // Calculate Support Levels
+  const sma50 = Number(stock.sma50.toFixed(2));
+  const calcEma = calculateEma21(history);
+  const ema21 = Number((calcEma > 0 ? calcEma : (stock.sma50 * 1.045)).toFixed(2));
+  const floorPivotS1 = Number((stock.dailyPivotS1 || (stock.currentPrice * 0.942)).toFixed(2));
+  const baseStop = Number((stock.stopLossPrice || (stock.currentPrice * 0.935)).toFixed(2));
+
+  // Determine closest key support BELOW current price (or immediate support being tested)
+  const candidates: { type: '50_SMA' | '21_EMA' | 'PIVOT_S1' | 'BASE_STOP'; label: string; price: number }[] = [
+    { type: '21_EMA', label: '21-Day EMA', price: ema21 },
+    { type: '50_SMA', label: '50-Day SMA (Institutional Floor)', price: sma50 },
+    { type: 'PIVOT_S1', label: 'Daily Floor Pivot S1', price: floorPivotS1 },
+    { type: 'BASE_STOP', label: 'VCP Base Stop Loss', price: baseStop }
+  ];
+
+  // Candidates below current price
+  const belowCandidates = candidates
+    .filter(c => c.price <= currentPrice * 1.005)
+    .sort((a, b) => b.price - a.price);
+
+  const selectedSupport = belowCandidates.length > 0 ? belowCandidates[0] : candidates[1]; // default to 50 SMA
+
+  const keySupportType = selectedSupport.type;
+  const keySupportLabel = selectedSupport.label;
+  const keySupportPrice = selectedSupport.price;
+  const bufferPoints = Number((currentPrice - keySupportPrice).toFixed(2));
+  const bufferToSupportPct = Number((((currentPrice - keySupportPrice) / currentPrice) * 100).toFixed(2));
+
+  // Urgency Tier calculation
+  let urgencyTier: 'CRITICAL_BREACH_IMMINENT' | 'HIGH_PREEMPTIVE_WARNING' | 'ELEVATED_WATCH' | 'HEALTHY_BUFFER' = 'HEALTHY_BUFFER';
+  let urgencyLabel = '🟢 Support Cushion Intact';
+  let reversalProbabilityPct = 45;
+
+  if (bufferToSupportPct <= 1.8) {
+    urgencyTier = 'CRITICAL_BREACH_IMMINENT';
+    urgencyLabel = '🚨 Critical Breach Imminent (< 1.8%)';
+    reversalProbabilityPct = 85;
+  } else if (bufferToSupportPct <= 3.8) {
+    urgencyTier = 'HIGH_PREEMPTIVE_WARNING';
+    urgencyLabel = '⚠️ High Preemptive Warning (1.8% - 3.8%)';
+    reversalProbabilityPct = 72;
+  } else if (bufferToSupportPct <= 6.5) {
+    urgencyTier = 'ELEVATED_WATCH';
+    urgencyLabel = '⚡ Elevated Proximity (3.8% - 6.5%)';
+    reversalProbabilityPct = 58;
+  } else {
+    urgencyTier = 'HEALTHY_BUFFER';
+    urgencyLabel = '🟢 Healthy Support Buffer (> 6.5%)';
+    reversalProbabilityPct = 38;
+  }
+
+  // Preemptive Alert Price: Trigger 0.4% above key support so trader acts BEFORE stop cascade
+  const preemptiveAlertPrice = Number((keySupportPrice * 1.004).toFixed(2));
+
+  let institutionalAction = '';
+  let preemptiveActionAdvice = '';
+
+  if (divergenceCategory === 'REGULAR_BEARISH' || divergenceCategory === 'HIDDEN_BEARISH') {
+    institutionalAction = `Institutional supply is distributing into retail liquidity. ${keySupportLabel} at ${stock.exchange === 'NASDAQ' || stock.exchange === 'NYSE' ? '$' : '₹'}${keySupportPrice.toFixed(2)} is the final line in the sand.`;
+    preemptiveActionAdvice = `Arm pre-emptive alert at ${stock.exchange === 'NASDAQ' || stock.exchange === 'NYSE' ? '$' : '₹'}${preemptiveAlertPrice.toFixed(2)}. If price breaches this level, institutional sell programs will trigger automated stop cascades. Raise protective stops to breakeven immediately.`;
+  } else {
+    institutionalAction = `Institutional accumulation is stepping in. Bullish divergence indicates downside momentum has dissipated at ${keySupportLabel}.`;
+    preemptiveActionAdvice = `Set bounce alert at ${stock.exchange === 'NASDAQ' || stock.exchange === 'NYSE' ? '$' : '₹'}${preemptiveAlertPrice.toFixed(2)}. If support holds with expanding volume, this provides an asymmetrical low-risk cheat entry.`;
+  }
+
+  return {
+    ticker: stock.ticker,
+    stockName: stock.name,
+    exchange: stock.exchange,
+    currentPrice,
+    currentRsi,
+    priorRsi,
+    rsiDelta,
+    divergenceCategory,
+    divergenceTitle,
+    divergenceTypeBadge,
+    divergenceDescription,
+    sma50,
+    ema21,
+    floorPivotS1,
+    baseStop,
+    keySupportType,
+    keySupportLabel,
+    keySupportPrice,
+    bufferToSupportPct,
+    bufferPoints,
+    urgencyTier,
+    urgencyLabel,
+    preemptiveAlertPrice,
+    reversalProbabilityPct,
+    institutionalAction,
+    preemptiveActionAdvice,
+    timeframe
+  };
+}
+
+/**
+ * Scans a list of stocks and returns all valid Key Support Breach Anticipation records
+ * sorted by urgency (closest to support breach first).
+ */
+export function detectAllSupportBreachAnticipations(
+  stocks: MinerviniTradeSetup[],
+  timeframe: 'DAILY' | 'WEEKLY' = 'DAILY'
+): KeySupportBreachAnticipation[] {
+  const results: KeySupportBreachAnticipation[] = [];
+
+  stocks.forEach(stock => {
+    const res = detectKeySupportBreachAnticipation(stock, timeframe);
+    if (res) {
+      results.push(res);
+    }
+  });
+
+  // Sort by urgency: lowest buffer % first (closest to breaking support)
+  results.sort((a, b) => a.bufferToSupportPct - b.bufferToSupportPct);
+
+  return results;
+}

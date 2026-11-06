@@ -11,6 +11,10 @@ import {
   computeStocksRrg,
   computeSectorsRrg,
   computeWatchlistSectorsRrg,
+  generate90DayTrajectory,
+  computeTimeTravelComparison,
+  Rrg90DayPoint,
+  RrgTimeTravelSnapshot,
 } from '../utils/rrgCalculator';
 import { D3RrgChart } from './D3RrgChart';
 import { getStoredWatchlists, CustomWatchlist } from '../utils/watchlistStorage';
@@ -170,6 +174,35 @@ export const RrgToolView: React.FC<RrgToolViewProps> = ({
     setAnimStep(tailLength - 1);
   }, [tailLength]);
 
+  // 90-Day Trajectory Replay State
+  const [sliderMode, setSliderMode] = useState<'TAIL_STEP' | '90_DAY_REPLAY'>('90_DAY_REPLAY');
+  const [historyDayOffset, setHistoryDayOffset] = useState<number>(0); // 0 (Today) down to 89 (90 days ago)
+  const [is90DayPlaying, setIs90DayPlaying] = useState<boolean>(false);
+  const [replaySpeed, setReplaySpeed] = useState<1 | 2 | 4>(1);
+
+  // Time-Travel Comparison State (Secondary date slider)
+  const [timeTravelOffsetDays, setTimeTravelOffsetDays] = useState<number>(30); // 1 to 90 days ago
+  const [showTimeTravelPanel, setShowTimeTravelPanel] = useState<boolean>(false);
+
+  // Zoom-To-Date-Range High Resolution Inspection State
+  const [zoomRangeStartDay, setZoomRangeStartDay] = useState<number>(60); // e.g. 60 days ago
+  const [zoomRangeEndDay, setZoomRangeEndDay] = useState<number>(0); // e.g. 0 (today)
+  const [isDateRangeZoomActive, setIsDateRangeZoomActive] = useState<boolean>(false);
+  const [zoomPreset, setZoomPreset] = useState<'LAST_30' | 'VCP_BASE' | 'BREAKOUT_RUN' | 'FULL_90' | 'CUSTOM'>('FULL_90');
+
+  // 90-Day Replay Playback Timer
+  useEffect(() => {
+    if (!is90DayPlaying) return;
+    const intervalMs = Math.round(380 / replaySpeed);
+    const timer = setInterval(() => {
+      setHistoryDayOffset((prev) => {
+        if (prev <= 0) return 89; // loop back to 90 days ago
+        return prev - 1;
+      });
+    }, intervalMs);
+    return () => clearInterval(timer);
+  }, [is90DayPlaying, replaySpeed]);
+
   // Audio setting sync
   const toggleAudio = () => {
     const next = !audioEnabled;
@@ -311,6 +344,34 @@ export const RrgToolView: React.FC<RrgToolViewProps> = ({
     if (filteredItems.length > 0) return filteredItems[0];
     return rrgItems.find((item) => item.id === activeItemId) || rrgItems[0] || null;
   }, [filteredItems, rrgItems, activeItemId]);
+
+  // 90-Day Trajectory for Active Security
+  const active90DayTrajectory = useMemo(() => {
+    if (!activeItem) return [];
+    return generate90DayTrajectory(activeItem);
+  }, [activeItem]);
+
+  // Current Replay Point based on historyDayOffset (0 = Today, 89 = 90 days ago)
+  const current90DayPoint = useMemo(() => {
+    if (active90DayTrajectory.length === 0) return null;
+    return (
+      active90DayTrajectory.find((p) => p.dayOffset === historyDayOffset) ||
+      active90DayTrajectory[active90DayTrajectory.length - 1]
+    );
+  }, [active90DayTrajectory, historyDayOffset]);
+
+  // Zoomed subset of 90-day trajectory points
+  const zoomedTrajectoryPoints = useMemo(() => {
+    if (active90DayTrajectory.length === 0) return [];
+    const minDay = Math.min(zoomRangeStartDay, zoomRangeEndDay);
+    const maxDay = Math.max(zoomRangeStartDay, zoomRangeEndDay);
+    return active90DayTrajectory.filter((p) => p.dayOffset >= minDay && p.dayOffset <= maxDay);
+  }, [active90DayTrajectory, zoomRangeStartDay, zoomRangeEndDay]);
+
+  // Time-Travel Historical Comparison Snapshot (Comparing historical snapshot vs current sector leadership)
+  const timeTravelSnapshot = useMemo(() => {
+    return computeTimeTravelComparison(rrgItems, timeTravelOffsetDays);
+  }, [rrgItems, timeTravelOffsetDays]);
 
   // Trigger Sound for Quadrant
   const handlePlayQuadrantSound = (quadrant: RrgQuadrant, label: string) => {
@@ -770,47 +831,184 @@ export const RrgToolView: React.FC<RrgToolViewProps> = ({
             </div>
           </div>
 
-          {/* 4. Playback Animation Controls */}
-          <div>
-            <label className="block text-[10px] uppercase font-bold text-gray-400 mb-1.5">
-              4. Rotational Playback:
-            </label>
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={() => setIsPlaying(!isPlaying)}
-                className={`px-3 py-1.5 rounded border text-xs font-bold uppercase flex items-center space-x-1.5 transition-all cursor-pointer ${
-                  isPlaying
-                    ? 'bg-amber-500 text-slate-950 border-amber-400 font-black shadow-md'
-                    : 'bg-slate-800 text-white border-slate-600 hover:border-amber-400'
-                }`}
-              >
-                {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-                <span>{isPlaying ? 'Pause' : 'Animate'}</span>
-              </button>
+          {/* 4. Playback Animation Controls & 90-Day Trajectory Replay */}
+          <div className="md:col-span-2 space-y-2">
+            <div className="flex flex-wrap items-center justify-between text-[10px] uppercase font-bold text-gray-400">
+              <span className="flex items-center space-x-1.5">
+                <Clock className="w-3.5 h-3.5 text-amber-400" />
+                <span>4. Historical Trajectory & Replay:</span>
+              </span>
 
-              {/* Scrubber slider */}
-              <div className="flex-1 flex flex-col justify-center">
-                <input
-                  type="range"
-                  min="0"
-                  max={tailLength - 1}
-                  step="1"
-                  value={animStep}
-                  onChange={(e) => {
-                    const step = parseInt(e.target.value, 10);
-                    setAnimStep(step);
-                    if (audioEnabled) playRrgStepChime(step);
-                  }}
-                  className="w-full h-1.5 accent-amber-400 cursor-pointer bg-gray-700 rounded"
-                />
-                <div className="flex justify-between text-[9px] text-gray-400 mt-1">
-                  <span>T-{tailLength - 1}</span>
-                  <span className="font-bold text-amber-400">
-                    {animStep === tailLength - 1 ? 'Current (T-0)' : `T-${tailLength - 1 - animStep}`}
-                  </span>
-                  <span>T-0</span>
+              {/* Slider Mode Toggle */}
+              <div className="flex items-center space-x-1 bg-black/40 border border-white/10 p-0.5 rounded">
+                <button
+                  onClick={() => setSliderMode('90_DAY_REPLAY')}
+                  className={`px-2 py-0.5 text-[9px] font-bold uppercase transition rounded ${
+                    sliderMode === '90_DAY_REPLAY'
+                      ? 'bg-amber-500 text-slate-950 font-black'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  90-Day Replay
+                </button>
+                <button
+                  onClick={() => setSliderMode('TAIL_STEP')}
+                  className={`px-2 py-0.5 text-[9px] font-bold uppercase transition rounded ${
+                    sliderMode === 'TAIL_STEP'
+                      ? 'bg-amber-500 text-slate-950 font-black'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  Tail ({tailLength} bars)
+                </button>
+              </div>
+            </div>
+
+            {sliderMode === '90_DAY_REPLAY' ? (
+              <div className="p-2.5 rounded bg-black/30 border border-white/10 space-y-2">
+                <div className="flex items-center justify-between text-[11px] font-mono">
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={() => setIs90DayPlaying(!is90DayPlaying)}
+                      className={`px-3 py-1 rounded border text-xs font-bold uppercase flex items-center space-x-1.5 transition-all cursor-pointer ${
+                        is90DayPlaying
+                          ? 'bg-amber-500 text-slate-950 border-amber-400 font-black shadow-md'
+                          : 'bg-slate-800 text-white border-slate-600 hover:border-amber-400'
+                      }`}
+                    >
+                      {is90DayPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                      <span>{is90DayPlaying ? 'Pause' : 'Replay 90D'}</span>
+                    </button>
+
+                    {/* Speed buttons */}
+                    <div className="flex items-center space-x-0.5 text-[9px] bg-black/40 border border-white/10 p-0.5 rounded">
+                      {([1, 2, 4] as const).map((spd) => (
+                        <button
+                          key={spd}
+                          onClick={() => setReplaySpeed(spd)}
+                          className={`px-1.5 py-0.5 font-bold uppercase rounded ${
+                            replaySpeed === spd ? 'bg-amber-500 text-slate-950 font-black' : 'text-gray-400 hover:text-white'
+                          }`}
+                        >
+                          {spd}x
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Point details readout */}
+                  {current90DayPoint && (
+                    <div className="flex items-center space-x-2 text-[10px]">
+                      <span className="text-gray-400">Date: <strong className="text-white">{current90DayPoint.date}</strong></span>
+                      <span className="text-amber-400 font-bold">T-{historyDayOffset}d</span>
+                      <span className={`px-1.5 py-0.2 rounded border text-[9px] font-bold uppercase ${
+                        QUADRANT_META[current90DayPoint.quadrant].badgeBg
+                      } ${QUADRANT_META[current90DayPoint.quadrant].badgeBorder} ${QUADRANT_META[current90DayPoint.quadrant].badgeText}`}>
+                        {current90DayPoint.quadrant}
+                      </span>
+                      <span className="text-gray-300">RS: {current90DayPoint.rsRatio}</span>
+                      <span className="text-gray-300">Mom: {current90DayPoint.rsMomentum}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* 90-Day Range Slider */}
+                <div className="space-y-1">
+                  <input
+                    type="range"
+                    min="0"
+                    max="89"
+                    step="1"
+                    value={89 - historyDayOffset}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value, 10);
+                      const offset = 89 - val;
+                      setHistoryDayOffset(offset);
+                      if (audioEnabled) playRrgStepChime(val % 10);
+                    }}
+                    className="w-full h-1.5 accent-amber-400 cursor-pointer bg-gray-700 rounded"
+                  />
+                  <div className="flex justify-between text-[9px] text-gray-400 font-mono">
+                    <span>90 Days Ago (T-89d)</span>
+                    <span className="text-amber-400 font-bold">
+                      {historyDayOffset === 0 ? 'Today (Current)' : `${historyDayOffset} Days Ago`}
+                    </span>
+                    <span>Today (T-0)</span>
+                  </div>
                 </div>
               </div>
+            ) : (
+              /* Tail Steps Slider */
+              <div className="flex items-center space-x-2 p-2 rounded bg-black/20 border border-white/10">
+                <button
+                  onClick={() => setIsPlaying(!isPlaying)}
+                  className={`px-3 py-1.5 rounded border text-xs font-bold uppercase flex items-center space-x-1.5 transition-all cursor-pointer ${
+                    isPlaying
+                      ? 'bg-amber-500 text-slate-950 border-amber-400 font-black shadow-md'
+                      : 'bg-slate-800 text-white border-slate-600 hover:border-amber-400'
+                  }`}
+                >
+                  {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                  <span>{isPlaying ? 'Pause' : 'Animate'}</span>
+                </button>
+
+                <div className="flex-1 flex flex-col justify-center">
+                  <input
+                    type="range"
+                    min="0"
+                    max={tailLength - 1}
+                    step="1"
+                    value={animStep}
+                    onChange={(e) => {
+                      const step = parseInt(e.target.value, 10);
+                      setAnimStep(step);
+                      if (audioEnabled) playRrgStepChime(step);
+                    }}
+                    className="w-full h-1.5 accent-amber-400 cursor-pointer bg-gray-700 rounded"
+                  />
+                  <div className="flex justify-between text-[9px] text-gray-400 mt-1">
+                    <span>T-{tailLength - 1}</span>
+                    <span className="font-bold text-amber-400">
+                      {animStep === tailLength - 1 ? 'Current (T-0)' : `T-${tailLength - 1 - animStep}`}
+                    </span>
+                    <span>T-0</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Secondary Controls: Time-Travel Snapshot Comparison & Zoom-To-Date-Range buttons */}
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-1 font-mono text-[11px]">
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => setShowTimeTravelPanel((prev) => !prev)}
+                  className={`px-2.5 py-1 rounded border text-[10px] font-bold uppercase flex items-center space-x-1.5 transition-all cursor-pointer ${
+                    showTimeTravelPanel
+                      ? 'bg-purple-900/60 text-purple-200 border-purple-500 ring-1 ring-purple-400/40'
+                      : 'bg-black/30 text-gray-300 border-white/10 hover:border-purple-400 hover:text-white'
+                  }`}
+                >
+                  <Compass className="w-3 h-3 text-purple-400" />
+                  <span>Time-Travel Snapshot (T-{timeTravelOffsetDays}d vs Current)</span>
+                </button>
+
+                <button
+                  onClick={() => setIsDateRangeZoomActive((prev) => !prev)}
+                  className={`px-2.5 py-1 rounded border text-[10px] font-bold uppercase flex items-center space-x-1.5 transition-all cursor-pointer ${
+                    isDateRangeZoomActive
+                      ? 'bg-cyan-900/60 text-cyan-200 border-cyan-500 ring-1 ring-cyan-400/40'
+                      : 'bg-black/30 text-gray-300 border-white/10 hover:border-cyan-400 hover:text-white'
+                  }`}
+                >
+                  <Target className="w-3 h-3 text-cyan-400" />
+                  <span>Zoom-To-Date-Range Inspection</span>
+                </button>
+              </div>
+
+              {/* Quick info tag */}
+              <span className="text-[10px] text-gray-400">
+                Active Setup: <strong className="text-amber-400">{activeItem?.ticker || 'Universe'}</strong>
+              </span>
             </div>
           </div>
         </div>
@@ -1480,6 +1678,266 @@ export const RrgToolView: React.FC<RrgToolViewProps> = ({
               </motion.div>
             )}
           </AnimatePresence>
+
+          {/* Time-Travel Historical Snapshot Comparison Panel */}
+          {showTimeTravelPanel && (
+            <div className="p-4 rounded-xl border border-purple-800/80 bg-[#120b1e] space-y-3 font-mono text-xs">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-purple-800/50 pb-2.5">
+                <div className="flex items-center space-x-2">
+                  <Compass className="w-4 h-4 text-purple-400" />
+                  <span className="font-bold text-sm text-purple-200">
+                    Time-Travel Relative Rotation &amp; Sector Leadership Comparison
+                  </span>
+                </div>
+                <div className="flex items-center space-x-2 text-[10px]">
+                  <span className="text-gray-400">Snapshot:</span>
+                  <span className="text-amber-400 font-bold">{timeTravelSnapshot.historicalDate} (T-{timeTravelOffsetDays}d)</span>
+                  <span className="text-gray-500">vs</span>
+                  <span className="text-emerald-400 font-bold">{timeTravelSnapshot.currentDate} (Current)</span>
+                </div>
+              </div>
+
+              {/* Secondary Date Slider */}
+              <div className="space-y-1.5 bg-black/30 p-3 rounded-lg border border-purple-900/50">
+                <div className="flex justify-between text-[11px]">
+                  <span className="text-purple-300 font-bold">Secondary Historical Snapshot Slider:</span>
+                  <span className="text-amber-400 font-black">{timeTravelOffsetDays} Days Ago ({timeTravelSnapshot.historicalDate})</span>
+                </div>
+                <input
+                  type="range"
+                  min="1"
+                  max="90"
+                  step="1"
+                  value={timeTravelOffsetDays}
+                  onChange={(e) => setTimeTravelOffsetDays(parseInt(e.target.value, 10))}
+                  className="w-full h-1.5 accent-purple-400 cursor-pointer bg-gray-700 rounded"
+                />
+                {/* Quick Preset Buttons */}
+                <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[10px]">
+                  {[15, 30, 45, 60, 90].map((d) => (
+                    <button
+                      key={d}
+                      onClick={() => setTimeTravelOffsetDays(d)}
+                      className={`px-2 py-0.5 rounded border transition cursor-pointer ${
+                        timeTravelOffsetDays === d
+                          ? 'bg-purple-500 text-white font-bold border-purple-400'
+                          : 'bg-black/40 text-gray-400 border-white/10 hover:text-white'
+                      }`}
+                    >
+                      T-{d}d
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Leadership Shift Narrative Banner */}
+              <div className="p-2.5 rounded bg-purple-950/40 border border-purple-800/60 text-[11px] font-sans text-purple-200 leading-relaxed">
+                <strong className="font-mono text-purple-300">Leadership Analysis: </strong>
+                {timeTravelSnapshot.leadershipShiftSummary}
+              </div>
+
+              {/* Transition Cards List */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 pt-1 text-[10px] max-h-56 overflow-y-auto pr-1">
+                {timeTravelSnapshot.securities.map((sec) => (
+                  <div
+                    key={sec.id}
+                    className="p-2 rounded bg-black/40 border border-white/5 space-y-1"
+                  >
+                    <div className="flex justify-between items-center">
+                      <strong className="text-white text-xs">{sec.ticker}</strong>
+                      <span className={`text-[9px] font-bold ${
+                        sec.transitionType === 'UPGRADE' ? 'text-emerald-400' : sec.transitionType === 'DOWNGRADE' ? 'text-rose-400' : 'text-gray-400'
+                      }`}>
+                        {sec.quadrantTransition}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-gray-400">
+                      <span>RS Delta:</span>
+                      <span className={sec.rsRatioDelta >= 0 ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}>
+                        {sec.rsRatioDelta >= 0 ? '+' : ''}{sec.rsRatioDelta}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-gray-400">
+                      <span>Mom Delta:</span>
+                      <span className={sec.rsMomentumDelta >= 0 ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}>
+                        {sec.rsMomentumDelta >= 0 ? '+' : ''}{sec.rsMomentumDelta}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Zoom-To-Date-Range High-Resolution Inspection Panel */}
+          {isDateRangeZoomActive && (
+            <div className="p-4 rounded-xl border border-cyan-800/80 bg-[#0b1622] space-y-3 font-mono text-xs">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-cyan-800/50 pb-2.5">
+                <div className="flex items-center space-x-2">
+                  <Target className="w-4 h-4 text-cyan-400" />
+                  <span className="font-bold text-sm text-cyan-200">
+                    Zoom-To-Date-Range High-Resolution Inspection: {activeItem?.ticker || 'Universe'}
+                  </span>
+                </div>
+                <div className="flex items-center space-x-2 text-[10px]">
+                  <span className="text-gray-400">Window:</span>
+                  <span className="text-cyan-300 font-bold">
+                    {zoomedTrajectoryPoints[0]?.date || 'T-60d'} to {zoomedTrajectoryPoints[zoomedTrajectoryPoints.length - 1]?.date || 'Today'}
+                  </span>
+                  <span className="text-gray-400 font-mono">({zoomedTrajectoryPoints.length} Daily Samples)</span>
+                </div>
+              </div>
+
+              {/* Date Range Selectors & Presets */}
+              <div className="flex flex-wrap items-center justify-between gap-2 bg-black/30 p-2.5 rounded-lg border border-cyan-900/50">
+                <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
+                  <span className="text-gray-400 uppercase text-[9px] font-bold">Zoom Presets:</span>
+                  <button
+                    onClick={() => {
+                      setZoomRangeStartDay(30);
+                      setZoomRangeEndDay(0);
+                      setZoomPreset('LAST_30');
+                    }}
+                    className={`px-2 py-0.5 rounded border transition cursor-pointer ${
+                      zoomPreset === 'LAST_30' ? 'bg-cyan-500 text-black font-bold border-cyan-400' : 'bg-black/40 text-gray-400 border-white/10 hover:text-white'
+                    }`}
+                  >
+                    Last 30 Days
+                  </button>
+                  <button
+                    onClick={() => {
+                      setZoomRangeStartDay(60);
+                      setZoomRangeEndDay(20);
+                      setZoomPreset('VCP_BASE');
+                    }}
+                    className={`px-2 py-0.5 rounded border transition cursor-pointer ${
+                      zoomPreset === 'VCP_BASE' ? 'bg-cyan-500 text-black font-bold border-cyan-400' : 'bg-black/40 text-gray-400 border-white/10 hover:text-white'
+                    }`}
+                  >
+                    VCP Base Phase (-60d to -20d)
+                  </button>
+                  <button
+                    onClick={() => {
+                      setZoomRangeStartDay(20);
+                      setZoomRangeEndDay(0);
+                      setZoomPreset('BREAKOUT_RUN');
+                    }}
+                    className={`px-2 py-0.5 rounded border transition cursor-pointer ${
+                      zoomPreset === 'BREAKOUT_RUN' ? 'bg-cyan-500 text-black font-bold border-cyan-400' : 'bg-black/40 text-gray-400 border-white/10 hover:text-white'
+                    }`}
+                  >
+                    Breakout Run (-20d to 0)
+                  </button>
+                  <button
+                    onClick={() => {
+                      setZoomRangeStartDay(89);
+                      setZoomRangeEndDay(0);
+                      setZoomPreset('FULL_90');
+                    }}
+                    className={`px-2 py-0.5 rounded border transition cursor-pointer ${
+                      zoomPreset === 'FULL_90' ? 'bg-cyan-500 text-black font-bold border-cyan-400' : 'bg-black/40 text-gray-400 border-white/10 hover:text-white'
+                    }`}
+                  >
+                    Full 90-Day Trajectory
+                  </button>
+                </div>
+
+                {/* Sliders */}
+                <div className="flex items-center space-x-3 text-[10px]">
+                  <div className="flex items-center space-x-1">
+                    <span className="text-gray-400">Start: T-{zoomRangeStartDay}d</span>
+                    <input
+                      type="range"
+                      min="0"
+                      max="89"
+                      value={zoomRangeStartDay}
+                      onChange={(e) => {
+                        setZoomRangeStartDay(parseInt(e.target.value, 10));
+                        setZoomPreset('CUSTOM');
+                      }}
+                      className="w-20 h-1 accent-cyan-400 cursor-pointer"
+                    />
+                  </div>
+                  <div className="flex items-center space-x-1">
+                    <span className="text-gray-400">End: T-{zoomRangeEndDay}d</span>
+                    <input
+                      type="range"
+                      min="0"
+                      max="89"
+                      value={zoomRangeEndDay}
+                      onChange={(e) => {
+                        setZoomRangeEndDay(parseInt(e.target.value, 10));
+                        setZoomPreset('CUSTOM');
+                      }}
+                      className="w-20 h-1 accent-cyan-400 cursor-pointer"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* High-Resolution SVG Trajectory Visualization Canvas */}
+              <div className="bg-[#070e17] border border-cyan-950 p-3 rounded-lg overflow-x-auto">
+                <svg viewBox="0 0 700 220" className="w-full h-44 overflow-visible">
+                  {/* Center Crosshairs */}
+                  <line x1="350" y1="10" x2="350" y2="210" stroke="#1f2937" strokeDasharray="3 3" />
+                  <line x1="10" y1="110" x2="690" y2="110" stroke="#1f2937" strokeDasharray="3 3" />
+                  <text x="355" y="24" fill="#10b981" fontSize="10" fontWeight="bold">LEADING (RS ≥ 100, Mom ≥ 100)</text>
+                  <text x="15" y="24" fill="#06b6d4" fontSize="10" fontWeight="bold">IMPROVING</text>
+                  <text x="15" y="200" fill="#f43f5e" fontSize="10" fontWeight="bold">LAGGING</text>
+                  <text x="355" y="200" fill="#f59e0b" fontSize="10" fontWeight="bold">WEAKENING</text>
+
+                  {/* Plot zoomed trajectory line */}
+                  {zoomedTrajectoryPoints.length > 1 && (
+                    <polyline
+                      fill="none"
+                      stroke="#06b6d4"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      points={zoomedTrajectoryPoints
+                        .map((pt) => {
+                          const x = 350 + (pt.rsRatio - 100) * 22;
+                          const y = 110 - (pt.rsMomentum - 100) * 12;
+                          return `${x},${y}`;
+                        })
+                        .join(' ')}
+                    />
+                  )}
+
+                  {/* Plotted nodes along zoomed range */}
+                  {zoomedTrajectoryPoints.map((pt, idx) => {
+                    const x = 350 + (pt.rsRatio - 100) * 22;
+                    const y = 110 - (pt.rsMomentum - 100) * 12;
+                    const isHead = idx === zoomedTrajectoryPoints.length - 1;
+                    const isTail = idx === 0;
+                    return (
+                      <g key={`pt-${pt.date}-${idx}`}>
+                        <circle
+                          cx={x}
+                          cy={y}
+                          r={isHead ? 6 : isTail ? 4 : 2.5}
+                          fill={isHead ? '#f59e0b' : isTail ? '#64748b' : '#38bdf8'}
+                          stroke="#0f172a"
+                          strokeWidth="1.5"
+                        />
+                        {(isHead || isTail || idx % Math.max(1, Math.round(zoomedTrajectoryPoints.length / 5)) === 0) && (
+                          <text
+                            x={x + 7}
+                            y={y + 3}
+                            fill="#94a3b8"
+                            fontSize="9"
+                            fontFamily="monospace"
+                          >
+                            {pt.date} (T-{pt.dayOffset}d)
+                          </text>
+                        )}
+                      </g>
+                    );
+                  })}
+                </svg>
+              </div>
+            </div>
+          )}
 
           {/* D3 Relative Rotation Graph Visualization */}
           <D3RrgChart
