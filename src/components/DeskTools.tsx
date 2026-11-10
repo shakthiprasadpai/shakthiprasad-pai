@@ -156,7 +156,29 @@ const TABS = [
 // Where each tool lives in the full app (used only when the desk is hosted inside it).
 const APP_TAB = { screener: "screener", pocket: "pocket_pivot", vcp: "vcp_scanner", portfolio: "portfolio", earnings: "earnings", sector: "sector_heatmap", journal: "journal", alerts: "alert_history", export: "export_data" };
 
-function DeskToolsInner({ trades, levels, capital, riskPct, scan, onSelect, say, copy, beep, muted, onNavigate, onOpenStageScan, onShowCandles, jumps = [] }) {
+// One tab failing should not take the others down, and the message should say where it failed.
+class TabBoundary extends Component<any, any> {
+  declare state: any;
+  declare props: any;
+  constructor(props: any) { super(props); this.state = { err: null }; }
+  static getDerivedStateFromError(err: any) { return { err }; }
+  render() {
+    const e = this.state.err;
+    if (!e) return this.props.render ? this.props.render() : null;
+    const where = String(e.stack || "").split("\n").slice(0, 4).join("\n");
+    return (
+      <div role="alert">
+        <p className="dt-note">The {this.props.tab} tab hit an error: {String(e.message || e)}. The other tabs still work.</p>
+        <pre className="dt-pre" tabIndex={0}>{where}</pre>
+      </div>
+    );
+  }
+}
+
+function DeskToolsInner({ trades: tradesIn, levels: levelsIn, capital, riskPct, scan, onSelect, say, copy, beep, muted, onNavigate, onOpenStageScan, onShowCandles, jumps: jumpsIn }: any) {
+  const trades: any[] = Array.isArray(tradesIn) ? tradesIn.filter((t: any) => t && Array.isArray(t.closes) && Array.isArray(t.vols)) : [];
+  const levels: any = levelsIn || {};
+  const jumps: any[] = Array.isArray(jumpsIn) ? jumpsIn : [];
   const [tab, setTab] = useState("screener");
   const [pf, setPf] = useState(() => load("gsa-pf", []));
   const [jr, setJr] = useState(() => load("gsa-journal", []));
@@ -165,7 +187,7 @@ function DeskToolsInner({ trades, levels, capital, riskPct, scan, onSelect, say,
   useEffect(() => save("gsa-journal", jr), [jr]);
   useEffect(() => save("gsa-earn", er), [er]);
 
-  const L = (t) => Object.fromEntries(Object.entries(levels[t.id]).map(([k, v]) => [k, parseFloat(v as string)]));
+  const L = (t) => Object.fromEntries(Object.entries(levels[t.id] || {}).map(([k, v]) => [k, parseFloat(v as string)]));
   const cap = parseFloat(capital) || 0, rp = parseFloat(riskPct) || 0;
   const plans = trades.map((t) => {
     const l = L(t), risk = l.entry - l.stop, okp = risk > 0 && l.t1 > l.entry;
@@ -177,12 +199,12 @@ function DeskToolsInner({ trades, levels, capital, riskPct, scan, onSelect, say,
 
   /* form state */
   const [pfForm, setPfForm] = useState({ sym: "", qty: "", avg: "", stop: "", last: "" });
-  const [jrForm, setJrForm] = useState({ sym: trades[0].sym, side: "Buy", entry: "", stop: "", qty: "", note: "" });
+  const [jrForm, setJrForm] = useState({ sym: trades[0]?.sym || "", side: "Buy", entry: "", stop: "", qty: "", note: "" });
   const [erForm, setErForm] = useState({ sym: "", date: "", note: "" });
   const fillJournal = (p) => setJrForm({ sym: p.t.sym, side: "Buy", entry: String(p.l.entry), stop: String(p.l.stop), qty: String(p.qty), note: p.t.setup });
   const num = (v) => parseFloat(v);
 
-  const pfRows = pf.map((p, i) => {
+  const pfRows = (pf || []).map((p, i) => {
     const known = trades.find((t) => t.sym === p.sym);
     const last = known ? known.close : num(p.last);
     const value = last * p.qty, cost = p.avg * p.qty;
@@ -237,7 +259,7 @@ tags:
   const open = (key) => onNavigate && APP_TAB[key] ? <button className="dt-link" type="button" onClick={() => onNavigate(APP_TAB[key])}>Open the full {TABS.find((x) => x[0] === key)[1].toLowerCase()} screen in the app →</button> : null;
 
   const body = {
-    screener: (
+    screener: () => (
       <>
         <table className="dt-table"><thead><tr><th>Stock</th><th>Style</th><th>Close</th><th>Day</th><th>Template</th><th>Pivot</th><th>Stop</th><th>Stop %</th><th>Chartink</th></tr></thead>
           <tbody>{plans.map(({ t, l }) => (
@@ -248,7 +270,7 @@ tags:
         <p className="dt-note">Two names from the 9 Nov NSE screen. Select a row to load it on the desk. RS rating was not computed, so it is not scored.</p>
       </>
     ),
-    pocket: (
+    pocket: () => (
       <div className="dt-cards">{trades.map((t) => {
         const pp = pocketPivots(t), lastp = pp[pp.length - 1];
         return (
@@ -257,7 +279,7 @@ tags:
           </div>);
       })}<p className="dt-note">Rule used: up day, volume above the highest down-day volume of the prior 10 sessions, close above the 10-day average. Volumes are millions of shares.</p></div>
     ),
-    candles: (
+    candles: () => (
       <div className="dt-cards">{trades.map((t) => {
         const all = candlePatterns(t), recent = all.filter((x) => x.i >= t.closes.length - 10).reverse();
         const today = all.filter((x) => x.i === t.closes.length - 1);
@@ -268,7 +290,7 @@ tags:
           </div>);
       })}<p className="dt-note">Patterns use daily open, high, low and close from the NSE bhavcopy, and the last 10 sessions are listed. Hammer versus hanging man depends on the prior 5-session direction. A pattern is a prompt to read the chart, not a signal on its own, and it counts most at a pivot or support on rising volume.</p></div>
     ),
-    vcp: (
+    vcp: () => (
       <div className="dt-cards">{trades.map((t) => {
         const v = vcpScan(t);
         return (
@@ -278,7 +300,7 @@ tags:
           </div>);
       })}<p className="dt-note">Approximate: swings are found on daily closes over a 5-session window, with no intraday highs or lows. Check the pattern on a real chart before trading it.</p></div>
     ),
-    stage: (
+    stage: () => (
       <div className="dt-cards">{trades.map((t) => {
         const s = stageInfo(t);
         return (
@@ -288,7 +310,7 @@ tags:
           </div>);
       })}{onOpenStageScan && <button className="dt-link" type="button" onClick={onOpenStageScan}>Run the full Stage 2 scan in the app →</button>}</div>
     ),
-    portfolio: (
+    portfolio: () => (
       <>
         <form className="dt-form" onSubmit={(e) => { e.preventDefault(); const f = pfForm; if (!f.sym.trim() || !(num(f.qty) > 0) || !(num(f.avg) > 0)) { say("Enter a symbol, quantity and average price"); return; } setPf((p) => [...p, { sym: f.sym.trim().toUpperCase(), qty: num(f.qty), avg: num(f.avg), stop: num(f.stop) || 0, last: f.last }]); setPfForm({ sym: "", qty: "", avg: "", stop: "", last: "" }); }}>
           {[["sym", "Symbol", "text"], ["qty", "Qty", "number"], ["avg", "Avg price", "number"], ["stop", "Stop", "number"], ["last", "Last price", "number"]].map(([k, label, type]) => (
@@ -302,10 +324,10 @@ tags:
         ) : <p className="dt-note">No positions yet. Add the ones you hold. They stay in this browser only. Last price fills itself for the two desk stocks (9 Nov close).</p>}
       </>
     ),
-    earnings: (
+    earnings: () => (
       <>
         <table className="dt-table"><thead><tr><th>Stock</th><th>Last result</th><th>Next result</th></tr></thead>
-          <tbody>{[...EARN, ...er.map((e) => ({ sym: e.sym, last: "", lastTxt: e.note, next: e.date, nextTxt: "added by you" }))].map((e, i) => {
+          <tbody>{[...EARN, ...(er || []).map((e) => ({ sym: e.sym, last: "", lastTxt: e.note, next: e.date, nextTxt: "added by you" }))].map((e, i) => {
             const d = e.next ? Math.ceil((new Date(e.next).getTime() - new Date(new Date().toDateString()).getTime()) / 86400000) : null;
             return <tr key={e.sym + i}><td><b>{e.sym}</b></td><td>{e.last || "-"}<div className="dt-dim">{e.lastTxt}</div></td><td>{e.next ? <>{e.next} <span className={`dt-pill ${d != null && d <= 10 && d >= 0 ? "bad" : ""}`}>{d == null ? "" : d < 0 ? "passed" : d + " days"}</span></> : "-"}<div className="dt-dim">{e.nextTxt}</div></td></tr>;
           })}</tbody></table>
@@ -318,13 +340,13 @@ tags:
         <p className="dt-note">LAURUSLABS and SAILIFE rows come from the InvestSights earnings calendar on 10 Nov 2026. SAILIFE reported on 5 Nov, so the 9 Nov move came after results. Its reported EPS and revenue look wrong against the estimates, so check the filing.</p>
       </>
     ),
-    sector: (
+    sector: () => (
       <>
         <div className="dt-sec">{SECTORS.map(([n, v]) => <div key={n} className={n.startsWith("Pharma") ? "me" : ""}><span>{n}</span><div className="dt-track"><i className={v < 0 ? "neg" : ""} style={{ width: Math.min(100, Math.abs(v) * 7) + "%" }} /></div><b className={v < 0 ? "rd" : "g"}>{v > 0 ? "+" : ""}{v.toFixed(2)}%</b></div>)}</div>
         <p className="dt-note">One-month sector average to 9 Nov 2026 (base 12 Oct), source InvestSights. Pharma &amp; Healthcare is 6th of 19 at +7.83%. I assumed both desk stocks sit in that sector; the heatmap only listed each sector's top three names. This is a one-month view, not the Relative Rotation chart in the app.</p>
       </>
     ),
-    journal: (
+    journal: () => (
       <>
         <form className="dt-form" onSubmit={(e) => { e.preventDefault(); const f = jrForm; if (!f.sym.trim()) { say("Enter a symbol"); return; } setJr((x) => [{ ...f, sym: f.sym.trim().toUpperCase(), when: new Date().toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) }, ...x]); setJrForm({ ...jrForm, entry: "", stop: "", qty: "", note: "" }); say("Journal entry saved"); }}>
           <label><span className="dt-lab">Symbol</span><input value={jrForm.sym} onChange={(e) => setJrForm({ ...jrForm, sym: e.target.value })} /></label>
@@ -333,10 +355,10 @@ tags:
           <label className="wide"><span className="dt-lab">Note</span><input value={jrForm.note} onChange={(e) => setJrForm({ ...jrForm, note: e.target.value })} placeholder="Why this trade, what you saw, what you felt" /></label>
           <div className="dt-row"><button className="dt-btn" type="submit">Save entry</button>{plans.map((p) => <button key={p.t.id} className="dt-btn ghost" type="button" onClick={() => fillJournal(p)}>Fill from {p.t.sym} plan</button>)}</div>
         </form>
-        {jr.length ? <ul className="dt-list jr">{jr.map((j, i) => <li key={i}><span><b>{j.sym}</b> {j.side}</span><span>{j.entry ? "₹" + fmt(j.entry, 2) : "-"}{j.stop ? ` · stop ₹${fmt(j.stop, 2)}` : ""}{j.qty ? ` · ${fmt(j.qty)} sh` : ""}</span><span className="dt-dim">{j.when}{j.note ? " · " + j.note : ""}</span><button className="dt-x" type="button" aria-label="Delete entry" onClick={() => setJr((x) => x.filter((_, k) => k !== i))}>×</button></li>)}</ul> : <p className="dt-note">No entries yet. They stay in this browser only; Export copies them as CSV.</p>}
+        {(jr || []).length ? <ul className="dt-list jr">{jr.map((j, i) => <li key={i}><span><b>{j.sym}</b> {j.side}</span><span>{j.entry ? "₹" + fmt(j.entry, 2) : "-"}{j.stop ? ` · stop ₹${fmt(j.stop, 2)}` : ""}{j.qty ? ` · ${fmt(j.qty)} sh` : ""}</span><span className="dt-dim">{j.when}{j.note ? " · " + j.note : ""}</span><button className="dt-x" type="button" aria-label="Delete entry" onClick={() => setJr((x) => x.filter((_, k) => k !== i))}>×</button></li>)}</ul> : <p className="dt-note">No entries yet. They stay in this browser only; Export copies them as CSV.</p>}
       </>
     ),
-    alerts: (
+    alerts: () => (
       <div className="dt-cards">{plans.map((p) => {
         const al = patternAlerts(p.t, p.l);
         return (
@@ -349,7 +371,7 @@ tags:
           </div>);
       })}<p className="dt-note">These are checks on the last close, not live alerts. The page cannot watch prices while closed; copy the levels into your broker's alert tool.</p></div>
     ),
-    export: (
+    export: () => (
       <>
         <div className="dt-row">
           <button className="dt-btn" type="button" onClick={() => copy(toCSV(exportRows()), "CSV copied")}>Copy CSV</button>
@@ -368,7 +390,7 @@ tags:
       <div className="dt-tabs" role="tablist">
         {TABS.map(([k, label]) => <button key={k} role="tab" type="button" aria-selected={tab === k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}>{label}</button>)}
       </div>
-      <div className="dt-body" role="tabpanel">{body[tab]}{open(tab)}</div>
+      <div className="dt-body" role="tabpanel"><TabBoundary key={tab} tab={tab} render={body[tab]} />{open(tab)}</div>
     </section>
   );
 }
