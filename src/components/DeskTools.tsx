@@ -79,6 +79,51 @@ export function patternAlerts(t, L) {
   return a;
 }
 
+
+// Trading sessions covered by the 40-bar arrays (10 Sep to 9 Nov 2026).
+export const SESSION_DATES = ["2026-09-10","2026-09-11","2026-09-15","2026-09-16","2026-09-17","2026-09-18","2026-09-21","2026-09-22","2026-09-23","2026-09-24","2026-09-25","2026-09-28","2026-09-29","2026-09-30","2026-10-01","2026-10-05","2026-10-06","2026-10-07","2026-10-08","2026-10-09","2026-10-12","2026-10-13","2026-10-14","2026-10-15","2026-10-16","2026-10-19","2026-10-21","2026-10-22","2026-10-23","2026-10-26","2026-10-27","2026-10-28","2026-10-29","2026-10-30","2026-11-02","2026-11-03","2026-11-04","2026-11-05","2026-11-06","2026-11-09"];
+export const sessionLabel = (i) => { const d = new Date(SESSION_DATES[i] + "T00:00:00"); return d.toLocaleDateString("en-IN", { day: "numeric", month: "short" }); };
+
+// Candlestick patterns from open, high, low, close. Thresholds are the common textbook ones; a pattern is a prompt to look
+// at the chart, not a trade signal by itself. Hammer vs hanging man (and inverted hammer vs shooting star) depend on the
+// prior 5-session direction.
+export function candlePatterns(t) {
+  const { o, h, l, closes: c } = t, out = [];
+  if (!o || !h || !l) return out;
+  const n = c.length;
+  const body = (i) => Math.abs(c[i] - o[i]), rng = (i) => h[i] - l[i];
+  const green = (i) => c[i] > o[i], red = (i) => c[i] < o[i];
+  const add = (i, name, bias, note) => out.push({ i, name, bias, note });
+  for (let i = 5; i < n; i++) {
+    const r = rng(i); if (!(r > 0)) continue;
+    const b = body(i), lo = Math.min(o[i], c[i]) - l[i], up = h[i] - Math.max(o[i], c[i]);
+    const down = c[i - 1] < c[i - 5], upTrend = c[i - 1] > c[i - 5];
+    if (b >= 0.9 * r) add(i, green(i) ? "Bullish marubozu" : "Bearish marubozu", green(i) ? "bull" : "bear", "Almost no wicks: one side controlled the whole session.");
+    else if (b <= 0.1 * r) add(i, "Doji", "neutral", "Open and close nearly equal: indecision.");
+    else if (b <= 0.35 * r && lo >= 2 * b && up <= 0.15 * r) {
+      if (down) add(i, "Hammer", "bull", "Long lower wick after a decline: sellers were rejected.");
+      else if (upTrend) add(i, "Hanging man", "bear", "Hammer shape after a rise: a warning, needs a weak next day to count.");
+    } else if (b <= 0.35 * r && up >= 2 * b && lo <= 0.15 * r) {
+      if (upTrend) add(i, "Shooting star", "bear", "Long upper wick after a rise: buyers were rejected.");
+      else if (down) add(i, "Inverted hammer", "bull", "Upper wick after a decline: needs a strong next day to count.");
+    }
+    const pb = body(i - 1);
+    if (red(i - 1) && green(i) && c[i] >= o[i - 1] && o[i] <= c[i - 1] && b > pb) add(i, "Bullish engulfing", "bull", "Green body covers the prior red body.");
+    if (green(i - 1) && red(i) && o[i] >= c[i - 1] && c[i] <= o[i - 1] && b > pb) add(i, "Bearish engulfing", "bear", "Red body covers the prior green body.");
+    if (red(i - 1) && green(i) && o[i] <= c[i - 1] && c[i] > (o[i - 1] + c[i - 1]) / 2 && c[i] < o[i - 1]) add(i, "Piercing line", "bull", "Closes above the middle of the prior red body.");
+    if (green(i - 1) && red(i) && o[i] >= c[i - 1] && c[i] < (o[i - 1] + c[i - 1]) / 2 && c[i] > o[i - 1]) add(i, "Dark cloud cover", "bear", "Closes below the middle of the prior green body.");
+    if (h[i] < h[i - 1] && l[i] > l[i - 1]) add(i, "Inside bar", "neutral", "Range held inside the prior day: a pause before the next move.");
+    if (i >= 2) {
+      const b2 = body(i - 2), r2 = rng(i - 2) || 1, r1 = rng(i - 1) || 1;
+      if (red(i - 2) && b2 >= 0.5 * r2 && body(i - 1) <= 0.3 * r1 && green(i) && c[i] > (o[i - 2] + c[i - 2]) / 2) add(i, "Morning star", "bull", "Big red, small body, then a green that retakes the middle.");
+      if (green(i - 2) && b2 >= 0.5 * r2 && body(i - 1) <= 0.3 * r1 && red(i) && c[i] < (o[i - 2] + c[i - 2]) / 2) add(i, "Evening star", "bear", "Big green, small body, then a red that gives back the middle.");
+      if ([i, i - 1, i - 2].every((k) => body(k) >= 0.5 * (rng(k) || 1)) && green(i) && green(i - 1) && green(i - 2) && c[i] > c[i - 1] && c[i - 1] > c[i - 2] && o[i] > o[i - 1] && o[i - 1] > o[i - 2] && o[i] < c[i - 1] && o[i - 1] < c[i - 2]) add(i, "Three white soldiers", "bull", "Three rising green candles with real bodies, each opening inside the last body.");
+      if ([i, i - 1, i - 2].every((k) => body(k) >= 0.5 * (rng(k) || 1)) && red(i) && red(i - 1) && red(i - 2) && c[i] < c[i - 1] && c[i - 1] < c[i - 2] && o[i] < o[i - 1] && o[i - 1] < o[i - 2] && o[i] > c[i - 1] && o[i - 1] > c[i - 2]) add(i, "Three black crows", "bear", "Three falling red candles with real bodies, each opening inside the last body.");
+    }
+  }
+  return out;
+}
+
 /* ---------- reference data (fetched 10 Nov 2026) ---------- */
 
 // InvestSights earnings calendar. SAILIFE's reported figures look inconsistent (revenue actual about 1% of the estimate): verify before relying on them.
@@ -105,13 +150,13 @@ const csvCell = (v) => { const s = String(v ?? ""); return /[",\n]/.test(s) ? `"
 export const toCSV = (rows) => rows.map((r) => r.map(csvCell).join(",")).join("\n");
 
 const TABS = [
-  ["screener", "Screener"], ["pocket", "Pocket pivot"], ["vcp", "VCP scanner"], ["stage", "Stage scan"], ["portfolio", "Portfolio"],
+  ["screener", "Screener"], ["pocket", "Pocket pivot"], ["candles", "Candle patterns"], ["vcp", "VCP scanner"], ["stage", "Stage scan"], ["portfolio", "Portfolio"],
   ["earnings", "Earnings"], ["sector", "Sector health"], ["journal", "Journal entry"], ["alerts", "Alert patterns"], ["export", "Export"],
 ];
 // Where each tool lives in the full app (used only when the desk is hosted inside it).
 const APP_TAB = { screener: "screener", pocket: "pocket_pivot", vcp: "vcp_scanner", portfolio: "portfolio", earnings: "earnings", sector: "sector_heatmap", journal: "journal", alerts: "alert_history", export: "export_data" };
 
-function DeskToolsInner({ trades, levels, capital, riskPct, scan, onSelect, say, copy, beep, muted, onNavigate, onOpenStageScan, jumps = [] }) {
+function DeskToolsInner({ trades, levels, capital, riskPct, scan, onSelect, say, copy, beep, muted, onNavigate, onOpenStageScan, onShowCandles, jumps = [] }) {
   const [tab, setTab] = useState("screener");
   const [pf, setPf] = useState(() => load("gsa-pf", []));
   const [jr, setJr] = useState(() => load("gsa-journal", []));
@@ -211,6 +256,17 @@ tags:
             {pp.length ? <ul className="dt-list">{pp.slice(-4).reverse().map((x) => <li key={x.i}><span>{x.ago === 0 ? "Latest session" : x.ago + " sessions ago"}</span><span>₹{fmt(x.close, 2)}</span><span>{x.vol.toFixed(1)}M vs {x.maxDown.toFixed(1)}M down-day max</span></li>)}</ul> : <p className="dt-note">No up day beat the heaviest down-day volume of the prior 10 sessions while closing above its 10-day average.</p>}
           </div>);
       })}<p className="dt-note">Rule used: up day, volume above the highest down-day volume of the prior 10 sessions, close above the 10-day average. Volumes are millions of shares.</p></div>
+    ),
+    candles: (
+      <div className="dt-cards">{trades.map((t) => {
+        const all = candlePatterns(t), recent = all.filter((x) => x.i >= t.closes.length - 10).reverse();
+        const today = all.filter((x) => x.i === t.closes.length - 1);
+        return (
+          <div className="dt-card" key={t.id}><div className="dt-h"><b>{t.sym}</b><span className={`dt-pill ${today.length ? (today[0].bias === "bull" ? "ok" : today[0].bias === "bear" ? "bad" : "") : ""}`}>{today.length ? today.map((x) => x.name).join(" + ") : "no pattern on the last session"}</span></div>
+            {recent.length ? <ul className="dt-list">{recent.map((x, k) => <li key={k}><span><span className={`dt-dot ${x.bias === "bull" ? "ok" : x.bias === "bear" ? "bad" : ""}`} aria-hidden="true" /> {x.name}</span><span className="dt-dim">{sessionLabel(x.i)}</span><span className="dt-dim wide">{x.note}</span></li>)}</ul> : <p className="dt-note">No candlestick pattern in the last 10 sessions.</p>}
+            {onShowCandles && <button className="dt-btn ghost" type="button" onClick={() => onShowCandles(trades.indexOf(t))}>Show candles on the chart</button>}
+          </div>);
+      })}<p className="dt-note">Patterns use daily open, high, low and close from the NSE bhavcopy, and the last 10 sessions are listed. Hammer versus hanging man depends on the prior 5-session direction. A pattern is a prompt to read the chart, not a signal on its own, and it counts most at a pivot or support on rising volume.</p></div>
     ),
     vcp: (
       <div className="dt-cards">{trades.map((t) => {
@@ -352,6 +408,8 @@ export const TOOLS_CSS = `
 .desk .dt-bars b{text-align:right}
 .desk .dt-dot{width:8px;height:8px;border-radius:50%;flex:none;margin-top:4px;background:var(--dim)}
 .desk .dt-dot.ok{background:var(--green-t)}.dt-dot.warn{background:var(--amber)}
+.desk .dt-dot.bad{background:var(--red-t)}
+.desk .dt-list li .wide{flex:1 1 100%}
 .desk .dt-list li:has(.dt-dot){justify-content:flex-start;flex-wrap:nowrap}
 .desk .dt-form{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
 .desk .dt-form label{display:flex;flex-direction:column;gap:5px;flex:1 1 110px;min-width:0}
