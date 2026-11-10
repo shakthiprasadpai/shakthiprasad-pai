@@ -26,6 +26,11 @@ import {
   Award,
   Target,
   Users,
+  Flame,
+  ArrowRight,
+  Grid,
+  Filter,
+  Sparkles,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -34,7 +39,6 @@ import {
   XAxis,
   YAxis,
   Tooltip,
-  Legend,
   ReferenceLine,
 } from 'recharts';
 
@@ -42,6 +46,88 @@ interface SectorCorrelationLeadershipCardProps {
   stock: MinerviniTradeSetup;
   allStocks?: MinerviniTradeSetup[];
   onSelectStock?: (stock: MinerviniTradeSetup) => void;
+}
+
+// Helper to normalize sector names across varying naming conventions
+export const normalizeSectorName = (sector: string = ''): string => {
+  const s = sector.trim().toLowerCase();
+  if (s.includes('semi') || s.includes('chip')) return 'Semiconductors';
+  if (s.includes('tech') || s.includes('software')) return 'Technology';
+  if (s.includes('bio')) return 'Biotechnology';
+  if (s.includes('health') || s.includes('pharma') || s.includes('medical')) return 'Healthcare';
+  if (s.includes('finan') || s.includes('bank')) return 'Financials';
+  if (s.includes('consumer') || s.includes('cyclical') || s.includes('discretionary') || s.includes('retail'))
+    return 'Consumer Discretionary';
+  if (s.includes('energy') || s.includes('oil') || s.includes('gas')) return 'Energy';
+  if (s.includes('industr') || s.includes('aerospace') || s.includes('defense') || s.includes('machin'))
+    return 'Industrials';
+  if (s.includes('material') || s.includes('chem') || s.includes('metal')) return 'Materials';
+  return sector;
+};
+
+// Compute 3-Month and 6-Month RS rating trends for an individual stock
+export function computeStockRsMomentum(stock: MinerviniTradeSetup) {
+  const currentRs = stock.rsRating || 75;
+  const history = stock.priceHistory;
+
+  if (history && history.length >= 20) {
+    const latestClose = history[history.length - 1].close || stock.currentPrice;
+
+    // 3 months approx 63 trading days (or half of history)
+    const offset3M = Math.min(history.length - 1, 63);
+    const close3M = history[history.length - 1 - offset3M]?.close || history[0].close;
+    const ret3M = close3M > 0 ? ((latestClose - close3M) / close3M) * 100 : 0;
+
+    // 6 months approx 126 trading days (or available candles)
+    const offset6M = Math.min(history.length - 1, 126);
+    const close6M = history[history.length - 1 - offset6M]?.close || history[0].close;
+    const ret6M = close6M > 0 ? ((latestClose - close6M) / close6M) * 100 : 0;
+
+    // Relative acceleration: recent 3M return vs prior 3M period (ret6M - ret3M)
+    const deltaScore = (ret3M - (ret6M - ret3M)) * 0.45;
+    const boundedDelta = Math.round(Math.max(-18, Math.min(18, deltaScore)));
+
+    const rs3M = Math.max(1, Math.min(99, Math.round(currentRs + boundedDelta * 0.4)));
+    const rs6M = Math.max(1, Math.min(99, Math.round(currentRs - boundedDelta * 0.6)));
+    const delta = rs3M - rs6M;
+
+    return {
+      rs3M,
+      rs6M,
+      delta,
+      status: delta >= 3 ? ('GAINING' as const) : delta <= -3 ? ('LOSING' as const) : ('STEADY' as const),
+    };
+  }
+
+  // Fallback for stocks with limited price arrays: deterministic calibration based on 1D change and trend score
+  const chg = stock.changePercent || 0;
+  const trend = (stock.trendScore || 7) - 6;
+  const delta = Math.round(Math.max(-14, Math.min(14, chg * 1.3 + trend * 2)));
+  const rs3M = Math.max(1, Math.min(99, currentRs + Math.round(delta * 0.5)));
+  const rs6M = Math.max(1, Math.min(99, currentRs - Math.round(delta * 0.5)));
+  const finalDelta = rs3M - rs6M;
+  return {
+    rs3M,
+    rs6M,
+    delta: finalDelta,
+    status: finalDelta >= 3 ? ('GAINING' as const) : finalDelta <= -3 ? ('LOSING' as const) : ('STEADY' as const),
+  };
+}
+
+export interface SectorTrendMetrics {
+  sectorKey: string;
+  sectorName: string;
+  symbol: string;
+  etfRsRating: number;
+  stockCount: number;
+  topStocks: MinerviniTradeSetup[];
+  topStocksAvgRs: number;
+  avgRs3M: number;
+  avgRs6M: number;
+  rsMomentumDelta: number;
+  momentumStatus: 'GAINING' | 'LOSING' | 'STEADY';
+  stage: string;
+  changePercent: number;
 }
 
 export const SectorCorrelationLeadershipCard: React.FC<SectorCorrelationLeadershipCardProps> = ({
@@ -52,10 +138,15 @@ export const SectorCorrelationLeadershipCard: React.FC<SectorCorrelationLeadersh
   const [timeframe, setTimeframe] = useState<'20D' | '50D' | '60D'>('20D');
   const [overrideEtfKey, setOverrideEtfKey] = useState<string | null>(null);
 
+  // Heatmap View state: visual grid vs tabular matrix
+  const [heatmapViewMode, setHeatmapViewMode] = useState<'HEATMAP' | 'TABLE'>('HEATMAP');
+  const [momentumFilter, setMomentumFilter] = useState<'ALL' | 'GAINING' | 'LOSING' | 'ELITE'>('ALL');
+
   // Determine matched Sector ETF benchmark
   const defaultEtfKey = useMemo(() => {
+    const stockNorm = normalizeSectorName(stock.sector || '');
     const matchedKey = Object.keys(SECTOR_BENCHMARK_ETFS).find(
-      (k) => k.toLowerCase() === (stock.sector || '').toLowerCase()
+      (k) => normalizeSectorName(k).toLowerCase() === stockNorm.toLowerCase()
     );
     return matchedKey || 'Broad Market';
   }, [stock.sector]);
@@ -91,6 +182,102 @@ export const SectorCorrelationLeadershipCard: React.FC<SectorCorrelationLeadersh
     [stockReturns, etfReturns]
   );
 
+  // Active stock's RS momentum
+  const activeStockMomentum = useMemo(() => computeStockRsMomentum(stock), [stock]);
+
+  // Comprehensive Sector Metrics calculation across all tracked sectors
+  const sectorMetricsList = useMemo<SectorTrendMetrics[]>(() => {
+    const benchmarkKeys = Object.keys(SECTOR_BENCHMARK_ETFS);
+
+    return benchmarkKeys.map((key) => {
+      const etf = SECTOR_BENCHMARK_ETFS[key];
+      const normKey = normalizeSectorName(key).toLowerCase();
+
+      // Find all stocks in universe belonging to this sector
+      const sectorStocks = allStocks.filter((s) => {
+        const sNorm = normalizeSectorName(s.sector || '').toLowerCase();
+        return sNorm === normKey || (s.sector || '').toLowerCase() === key.toLowerCase();
+      });
+
+      // Sort descending by RS Rating to isolate top-performing stocks
+      const sortedByRs = [...sectorStocks].sort((a, b) => (b.rsRating || 0) - (a.rsRating || 0));
+      const topStocks = sortedByRs.slice(0, 3);
+
+      let topStocksAvgRs = etf.rsRating;
+      let avgRs3M = etf.rsRating;
+      let avgRs6M = etf.rsRating;
+
+      if (topStocks.length > 0) {
+        topStocksAvgRs = Number(
+          (topStocks.reduce((acc, s) => acc + (s.rsRating || 0), 0) / topStocks.length).toFixed(1)
+        );
+
+        const stockMomentums = topStocks.map((s) => computeStockRsMomentum(s));
+        avgRs3M = Number(
+          (stockMomentums.reduce((acc, m) => acc + m.rs3M, 0) / stockMomentums.length).toFixed(1)
+        );
+        avgRs6M = Number(
+          (stockMomentums.reduce((acc, m) => acc + m.rs6M, 0) / stockMomentums.length).toFixed(1)
+        );
+      } else {
+        // Fallback for sectors with no direct constituents in loaded watchlist
+        const stageFactor = etf.stage.includes('Stage 2') ? 4 : etf.stage.includes('Stage 4') ? -5 : 0;
+        const returnFactor = etf.changePercent * 1.2;
+        const estDelta = Math.round(stageFactor + returnFactor);
+        avgRs3M = Math.max(1, Math.min(99, etf.rsRating + Math.round(estDelta * 0.5)));
+        avgRs6M = Math.max(1, Math.min(99, etf.rsRating - Math.round(estDelta * 0.5)));
+      }
+
+      const rsMomentumDelta = Number((avgRs3M - avgRs6M).toFixed(1));
+      const momentumStatus: 'GAINING' | 'LOSING' | 'STEADY' =
+        rsMomentumDelta >= 3 ? 'GAINING' : rsMomentumDelta <= -3 ? 'LOSING' : 'STEADY';
+
+      return {
+        sectorKey: key,
+        sectorName: etf.sectorName,
+        symbol: etf.symbol,
+        etfRsRating: etf.rsRating,
+        stockCount: sectorStocks.length,
+        topStocks,
+        topStocksAvgRs,
+        avgRs3M,
+        avgRs6M,
+        rsMomentumDelta,
+        momentumStatus,
+        stage: etf.stage,
+        changePercent: etf.changePercent,
+      };
+    });
+  }, [allStocks]);
+
+  // Filtered sector list based on UI selection
+  const filteredSectorMetrics = useMemo(() => {
+    let list = [...sectorMetricsList];
+    if (momentumFilter === 'GAINING') {
+      list = list.filter((s) => s.momentumStatus === 'GAINING');
+    } else if (momentumFilter === 'LOSING') {
+      list = list.filter((s) => s.momentumStatus === 'LOSING');
+    } else if (momentumFilter === 'ELITE') {
+      list = list.filter((s) => s.topStocksAvgRs >= 85);
+    }
+    // Sort primarily by Top Stocks Avg RS descending
+    return list.sort((a, b) => b.topStocksAvgRs - a.topStocksAvgRs);
+  }, [sectorMetricsList, momentumFilter]);
+
+  // Summary counts for header stat bar
+  const gainingCount = useMemo(
+    () => sectorMetricsList.filter((s) => s.momentumStatus === 'GAINING').length,
+    [sectorMetricsList]
+  );
+  const losingCount = useMemo(
+    () => sectorMetricsList.filter((s) => s.momentumStatus === 'LOSING').length,
+    [sectorMetricsList]
+  );
+  const eliteCount = useMemo(
+    () => sectorMetricsList.filter((s) => s.topStocksAvgRs >= 85).length,
+    [sectorMetricsList]
+  );
+
   // Cumulative performance series for Recharts
   const chartData = useMemo(() => {
     let cumStock = 0;
@@ -123,7 +310,6 @@ export const SectorCorrelationLeadershipCard: React.FC<SectorCorrelationLeadersh
   const stockTotalReturn = chartData.length > 0 ? chartData[chartData.length - 1].stockCum : 0;
   const etfTotalReturn = chartData.length > 0 ? chartData[chartData.length - 1].etfCum : 0;
   const excessAlpha = Number((stockTotalReturn - etfTotalReturn).toFixed(2));
-  const rsDiff = stock.rsRating - benchmarkEtf.rsRating;
 
   // Minervini Trend Leadership Validation Rules (4 Checks)
   const rule1RsDominance = stock.rsRating >= benchmarkEtf.rsRating;
@@ -140,7 +326,7 @@ export const SectorCorrelationLeadershipCard: React.FC<SectorCorrelationLeadersh
 
   // Correlation status interpretation
   const getCorrelationCategory = (r: number) => {
-    if (r >= 0.70) {
+    if (r >= 0.7) {
       return {
         label: 'HIGH SECTOR SYNCHRONY',
         desc: 'Stock moves in tight lockstep with industry wave.',
@@ -180,10 +366,55 @@ export const SectorCorrelationLeadershipCard: React.FC<SectorCorrelationLeadersh
   // Same-Sector Peers
   const sectorPeers = useMemo(() => {
     if (!allStocks || allStocks.length === 0) return [];
+    const targetNorm = normalizeSectorName(stock.sector || '').toLowerCase();
     return allStocks
-      .filter((s) => s.sector === stock.sector && s.ticker !== stock.ticker)
+      .filter((s) => {
+        const sNorm = normalizeSectorName(s.sector || '').toLowerCase();
+        return (sNorm === targetNorm || s.sector === stock.sector) && s.ticker !== stock.ticker;
+      })
       .slice(0, 5);
   }, [allStocks, stock.sector, stock.ticker]);
+
+  // Color coding helper for the Visual Trend Heatmap
+  const getHeatmapColorStyles = (avgRs: number) => {
+    if (avgRs >= 85) {
+      return {
+        tier: 'ELITE LEADER',
+        badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+        cardBg: 'bg-[#062419] border-emerald-500/70 hover:border-emerald-400',
+        textAccent: 'text-emerald-400',
+        barFill: 'bg-emerald-500',
+        glow: 'shadow-emerald-950/60',
+      };
+    } else if (avgRs >= 75) {
+      return {
+        tier: 'STRONG ADVANCER',
+        badgeColor: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40',
+        cardBg: 'bg-[#06202e] border-cyan-500/70 hover:border-cyan-400',
+        textAccent: 'text-cyan-400',
+        barFill: 'bg-cyan-500',
+        glow: 'shadow-cyan-950/60',
+      };
+    } else if (avgRs >= 65) {
+      return {
+        tier: 'MODERATE',
+        badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+        cardBg: 'bg-[#241806] border-amber-600/70 hover:border-amber-400',
+        textAccent: 'text-amber-400',
+        barFill: 'bg-amber-500',
+        glow: 'shadow-amber-950/60',
+      };
+    } else {
+      return {
+        tier: 'LAGGING',
+        badgeColor: 'bg-rose-500/20 text-rose-300 border-rose-500/40',
+        cardBg: 'bg-[#260a10] border-rose-600/70 hover:border-rose-400',
+        textAccent: 'text-rose-400',
+        barFill: 'bg-rose-500',
+        glow: 'shadow-rose-950/60',
+      };
+    }
+  };
 
   return (
     <div className="bg-white border border-[#e5e4e1] p-6 shadow-xs space-y-6">
@@ -200,7 +431,8 @@ export const SectorCorrelationLeadershipCard: React.FC<SectorCorrelationLeadersh
             </span>
           </div>
           <p className="text-xs text-gray-600 font-sans">
-            Evaluates Pearson Correlation Coefficient ($r$), Beta sensitivity ($\beta$), and excess return alpha ($\alpha$) against sector benchmark <strong className="font-mono text-black">{benchmarkEtf.symbol} ({benchmarkEtf.name})</strong> to confirm true institutional trend leadership.
+            Evaluates Pearson Correlation Coefficient ($r$), Beta sensitivity ($\beta$), and excess return alpha ($\alpha$)
+            against sector benchmark <strong className="font-mono text-black">{benchmarkEtf.symbol} ({benchmarkEtf.name})</strong> to confirm true institutional trend leadership.
           </p>
         </div>
 
@@ -281,17 +513,13 @@ export const SectorCorrelationLeadershipCard: React.FC<SectorCorrelationLeadersh
             </div>
           </div>
 
-          <p className="text-[11px] font-bold font-sans line-clamp-1">
-            {correlationInfo.label}
-          </p>
+          <p className="text-[11px] font-bold font-sans line-clamp-1">{correlationInfo.label}</p>
         </div>
 
         {/* KPI 2: Sector ETF Benchmark Profile */}
         <div className="p-4 bg-gray-50 border border-gray-200 space-y-2 font-mono">
           <div className="flex justify-between items-start text-xs">
-            <span className="text-gray-500 font-bold uppercase text-[10px]">
-              Sector Index ETF
-            </span>
+            <span className="text-gray-500 font-bold uppercase text-[10px]">Sector Index ETF</span>
             <Compass className="w-4 h-4 text-gray-500" />
           </div>
 
@@ -308,7 +536,8 @@ export const SectorCorrelationLeadershipCard: React.FC<SectorCorrelationLeadersh
             <div>
               <span className="text-gray-500 text-[10px]">1D Chg: </span>
               <strong className={benchmarkEtf.changePercent >= 0 ? 'text-emerald-700' : 'text-rose-600'}>
-                {benchmarkEtf.changePercent >= 0 ? '+' : ''}{benchmarkEtf.changePercent}%
+                {benchmarkEtf.changePercent >= 0 ? '+' : ''}
+                {benchmarkEtf.changePercent}%
               </strong>
             </div>
           </div>
@@ -321,9 +550,7 @@ export const SectorCorrelationLeadershipCard: React.FC<SectorCorrelationLeadersh
         {/* KPI 3: Stock vs Sector Beta & Excess Alpha */}
         <div className="p-4 bg-gray-50 border border-gray-200 space-y-2 font-mono">
           <div className="flex justify-between items-start text-xs">
-            <span className="text-gray-500 font-bold uppercase text-[10px]">
-              Beta ($\beta$) & Alpha ($\alpha$)
-            </span>
+            <span className="text-gray-500 font-bold uppercase text-[10px]">Beta ($\beta$) & Alpha ($\alpha$)</span>
             <Zap className="w-4 h-4 text-amber-500" />
           </div>
 
@@ -407,6 +634,386 @@ export const SectorCorrelationLeadershipCard: React.FC<SectorCorrelationLeadersh
         </div>
       </div>
 
+      {/* FEATURE 1 & 2: VISUAL TREND HEATMAP & RS MOMENTUM (3M vs 6M) SECTION */}
+      <div className="bg-[#0b0e14] border border-[#1e2330] p-5 space-y-4 text-white">
+        {/* Heatmap Section Header & Controls */}
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-gray-800 pb-3">
+          <div className="space-y-1">
+            <div className="flex items-center space-x-2">
+              <Flame className="w-5 h-5 text-amber-500 animate-pulse" />
+              <h4 className="text-sm font-serif font-black uppercase tracking-wider text-white">
+                Sector Trend Heatmap & RS Momentum Matrix
+              </h4>
+              <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-mono px-2 py-0.5 font-bold uppercase">
+                3M vs 6M Momentum
+              </span>
+            </div>
+            <p className="text-xs text-gray-400 font-sans">
+              Color-coded by the <strong className="text-gray-200">average RS rating of top-performing stocks</strong> in each sector. Compares 3-Month ($RS_{'{3M}'}$) against 6-Month ($RS_{'{6M}'}$) relative strength trends to pinpoint sectors <strong className="text-emerald-400">gaining</strong> versus <strong className="text-rose-400">losing</strong> institutional momentum.
+            </p>
+          </div>
+
+          {/* Quick Filters and View Mode Switcher */}
+          <div className="flex flex-wrap items-center gap-2 text-xs font-mono">
+            {/* Filter Buttons */}
+            <div className="inline-flex border border-gray-800 bg-[#121620] p-0.5">
+              {(
+                [
+                  { id: 'ALL', label: `All (${sectorMetricsList.length})` },
+                  { id: 'GAINING', label: `Gaining (${gainingCount})` },
+                  { id: 'LOSING', label: `Losing (${losingCount})` },
+                  { id: 'ELITE', label: `Elite 85+ (${eliteCount})` },
+                ] as const
+              ).map((f) => (
+                <button
+                  key={f.id}
+                  onClick={() => setMomentumFilter(f.id)}
+                  className={`px-2.5 py-1 text-[10px] font-bold uppercase transition-all cursor-pointer ${
+                    momentumFilter === f.id
+                      ? 'bg-amber-600 text-white font-black'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+
+            {/* View Mode Toggle: Heatmap Grid vs Table Matrix */}
+            <div className="inline-flex border border-gray-800 bg-[#121620] p-0.5">
+              <button
+                onClick={() => setHeatmapViewMode('HEATMAP')}
+                className={`flex items-center space-x-1 px-2.5 py-1 text-[10px] font-bold uppercase cursor-pointer ${
+                  heatmapViewMode === 'HEATMAP' ? 'bg-[#1e2535] text-amber-300' : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                <Grid className="w-3 h-3" />
+                <span>Heatmap</span>
+              </button>
+              <button
+                onClick={() => setHeatmapViewMode('TABLE')}
+                className={`flex items-center space-x-1 px-2.5 py-1 text-[10px] font-bold uppercase cursor-pointer ${
+                  heatmapViewMode === 'TABLE' ? 'bg-[#1e2535] text-amber-300' : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                <SlidersHorizontal className="w-3 h-3" />
+                <span>RS Momentum Table</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Heatmap Legend Bar & Statistical Overview */}
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-[#11151f] p-2.5 border border-gray-800 text-xs font-mono">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Top Stocks RS Scale:</span>
+            <div className="flex items-center space-x-1 text-[10px]">
+              <span className="w-2.5 h-2.5 bg-emerald-500 inline-block border border-emerald-300" />
+              <span className="text-emerald-300 font-bold">Elite (85+)</span>
+            </div>
+            <div className="flex items-center space-x-1 text-[10px]">
+              <span className="w-2.5 h-2.5 bg-cyan-500 inline-block border border-cyan-300" />
+              <span className="text-cyan-300 font-bold">Strong (75-84)</span>
+            </div>
+            <div className="flex items-center space-x-1 text-[10px]">
+              <span className="w-2.5 h-2.5 bg-amber-500 inline-block border border-amber-300" />
+              <span className="text-amber-300 font-bold">Moderate (65-74)</span>
+            </div>
+            <div className="flex items-center space-x-1 text-[10px]">
+              <span className="w-2.5 h-2.5 bg-rose-500 inline-block border border-rose-300" />
+              <span className="text-rose-300 font-bold">Lagging (&lt;65)</span>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-3 text-[10px] text-gray-400">
+            <span>
+              Gaining RS Ratio: <strong className="text-emerald-400">{gainingCount}</strong> / {sectorMetricsList.length} Sectors
+            </span>
+            <span className="text-gray-600">|</span>
+            <span>
+              Active Sector: <strong className="text-amber-400">{benchmarkEtf.sectorName} ({benchmarkEtf.symbol})</strong>
+            </span>
+          </div>
+        </div>
+
+        {/* VIEW 1: VISUAL TREND HEATMAP GRID */}
+        {heatmapViewMode === 'HEATMAP' ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
+            {filteredSectorMetrics.map((sec) => {
+              const styles = getHeatmapColorStyles(sec.topStocksAvgRs);
+              const isSelectedSector =
+                normalizeSectorName(sec.sectorKey).toLowerCase() === normalizeSectorName(activeEtfKey).toLowerCase();
+
+              return (
+                <div
+                  key={sec.sectorKey}
+                  onClick={() => setOverrideEtfKey(sec.sectorKey)}
+                  className={`p-3.5 border transition-all cursor-pointer relative font-mono flex flex-col justify-between ${
+                    styles.cardBg
+                  } ${styles.glow} ${
+                    isSelectedSector ? 'ring-2 ring-amber-400 ring-offset-2 ring-offset-[#0b0e14]' : ''
+                  }`}
+                >
+                  {/* Sector Header */}
+                  <div className="space-y-1">
+                    <div className="flex items-start justify-between">
+                      <div className="space-y-0.5">
+                        <div className="flex items-center space-x-1.5">
+                          <span className="text-xs font-serif font-black text-white uppercase tracking-wide truncate max-w-[150px]">
+                            {sec.sectorName}
+                          </span>
+                          {isSelectedSector && (
+                            <span className="bg-amber-400 text-black text-[9px] px-1 font-bold uppercase">
+                              Active
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center space-x-1.5 text-[10px] text-gray-400">
+                          <span className="font-bold text-gray-300">{sec.symbol}</span>
+                          <span>•</span>
+                          <span>{sec.stage}</span>
+                        </div>
+                      </div>
+
+                      {/* Tier Badge */}
+                      <span className={`text-[9px] px-1.5 py-0.5 font-bold uppercase ${styles.badgeColor}`}>
+                        {styles.tier}
+                      </span>
+                    </div>
+
+                    {/* Top Performers Avg RS Score & Gauge */}
+                    <div className="pt-2">
+                      <div className="flex items-baseline justify-between">
+                        <span className="text-[10px] text-gray-400 uppercase tracking-wider">Top Stocks Avg RS:</span>
+                        <div className="flex items-baseline space-x-1">
+                          <span className={`text-2xl font-black ${styles.textAccent}`}>
+                            {sec.topStocksAvgRs}
+                          </span>
+                          <span className="text-[10px] text-gray-400">RS</span>
+                        </div>
+                      </div>
+
+                      {/* Mini Progress Gauge */}
+                      <div className="w-full h-1.5 bg-gray-900 border border-gray-800 mt-1 overflow-hidden">
+                        <div
+                          className={`h-full ${styles.barFill} transition-all duration-500`}
+                          style={{ width: `${Math.min(100, Math.max(5, sec.topStocksAvgRs))}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* RS Momentum (3M vs 6M) Indicator Card */}
+                  <div className="pt-2.5 mt-2.5 border-t border-gray-800/80 space-y-1.5">
+                    <div className="flex items-center justify-between text-[10px]">
+                      <span className="text-gray-400 uppercase font-bold text-[9px]">RS Momentum:</span>
+                      {sec.momentumStatus === 'GAINING' ? (
+                        <span className="inline-flex items-center space-x-1 text-emerald-400 font-bold bg-emerald-950/70 border border-emerald-500/30 px-1.5 py-0.5">
+                          <ArrowUpRight className="w-3 h-3 text-emerald-400" />
+                          <span>+{sec.rsMomentumDelta} pts</span>
+                          <span className="text-[8px] uppercase tracking-wider text-emerald-300">Gaining</span>
+                        </span>
+                      ) : sec.momentumStatus === 'LOSING' ? (
+                        <span className="inline-flex items-center space-x-1 text-rose-400 font-bold bg-rose-950/70 border border-rose-500/30 px-1.5 py-0.5">
+                          <ArrowDownRight className="w-3 h-3 text-rose-400" />
+                          <span>{sec.rsMomentumDelta} pts</span>
+                          <span className="text-[8px] uppercase tracking-wider text-rose-300">Losing</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center space-x-1 text-amber-300 font-bold bg-amber-950/70 border border-amber-500/30 px-1.5 py-0.5">
+                          <ArrowRight className="w-3 h-3 text-amber-400" />
+                          <span>{sec.rsMomentumDelta >= 0 ? `+${sec.rsMomentumDelta}` : sec.rsMomentumDelta} pts</span>
+                          <span className="text-[8px] uppercase tracking-wider text-amber-200">Steady</span>
+                        </span>
+                      )}
+                    </div>
+
+                    {/* 3M vs 6M Detailed Ratings */}
+                    <div className="flex items-center justify-between text-[9px] text-gray-400 bg-black/40 px-2 py-1 border border-gray-800">
+                      <div>
+                        <span className="text-gray-500">3-Month RS: </span>
+                        <strong className="text-white font-bold">{sec.avgRs3M}</strong>
+                      </div>
+                      <span className="text-gray-600">vs</span>
+                      <div>
+                        <span className="text-gray-500">6-Month RS: </span>
+                        <strong className="text-white font-bold">{sec.avgRs6M}</strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Top Constituent Leader Stock Chips */}
+                  <div className="pt-2 mt-2 border-t border-gray-800/80">
+                    <span className="text-[9px] text-gray-400 uppercase tracking-wider block mb-1">
+                      Top Leaders ({sec.topStocks.length}):
+                    </span>
+                    <div className="flex flex-wrap gap-1">
+                      {sec.topStocks.length > 0 ? (
+                        sec.topStocks.map((leader) => (
+                          <button
+                            key={leader.ticker}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (onSelectStock) onSelectStock(leader);
+                            }}
+                            title={`Select ${leader.ticker} (${leader.name})`}
+                            className="inline-flex items-center space-x-1 px-1.5 py-0.5 bg-[#141a24] hover:bg-amber-600 hover:text-white border border-gray-700 text-[10px] text-gray-200 font-bold transition-all cursor-pointer"
+                          >
+                            <span>{leader.ticker}</span>
+                            <span className="text-[8px] text-amber-400 font-mono font-black">
+                              {leader.rsRating}
+                            </span>
+                          </button>
+                        ))
+                      ) : (
+                        <span className="text-[9px] text-gray-500 italic">ETF proxy benchmark</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          /* VIEW 2: RS MOMENTUM MATRIX TABLE (ALL SECTORS COMPARISON) */
+          <div className="overflow-x-auto border border-gray-800 bg-[#0f131c]">
+            <table className="w-full text-left text-xs font-mono">
+              <thead>
+                <tr className="bg-[#151a27] text-gray-400 border-b border-gray-800 uppercase text-[10px]">
+                  <th className="p-2.5">Sector & Benchmark ETF</th>
+                  <th className="p-2.5 text-center">Top Stocks Avg RS</th>
+                  <th className="p-2.5 text-center">3-Month RS ($RS_{'{3M}'}$)</th>
+                  <th className="p-2.5 text-center">6-Month RS ($RS_{'{6M}'}$)</th>
+                  <th className="p-2.5 text-center bg-gray-900/80 border-x border-gray-800 text-amber-300 font-bold">
+                    RS Momentum (3M vs 6M)
+                  </th>
+                  <th className="p-2.5 text-center">Trend Status</th>
+                  <th className="p-2.5">Top-Performing Leaders</th>
+                  <th className="p-2.5 text-center">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-800/80 text-gray-300">
+                {filteredSectorMetrics.map((sec) => {
+                  const styles = getHeatmapColorStyles(sec.topStocksAvgRs);
+                  const isSelectedSector =
+                    normalizeSectorName(sec.sectorKey).toLowerCase() === normalizeSectorName(activeEtfKey).toLowerCase();
+
+                  return (
+                    <tr
+                      key={sec.sectorKey}
+                      className={`hover:bg-[#182030] transition-all ${
+                        isSelectedSector ? 'bg-[#182338] border-l-4 border-amber-500' : ''
+                      }`}
+                    >
+                      {/* Sector & ETF */}
+                      <td className="p-2.5">
+                        <div className="flex items-center space-x-2">
+                          <span className="bg-black text-amber-400 px-1.5 py-0.5 font-bold text-[10px] border border-gray-800">
+                            {sec.symbol}
+                          </span>
+                          <div>
+                            <div className="font-bold text-white text-xs">{sec.sectorName}</div>
+                            <div className="text-[10px] text-gray-500 font-sans">{sec.stage}</div>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Top Stocks Avg RS */}
+                      <td className="p-2.5 text-center">
+                        <span className={`text-xs px-2 py-0.5 font-bold border ${styles.badgeColor}`}>
+                          {sec.topStocksAvgRs} RS
+                        </span>
+                      </td>
+
+                      {/* 3M RS */}
+                      <td className="p-2.5 text-center font-bold text-gray-200">{sec.avgRs3M}</td>
+
+                      {/* 6M RS */}
+                      <td className="p-2.5 text-center text-gray-400">{sec.avgRs6M}</td>
+
+                      {/* RS Momentum Column (3M vs 6M Comparison) */}
+                      <td className="p-2.5 text-center bg-gray-900/60 border-x border-gray-800">
+                        {sec.momentumStatus === 'GAINING' ? (
+                          <div className="inline-flex items-center space-x-1.5 bg-emerald-950/70 border border-emerald-500/40 px-2 py-0.5 text-emerald-300 font-bold text-[11px]">
+                            <ArrowUpRight className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>+{sec.rsMomentumDelta} pts</span>
+                            <span className="text-[9px] uppercase tracking-wider text-emerald-400">Gaining Strength</span>
+                          </div>
+                        ) : sec.momentumStatus === 'LOSING' ? (
+                          <div className="inline-flex items-center space-x-1.5 bg-rose-950/70 border border-rose-500/40 px-2 py-0.5 text-rose-300 font-bold text-[11px]">
+                            <ArrowDownRight className="w-3.5 h-3.5 text-rose-400" />
+                            <span>{sec.rsMomentumDelta} pts</span>
+                            <span className="text-[9px] uppercase tracking-wider text-rose-400">Losing Strength</span>
+                          </div>
+                        ) : (
+                          <div className="inline-flex items-center space-x-1.5 bg-amber-950/70 border border-amber-500/40 px-2 py-0.5 text-amber-200 font-bold text-[11px]">
+                            <ArrowRight className="w-3.5 h-3.5 text-amber-400" />
+                            <span>{sec.rsMomentumDelta >= 0 ? `+${sec.rsMomentumDelta}` : sec.rsMomentumDelta} pts</span>
+                            <span className="text-[9px] uppercase tracking-wider text-amber-300">Steady</span>
+                          </div>
+                        )}
+                      </td>
+
+                      {/* Trend Status */}
+                      <td className="p-2.5 text-center">
+                        <span
+                          className={`text-[10px] px-2 py-0.5 font-bold uppercase ${
+                            sec.momentumStatus === 'GAINING'
+                              ? 'text-emerald-400 bg-emerald-950/50 border border-emerald-500/30'
+                              : sec.momentumStatus === 'LOSING'
+                              ? 'text-rose-400 bg-rose-950/50 border border-rose-500/30'
+                              : 'text-amber-300 bg-amber-950/50 border border-amber-500/30'
+                          }`}
+                        >
+                          {sec.momentumStatus === 'GAINING'
+                            ? 'ACCELERATING'
+                            : sec.momentumStatus === 'LOSING'
+                            ? 'WANING'
+                            : 'NEUTRAL'}
+                        </span>
+                      </td>
+
+                      {/* Top Leaders */}
+                      <td className="p-2.5">
+                        <div className="flex flex-wrap gap-1">
+                          {sec.topStocks.length > 0 ? (
+                            sec.topStocks.map((leader) => (
+                              <button
+                                key={leader.ticker}
+                                onClick={() => onSelectStock && onSelectStock(leader)}
+                                className="px-1.5 py-0.5 bg-[#141a24] hover:bg-amber-600 hover:text-white border border-gray-700 text-[10px] text-gray-200 font-bold transition-all cursor-pointer"
+                              >
+                                {leader.ticker} ({leader.rsRating})
+                              </button>
+                            ))
+                          ) : (
+                            <span className="text-[10px] text-gray-500 italic">No watchlist setups</span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Action */}
+                      <td className="p-2.5 text-center">
+                        <button
+                          onClick={() => setOverrideEtfKey(sec.sectorKey)}
+                          className={`px-2 py-1 text-[10px] font-bold uppercase transition-all cursor-pointer ${
+                            isSelectedSector
+                              ? 'bg-amber-500 text-black font-black'
+                              : 'bg-gray-800 hover:bg-gray-700 text-gray-300'
+                          }`}
+                        >
+                          {isSelectedSector ? 'Current' : 'Select'}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
       {/* Middle Section: Dual Line Comparison Chart (Stock vs Sector ETF Index) */}
       <div className="bg-gray-50 border border-gray-200 p-4 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 pb-2">
@@ -420,11 +1027,17 @@ export const SectorCorrelationLeadershipCard: React.FC<SectorCorrelationLeadersh
           <div className="flex items-center space-x-4 text-xs font-mono">
             <div className="flex items-center space-x-1.5">
               <div className="w-3 h-3 bg-amber-500 border border-amber-600" />
-              <span className="font-bold text-black">{stock.ticker} Cumulative ({stockTotalReturn >= 0 ? '+' : ''}{stockTotalReturn}%)</span>
+              <span className="font-bold text-black">
+                {stock.ticker} Cumulative ({stockTotalReturn >= 0 ? '+' : ''}
+                {stockTotalReturn}%)
+              </span>
             </div>
             <div className="flex items-center space-x-1.5">
               <div className="w-3 h-3 bg-sky-600 border border-sky-700" />
-              <span className="font-bold text-gray-700">{benchmarkEtf.symbol} ETF ({etfTotalReturn >= 0 ? '+' : ''}{etfTotalReturn}%)</span>
+              <span className="font-bold text-gray-700">
+                {benchmarkEtf.symbol} ETF ({etfTotalReturn >= 0 ? '+' : ''}
+                {etfTotalReturn}%)
+              </span>
             </div>
           </div>
         </div>
@@ -433,13 +1046,7 @@ export const SectorCorrelationLeadershipCard: React.FC<SectorCorrelationLeadersh
         <div className="h-64 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={chartData} margin={{ top: 10, right: 20, left: -10, bottom: 0 }}>
-              <XAxis
-                dataKey="date"
-                stroke="#6b7280"
-                fontSize={10}
-                tickLine={false}
-                axisLine={{ stroke: '#d1d5db' }}
-              />
+              <XAxis dataKey="date" stroke="#6b7280" fontSize={10} tickLine={false} axisLine={{ stroke: '#d1d5db' }} />
               <YAxis
                 stroke="#6b7280"
                 fontSize={10}
@@ -447,7 +1054,9 @@ export const SectorCorrelationLeadershipCard: React.FC<SectorCorrelationLeadersh
                 tickLine={false}
                 axisLine={{ stroke: '#d1d5db' }}
               />
-              <Tooltip content={<CustomCorrelationTooltip stockTicker={stock.ticker} etfSymbol={benchmarkEtf.symbol} />} />
+              <Tooltip
+                content={<CustomCorrelationTooltip stockTicker={stock.ticker} etfSymbol={benchmarkEtf.symbol} />}
+              />
               <ReferenceLine y={0} stroke="#9ca3af" strokeDasharray="3 3" />
               <Line
                 type="monotone"
@@ -484,7 +1093,7 @@ export const SectorCorrelationLeadershipCard: React.FC<SectorCorrelationLeadersh
               </h4>
             </div>
             <span className="text-[10px] text-gray-500 font-sans italic">
-              Comparing RS, Beta, and $r$ across peer setups
+              Comparing RS, RS Momentum (3M vs 6M), Beta, and $r$ across peer setups
             </span>
           </div>
 
@@ -494,6 +1103,10 @@ export const SectorCorrelationLeadershipCard: React.FC<SectorCorrelationLeadersh
                 <tr className="bg-gray-100 text-gray-600 border-b border-gray-200 uppercase text-[10px]">
                   <th className="p-2">Ticker / Name</th>
                   <th className="p-2 text-center">RS Rating</th>
+                  {/* RS Momentum column requested */}
+                  <th className="p-2 text-center bg-amber-50/80 text-amber-900 border-x border-amber-200">
+                    RS Momentum (3M vs 6M)
+                  </th>
                   <th className="p-2 text-center">Correlation ($r$)</th>
                   <th className="p-2 text-center">Beta ($\beta$)</th>
                   <th className="p-2 text-right">1D Change %</th>
@@ -517,6 +1130,31 @@ export const SectorCorrelationLeadershipCard: React.FC<SectorCorrelationLeadersh
                     <span className="bg-amber-600 text-white text-[10px] px-1.5 py-0.5 font-bold">
                       {stock.rsRating} RS
                     </span>
+                  </td>
+                  {/* Active Stock RS Momentum */}
+                  <td className="p-2 text-center bg-amber-50/90 border-x border-amber-200">
+                    <div className="inline-flex flex-col items-center">
+                      <span
+                        className={`text-[10px] font-bold px-1.5 py-0.5 border ${
+                          activeStockMomentum.delta >= 3
+                            ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                            : activeStockMomentum.delta <= -3
+                            ? 'bg-rose-100 text-rose-800 border-rose-300'
+                            : 'bg-amber-100 text-amber-800 border-amber-300'
+                        }`}
+                      >
+                        {activeStockMomentum.delta >= 0 ? `+${activeStockMomentum.delta}` : activeStockMomentum.delta}{' '}
+                        pts{' '}
+                        {activeStockMomentum.delta >= 3
+                          ? '↗ Gaining'
+                          : activeStockMomentum.delta <= -3
+                          ? '↘ Losing'
+                          : '→ Steady'}
+                      </span>
+                      <span className="text-[9px] text-gray-500 font-sans mt-0.5">
+                        3M: {activeStockMomentum.rs3M} | 6M: {activeStockMomentum.rs6M}
+                      </span>
+                    </div>
                   </td>
                   <td className="p-2 text-center font-bold text-amber-900">
                     +{correlationR.toFixed(2)}
@@ -543,6 +1181,8 @@ export const SectorCorrelationLeadershipCard: React.FC<SectorCorrelationLeadersh
                     const peerReturns = deriveStockDailyReturns(peer);
                     const peerR = calculatePearsonCorrelation(peerReturns, etfReturns);
                     const peerBeta = calculateBeta(peerReturns, etfReturns);
+                    const peerMomentum = computeStockRsMomentum(peer);
+
                     return (
                       <tr
                         key={peer.ticker}
@@ -568,6 +1208,30 @@ export const SectorCorrelationLeadershipCard: React.FC<SectorCorrelationLeadersh
                             {peer.rsRating} RS
                           </span>
                         </td>
+                        {/* Peer RS Momentum */}
+                        <td className="p-2 text-center bg-gray-50/50 border-x border-gray-200">
+                          <div className="inline-flex flex-col items-center">
+                            <span
+                              className={`text-[10px] font-bold px-1.5 py-0.5 border ${
+                                peerMomentum.delta >= 3
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                  : peerMomentum.delta <= -3
+                                  ? 'bg-rose-50 text-rose-700 border-rose-200'
+                                  : 'bg-gray-100 text-gray-700 border-gray-200'
+                              }`}
+                            >
+                              {peerMomentum.delta >= 0 ? `+${peerMomentum.delta}` : peerMomentum.delta} pts{' '}
+                              {peerMomentum.delta >= 3
+                                ? '↗ Gaining'
+                                : peerMomentum.delta <= -3
+                                ? '↘ Losing'
+                                : '→ Steady'}
+                            </span>
+                            <span className="text-[9px] text-gray-400 font-sans mt-0.5">
+                              3M: {peerMomentum.rs3M} | 6M: {peerMomentum.rs6M}
+                            </span>
+                          </div>
+                        </td>
                         <td className="p-2 text-center text-gray-700">
                           {peerR >= 0 ? `+${peerR.toFixed(2)}` : peerR.toFixed(2)}
                         </td>
@@ -590,7 +1254,7 @@ export const SectorCorrelationLeadershipCard: React.FC<SectorCorrelationLeadersh
                   })
                 ) : (
                   <tr>
-                    <td colSpan={6} className="p-4 text-center text-gray-400 font-sans italic">
+                    <td colSpan={7} className="p-4 text-center text-gray-400 font-sans italic">
                       No other setups in {stock.sector} sector currently loaded in watchlists.
                     </td>
                   </tr>
@@ -609,14 +1273,14 @@ export const SectorCorrelationLeadershipCard: React.FC<SectorCorrelationLeadersh
             </div>
 
             <p className="text-[11px] font-sans text-gray-300 leading-relaxed">
-              In SEPA trading, <strong className="text-white">industry sector confirmation is mandatory</strong>. True market leaders hold high Relative Strength ($RS &ge; 85$) AND demonstrate high sector synchrony ($r &ge; 0.50$).
+              In SEPA trading, <strong className="text-white">industry sector confirmation is mandatory</strong>. True market leaders hold high Relative Strength ($RS \ge 85$) AND demonstrate high sector synchrony ($r \ge 0.50$).
             </p>
 
             <div className="bg-gray-900/90 p-2.5 border border-amber-500/30 space-y-1.5 text-[10px]">
               <div className="text-amber-300 font-bold uppercase tracking-wider">
-                Actionable Correlation Takeaway:
+                Actionable Correlation & Momentum Takeaway:
               </div>
-              {correlationR >= 0.70 ? (
+              {correlationR >= 0.7 ? (
                 <p className="text-gray-300 font-sans">
                   ✅ <strong className="text-emerald-300">High Synergy ($r = +{correlationR.toFixed(2)})$</strong>: {stock.ticker} is riding a strong institutional sector wave in {benchmarkEtf.sectorName}. High probability of explosive follow-through upon pivot breakout.
                 </p>
@@ -629,6 +1293,17 @@ export const SectorCorrelationLeadershipCard: React.FC<SectorCorrelationLeadersh
                   ⚠️ <strong className="text-sky-300">Decoupled Outperformer ($r = +{correlationR.toFixed(2)})$</strong>: Moving independently of {benchmarkEtf.symbol}. Ensure strict stop loss as sector tailwinds are absent.
                 </p>
               )}
+            </div>
+
+            {/* SEPA RS Momentum Rule Box */}
+            <div className="bg-[#0b1019] p-2.5 border border-cyan-500/30 space-y-1 text-[10px]">
+              <div className="text-cyan-300 font-bold uppercase tracking-wider flex items-center space-x-1">
+                <Sparkles className="w-3 h-3 text-cyan-400" />
+                <span>3M vs 6M RS Momentum Rule:</span>
+              </div>
+              <p className="text-gray-300 font-sans leading-relaxed">
+                When a sector’s 3-Month RS exceeds its 6-Month RS ($RS_{'{3M}'} &gt; RS_{'{6M}'}$), institutions are actively accumulating the group. Rotate capital into sectors labeled <strong className="text-emerald-300">GAINING STRENGTH</strong>.
+              </p>
             </div>
           </div>
 
@@ -648,21 +1323,30 @@ const CustomCorrelationTooltip = ({ active, payload, label, stockTicker, etfSymb
     return (
       <div className="bg-[#10141d] border border-amber-500/50 p-3 text-white text-xs font-mono shadow-xl space-y-1.5">
         <div className="text-amber-400 font-bold text-[11px] border-b border-gray-800 pb-1 flex justify-between">
-          <span>{data.date} ({data.day})</span>
+          <span>
+            {data.date} ({data.day})
+          </span>
           <span className="text-gray-400 font-normal text-[10px]">Cumulative Returns</span>
         </div>
         <div className="flex justify-between space-x-4">
           <span className="text-amber-300 font-bold">{stockTicker}:</span>
-          <span className="font-bold">{data.stockCum >= 0 ? '+' : ''}{data.stockCum}%</span>
+          <span className="font-bold">
+            {data.stockCum >= 0 ? '+' : ''}
+            {data.stockCum}%
+          </span>
         </div>
         <div className="flex justify-between space-x-4">
           <span className="text-sky-300 font-bold">{etfSymbol}:</span>
-          <span className="font-bold">{data.etfCum >= 0 ? '+' : ''}{data.etfCum}%</span>
+          <span className="font-bold">
+            {data.etfCum >= 0 ? '+' : ''}
+            {data.etfCum}%
+          </span>
         </div>
         <div className="flex justify-between space-x-4 pt-1 border-t border-gray-800 text-[10px]">
           <span className="text-gray-400">Excess Alpha Gap:</span>
           <span className={`font-bold ${data.alphaGap >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-            {data.alphaGap >= 0 ? '+' : ''}{data.alphaGap}%
+            {data.alphaGap >= 0 ? '+' : ''}
+            {data.alphaGap}%
           </span>
         </div>
       </div>
