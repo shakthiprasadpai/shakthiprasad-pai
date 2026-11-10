@@ -703,10 +703,35 @@ export interface ChromeExtensionConfig {
 // 5PAISA TRADING ACCOUNT TYPES
 // ---------------------------------------------------------------------------
 export interface FivePaisaCredentials {
+  clientCode?: string;
+  userId?: string;
+  userKey?: string;
+  password?: string;
+  encryptionKey?: string;
   appName?: string;
   appSource?: string;
   accessToken?: string;
   isSimulated?: boolean;
+  lastConnectedAt?: string;
+}
+
+export interface DailyScanPivotAlertPayload {
+  ticker: string;
+  stockName: string;
+  exchange: string;
+  currentPrice: number;
+  pivotPrice: number;
+  buyZoneMax: number;
+  distanceToPivotPct: number;
+  sourceType: '5PAISA_HOLDING' | 'STAGE_2_SETUP' | 'WATCHLIST_BREAKOUT';
+  holdingShares?: number;
+  holdingPnl?: number;
+  vcpStage?: string;
+  patternType?: string;
+  rsRating: number;
+  volumeDryUpPercent?: number;
+  triggeredAt: string;
+  actionGuidance: string;
 }
 
 export interface FivePaisaAccountMargin {
@@ -801,4 +826,69 @@ export interface FivePaisaAccountStatus {
   brokerName: string;
 }
 
+// Sector Volatility vs Broader Market Alert Types
+export type SectorVolCrossoverType = 'SURGE_ABOVE_THRESHOLD' | 'COMPRESSION_BELOW_THRESHOLD';
 
+export interface SectorVolatilityMetric {
+  sector: string;
+  stockCount: number;
+  avgSectorHvAnnualized: number; // e.g. 26.5%
+  marketBenchmark: 'NIFTY 50' | 'S&P 500 (SPY)';
+  marketHvAnnualized: number; // e.g. 14.8%
+  relativeVolatilityRatio: number; // e.g. 1.79x
+  avgVolatilityRank: number; // 1 - 99
+  volatilityTier: 'LOW_VOL' | 'MODERATE_VOL' | 'HIGH_VOL' | 'EXTREME_VOL';
+  highestVolStock: {
+    ticker: string;
+    name: string;
+    hvAnnualized: number;
+    volatilityRank: number;
+    currentPrice: number;
+  };
+  lowestVolStock: {
+    ticker: string;
+    name: string;
+    hvAnnualized: number;
+    volatilityRank: number;
+    currentPrice: number;
+  };
+  avgChangePercent: number;
+  avgDryUpPercent: number;
+  isThresholdCrossed: boolean;
+}
+
+export interface SectorVolatilityAlertSettings {
+  enabled: boolean;
+  comparisonMode: 'RATIO_VS_MARKET' | 'VOLATILITY_RANK';
+  ratioThreshold: number; // e.g. 1.50 (1.50x broader market HV)
+  rankThreshold: number; // e.g. 70 (out of 99)
+  alertDirection: 'CROSS_ABOVE' | 'CROSS_BELOW' | 'BOTH';
+  soundAlert: boolean;
+  browserNotification: boolean;
+  cooldownMinutes: number;
+}
+
+export interface SectorVolatilityAlertPayload {
+  id: string;
+  sector: string;
+  avgVolatilityRank: number;
+  relativeVolatilityRatio: number;
+  marketBenchmark: string;
+  marketHvAnnualized: number;
+  avgSectorHvAnnualized: number;
+  thresholdValue: number;
+  comparisonMode: 'RATIO_VS_MARKET' | 'VOLATILITY_RANK';
+  crossoverType: SectorVolCrossoverType;
+  triggeredAt: string;
+  stockCount: number;
+  highestVolStock: {
+    ticker: string;
+    name: string;
+    hvAnnualized: number;
+    volatilityRank: number;
+  };
+  topConstituents: string[];
+  sepaRiskPlaybook: string;
+  severity: 'CRITICAL' | 'WARNING' | 'INFO';
+  headline: string;
+}

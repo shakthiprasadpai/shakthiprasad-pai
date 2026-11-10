@@ -77,6 +77,17 @@ export default function App() {
     const handleOpenScanner = () => setIsDailyScanModalOpen(true);
     window.addEventListener('minervini_open_daily_stage2_scanner', handleOpenScanner);
 
+    const handleNavigateTab = (e: Event) => {
+      const customEvt = e as CustomEvent<{ tab: AppNavTab; stock?: MinerviniTradeSetup }>;
+      if (customEvt.detail?.tab) {
+        setActiveTab(customEvt.detail.tab);
+      }
+      if (customEvt.detail?.stock) {
+        setSelectedStock(customEvt.detail.stock);
+      }
+    };
+    window.addEventListener('minervini_navigate_tab', handleNavigateTab);
+
     // Global keyboard shortcut: Cmd+K / Ctrl+K to toggle Stage 2 Scanner
     const handleKeyDown = (e: KeyboardEvent) => {
       // Check for Cmd+K (Mac) or Ctrl+K (Windows/Linux)
@@ -91,6 +102,7 @@ export default function App() {
 
     return () => {
       window.removeEventListener('minervini_open_daily_stage2_scanner', handleOpenScanner);
+      window.removeEventListener('minervini_navigate_tab', handleNavigateTab);
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, []);
@@ -1346,6 +1358,9 @@ export default function App() {
                 }}
                 onFilterBySector={(sec) => {
                   setActiveTab('screener');
+                }}
+                onNavigateToFivePaisa={() => {
+                  setActiveTab('five_paisa');
                 }}
               />
             </motion.div>

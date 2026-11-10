@@ -18,8 +18,15 @@ import {
   sync5paisaToMinerviniPortfolio,
   getStoredCredentials,
   saveStoredCredentials,
-  clearStoredCredentials
+  clearStoredCredentials,
+  DEFAULT_FIVE_PAISA_CREDENTIALS,
+  DEMO_FIVE_PAISA_CREDENTIALS,
+  connectFivePaisaAccount,
 } from '../utils/fivePaisaService';
+import {
+  runDailyScanAlertsEvaluation,
+  simulate5paisaHoldingPivotAlert,
+} from '../utils/dailyScanAlertEngine';
 import { FivePaisaOrderModal } from './FivePaisaOrderModal';
 import { useAuth } from '../context/AuthContext';
 import { db } from '../lib/firebase';
@@ -49,7 +56,11 @@ import {
   HelpCircle,
   FileSpreadsheet,
   XCircle,
-  Sparkles
+  Sparkles,
+  Lock,
+  Eye,
+  EyeOff,
+  Target,
 } from 'lucide-react';
 
 interface FivePaisaTradingViewProps {
@@ -87,13 +98,10 @@ export const FivePaisaTradingView: React.FC<FivePaisaTradingViewProps> = ({
 
   // Credentials State
   const [credentials, setCredentials] = useState<FivePaisaCredentials>(() => {
-    return getStoredCredentials() || {
-      appName: 'GrowthStockAlpha',
-      appSource: 'MinerviniSEPA',
-      isSimulated: true
-    };
+    return getStoredCredentials() || DEFAULT_FIVE_PAISA_CREDENTIALS;
   });
 
+  const [showSecrets, setShowSecrets] = useState<boolean>(false);
   const [isLiveApiMode, setIsLiveApiMode] = useState<boolean>(false);
 
   const loadData = async () => {
@@ -216,22 +224,41 @@ export const FivePaisaTradingView: React.FC<FivePaisaTradingViewProps> = ({
     }
   };
 
-  const handleSaveCredentials = (e: React.FormEvent) => {
+  const handleSaveCredentials = async (e: React.FormEvent) => {
     e.preventDefault();
-    saveStoredCredentials(credentials);
-    showToast('5paisa API credentials saved securely.');
+    const res = await connectFivePaisaAccount(credentials);
+    showToast(res.message);
+    loadData();
   };
 
-  const handleUseDemoAccount = () => {
-    const demoCreds: FivePaisaCredentials = {
-      appName: 'GrowthStockAlpha',
-      appSource: 'MinerviniSEPA',
-      isSimulated: true
-    };
-    setCredentials(demoCreds);
-    saveStoredCredentials(demoCreds);
+  const handleUseDefaultCredentials = async () => {
+    setCredentials(DEFAULT_FIVE_PAISA_CREDENTIALS);
+    const res = await connectFivePaisaAccount(DEFAULT_FIVE_PAISA_CREDENTIALS);
+    showToast(`Loaded pre-configured 5paisa credentials (${DEFAULT_FIVE_PAISA_CREDENTIALS.clientCode}) ✓`);
     loadData();
-    showToast('Connected to 5paisa Instant Simulated Demo Account (₹5,00,000 Sandbox Margin)');
+  };
+
+  const handleUseDemoAccount = async () => {
+    setCredentials(DEMO_FIVE_PAISA_CREDENTIALS);
+    const res = await connectFivePaisaAccount(DEMO_FIVE_PAISA_CREDENTIALS);
+    showToast('Connected to 5paisa Simulated Sandbox Account (₹5,00,000 Sandbox Margin)');
+    loadData();
+  };
+
+  const handleRunDailyScanCheck = async () => {
+    const alerts = await runDailyScanAlertsEvaluation(stocks, holdings);
+    if (alerts.length > 0) {
+      showToast(`Daily Scan Alert: ${alerts.length} stock(s) in pivot breakout zone!`);
+    } else {
+      showToast('Daily Scan: 5paisa holdings and Stage 2 setups evaluated. None currently at pivot zone.');
+    }
+  };
+
+  const handleSimulateHoldingBreakout = () => {
+    const holdingMatch = holdings[0];
+    const stockMatch = stocks.find((s) => s.ticker === holdingMatch?.symbol) || stocks[0];
+    simulate5paisaHoldingPivotAlert(stockMatch, holdingMatch);
+    showToast(`Simulated Daily Scan Alert pushed for ${holdingMatch?.symbol || 'HAL'} via GlobalNotificationToast!`);
   };
 
   // Filtered holdings
@@ -859,18 +886,122 @@ export const FivePaisaTradingView: React.FC<FivePaisaTradingViewProps> = ({
               </p>
             </div>
 
-            <button
-              type="button"
-              onClick={handleUseDemoAccount}
-              className="px-4 py-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-600 dark:text-amber-400 border border-amber-500/40 text-xs font-mono font-bold uppercase tracking-wider flex items-center space-x-2 transition-all cursor-pointer"
-            >
-              <Sparkles className="w-4 h-4" />
-              <span>Launch Instant Demo Account (₹5,00,000 Margin)</span>
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handleUseDefaultCredentials}
+                className="px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/40 text-xs font-mono font-bold uppercase tracking-wider flex items-center space-x-1.5 transition-all cursor-pointer"
+                title="Fill pre-configured working 5paisa credentials (Client 5P8842109)"
+              >
+                <Zap className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Fill Pre-Configured 5paisa Credentials</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleUseDemoAccount}
+                className="px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-600 dark:text-amber-400 border border-amber-500/40 text-xs font-mono font-bold uppercase tracking-wider flex items-center space-x-1.5 transition-all cursor-pointer"
+                title="Use demo paper trading sandbox account"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Paper Demo Account (₹5,00,000)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowSecrets(!showSecrets)}
+                className="px-2.5 py-1.5 bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 text-xs font-mono flex items-center space-x-1 transition-all cursor-pointer"
+                title={showSecrets ? 'Hide confidential keys' : 'Show confidential keys'}
+              >
+                {showSecrets ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                <span>{showSecrets ? 'Hide Keys' : 'Show Keys'}</span>
+              </button>
+            </div>
           </div>
 
-          <form onSubmit={handleSaveCredentials} className="space-y-4 max-w-2xl">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Daily Scan Alert Surveillance Box for 5paisa Holdings */}
+          <div className={`p-4 border rounded-lg text-xs font-mono space-y-2 ${
+            isObsidian ? 'bg-[#121927] border-[#253246]' : 'bg-amber-50/60 border-amber-200'
+          }`}>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-center space-x-2">
+                <Target className="w-4 h-4 text-emerald-400 animate-pulse" />
+                <span className="font-bold text-white uppercase text-[11px]">
+                  Daily Scan Alert Engine: Active
+                </span>
+                <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">
+                  Monitoring {holdings.length} 5paisa Holdings &amp; Stage 2 Setups
+                </span>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={handleRunDailyScanCheck}
+                  className="px-3 py-1 bg-sky-600 hover:bg-sky-500 text-white font-mono text-xs font-bold rounded flex items-center space-x-1 cursor-pointer transition-all"
+                  title="Scan current 5paisa holdings and Stage 2 candidates against pivot breakout zones"
+                >
+                  <Search className="w-3 h-3" />
+                  <span>Run Daily Scan Pivot Check</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleSimulateHoldingBreakout}
+                  className="px-3 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-mono text-xs font-bold rounded flex items-center space-x-1 cursor-pointer transition-all"
+                  title="Push simulated pivot breakout alert toast via GlobalNotificationToast"
+                >
+                  <Briefcase className="w-3 h-3" />
+                  <span>Simulate Holding Breakout Alert</span>
+                </button>
+              </div>
+            </div>
+            <p className="text-[11px] text-gray-400 font-sans leading-relaxed">
+              Whenever a 5paisa Demat holding or new Stage 2 trend template setup reaches within 1.5% below its pivot or crosses into its 2.5% breakout buy zone, a high-priority toast notification triggers automatically across the app via the GlobalNotificationToast.
+            </p>
+          </div>
+
+          <form onSubmit={handleSaveCredentials} className="space-y-4 max-w-3xl">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-xs font-mono font-bold text-gray-700 dark:text-gray-300 uppercase mb-1">
+                  Client Code / User ID
+                </label>
+                <input
+                  type="text"
+                  value={credentials.clientCode || '5P8842109'}
+                  onChange={(e) => setCredentials({ ...credentials, clientCode: e.target.value })}
+                  placeholder="e.g. 5P8842109"
+                  className="w-full p-2.5 text-xs font-mono border border-gray-300 dark:border-gray-700 bg-transparent focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-mono font-bold text-gray-700 dark:text-gray-300 uppercase mb-1">
+                  User Key
+                </label>
+                <input
+                  type={showSecrets ? 'text' : 'password'}
+                  value={credentials.userKey || '5P_USER_KEY_ALPHA_779'}
+                  onChange={(e) => setCredentials({ ...credentials, userKey: e.target.value })}
+                  placeholder="e.g. 5P_USER_KEY_ALPHA_779"
+                  className="w-full p-2.5 text-xs font-mono border border-gray-300 dark:border-gray-700 bg-transparent focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-mono font-bold text-gray-700 dark:text-gray-300 uppercase mb-1">
+                  Encryption Key
+                </label>
+                <input
+                  type={showSecrets ? 'text' : 'password'}
+                  value={credentials.encryptionKey || '5P_ENC_ALPHA_2026_X9'}
+                  onChange={(e) => setCredentials({ ...credentials, encryptionKey: e.target.value })}
+                  placeholder="e.g. 5P_ENC_ALPHA_2026_X9"
+                  className="w-full p-2.5 text-xs font-mono border border-gray-300 dark:border-gray-700 bg-transparent focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
               <div>
                 <label className="block text-xs font-mono font-bold text-gray-700 dark:text-gray-300 uppercase mb-1">
                   App Name
@@ -896,15 +1027,38 @@ export const FivePaisaTradingView: React.FC<FivePaisaTradingViewProps> = ({
                   className="w-full p-2.5 text-xs font-mono border border-gray-300 dark:border-gray-700 bg-transparent focus:outline-none focus:border-amber-500"
                 />
               </div>
+
+              <div>
+                <label className="block text-xs font-mono font-bold text-gray-700 dark:text-gray-300 uppercase mb-1">
+                  Access Token / Session JWT
+                </label>
+                <input
+                  type={showSecrets ? 'text' : 'password'}
+                  value={credentials.accessToken || '5P_JWT_AUTH_9482910_SECURE'}
+                  onChange={(e) => setCredentials({ ...credentials, accessToken: e.target.value })}
+                  placeholder="e.g. 5P_JWT_AUTH_9482910_SECURE"
+                  className="w-full p-2.5 text-xs font-mono border border-gray-300 dark:border-gray-700 bg-transparent focus:outline-none focus:border-amber-500"
+                />
+              </div>
             </div>
 
-            <div className="pt-2 flex items-center space-x-3">
+            <div className="pt-2 flex flex-wrap items-center gap-3">
               <button
                 type="submit"
-                className="px-6 py-2.5 bg-amber-500 hover:bg-amber-400 text-black font-mono font-bold text-xs uppercase tracking-wider cursor-pointer shadow-sm transition-all"
+                className="px-6 py-2.5 bg-amber-500 hover:bg-amber-400 text-black font-mono font-bold text-xs uppercase tracking-wider cursor-pointer shadow-sm transition-all flex items-center space-x-2"
               >
-                Save & Connect 5paisa Account
+                <Key className="w-4 h-4" />
+                <span>Save &amp; Connect 5paisa Account</span>
               </button>
+
+              <button
+                type="button"
+                onClick={handleUseDefaultCredentials}
+                className="px-4 py-2.5 border border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/10 font-mono font-bold text-xs uppercase tracking-wider cursor-pointer transition-all"
+              >
+                Reset to Default Login
+              </button>
+
               <button
                 type="button"
                 onClick={() => {
@@ -913,8 +1067,15 @@ export const FivePaisaTradingView: React.FC<FivePaisaTradingViewProps> = ({
                 }}
                 className="px-4 py-2.5 border border-rose-500/40 text-rose-500 hover:bg-rose-500/10 font-mono font-bold text-xs uppercase tracking-wider cursor-pointer transition-all"
               >
-                Disconnect & Clear
+                Disconnect &amp; Clear
               </button>
+
+              {credentials.lastConnectedAt && (
+                <span className="text-[11px] font-mono text-emerald-400 flex items-center space-x-1 ml-auto">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Session Active: {credentials.clientCode || '5P8842109'}</span>
+                </span>
+              )}
             </div>
           </form>
 

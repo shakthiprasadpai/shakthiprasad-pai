@@ -27,6 +27,17 @@ import {
   dispatchStage2DailyScanNotification,
 } from '../utils/dailyStage2Scanner';
 import {
+  DailyScanPivotAlertPayload,
+  runDailyScanAlertsEvaluation,
+  simulate5paisaHoldingPivotAlert,
+  simulateStage2BreakoutAlert,
+} from '../utils/dailyScanAlertEngine';
+import {
+  SectorVolatilityAlertPayload,
+  evaluateSectorVolatilityAlerts,
+  simulateSectorVolatilitySurgeAlert,
+} from '../utils/sectorVolatilityAlertEngine';
+import {
   getAudioSettings,
   saveAudioSettings,
   playVolumeSpikeChime,
@@ -63,6 +74,7 @@ import {
   Radio,
   TrendingUp,
   TrendingDown,
+  Layers,
 } from 'lucide-react';
 
 interface GlobalNotificationToastProps {
@@ -92,7 +104,10 @@ export interface ActiveToastNotification {
     | 'STAGE_2_DAILY_SCAN'
     | 'RSI_BULLISH_DIVERGENCE'
     | 'RSI_BEARISH_DIVERGENCE'
-    | 'CHARTLINK_SCAN_ALERT';
+    | 'CHARTLINK_SCAN_ALERT'
+    | 'DAILY_SCAN_PIVOT_BREAKOUT'
+    | 'FIVEPAISA_HOLDING_PIVOT_ALERT'
+    | 'SECTOR_VOLATILITY_ALERT';
   triggeredAt: string;
   isPortfolioHolding?: boolean;
   portfolioHolding?: PortfolioHolding;
@@ -101,6 +116,8 @@ export interface ActiveToastNotification {
   divergencePayload?: SmartMoneyDivergenceAlertPayload;
   stage2ScanPayload?: DailyStage2ScanPayload;
   rsiDivergencePayload?: RsiDivergenceAlertPayload;
+  dailyScanPivotPayload?: DailyScanPivotAlertPayload;
+  sectorVolatilityPayload?: SectorVolatilityAlertPayload;
   chartlinkScanPayload?: {
     scanName: string;
     stocks: string[];
@@ -337,6 +354,69 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
       });
     };
 
+    const handleDailyScanPivotAlert = (e: Event) => {
+      const customEvt = e as CustomEvent<DailyScanPivotAlertPayload>;
+      const payload = customEvt.detail;
+      if (!payload) return;
+
+      const is5p = payload.sourceType === '5PAISA_HOLDING';
+      const alertItem: PriceAlert = {
+        id: `dailyscan-${payload.ticker}-${Date.now()}`,
+        ticker: payload.ticker,
+        stockName: payload.stockName,
+        targetType: 'PIVOT_ENTRY',
+        targetPrice: payload.pivotPrice,
+        triggerProximityPercent: 0,
+        currentPrice: payload.currentPrice,
+        status: 'TRIGGERED',
+        createdAt: new Date().toLocaleDateString(),
+        exchange: (payload.exchange as any) || 'NSE',
+        notes: payload.actionGuidance,
+      };
+
+      setActiveToast({
+        alert: alertItem,
+        previousPrice: payload.pivotPrice * 0.99,
+        currentPrice: payload.currentPrice,
+        crossoverType: is5p ? 'FIVEPAISA_HOLDING_PIVOT_ALERT' : 'DAILY_SCAN_PIVOT_BREAKOUT',
+        triggeredAt: payload.triggeredAt || new Date().toLocaleTimeString(),
+        dailyScanPivotPayload: payload,
+      });
+    };
+
+    const handleSectorVolatilityEvent = (e: Event) => {
+      const customEvt = e as CustomEvent<SectorVolatilityAlertPayload>;
+      const payload = customEvt.detail;
+      if (!payload) return;
+
+      const firstStock =
+        stocksRef.current.find((s) => (s.sector || 'General Market') === payload.sector) ||
+        stocksRef.current[0];
+
+      const alertItem: PriceAlert = {
+        id: payload.id,
+        ticker: payload.sector,
+        stockName: `${payload.sector} Sector Volatility`,
+        targetType: 'VOLATILITY_DRYUP',
+        targetPrice: payload.thresholdValue,
+        triggerProximityPercent: 0,
+        currentPrice: payload.avgSectorHvAnnualized,
+        status: 'TRIGGERED',
+        createdAt: new Date().toLocaleDateString(),
+        exchange: (firstStock?.exchange as any) || 'NSE',
+        notes: payload.headline,
+      };
+
+      setActiveToast({
+        alert: alertItem,
+        previousPrice: payload.marketHvAnnualized,
+        currentPrice: payload.avgSectorHvAnnualized,
+        crossoverType: 'SECTOR_VOLATILITY_ALERT',
+        triggeredAt: payload.triggeredAt || new Date().toLocaleTimeString(),
+        sectorVolatilityPayload: payload,
+      });
+    };
+
     window.addEventListener('minervini_portfolio_updated', handleSync);
     window.addEventListener('minervini_alerts_updated', handleSync);
     window.addEventListener('minervini_major_news_detected', handleMajorNewsEvent);
@@ -345,6 +425,8 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
     window.addEventListener('minervini_stage2_daily_scan_alert', handleStage2DailyScanEvent);
     window.addEventListener('minervini_rsi_divergence_alert', handleRsiDivergenceEvent);
     window.addEventListener('minervini_chartlink_scan_received', handleChartlinkScanEvent);
+    window.addEventListener('minervini_daily_scan_breakout_alert', handleDailyScanPivotAlert);
+    window.addEventListener('minervini_sector_volatility_alert', handleSectorVolatilityEvent);
     window.addEventListener('minervini_audio_settings_updated', handleAudioSettingsUpdate);
     return () => {
       window.removeEventListener('minervini_portfolio_updated', handleSync);
@@ -355,6 +437,8 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
       window.removeEventListener('minervini_stage2_daily_scan_alert', handleStage2DailyScanEvent);
       window.removeEventListener('minervini_rsi_divergence_alert', handleRsiDivergenceEvent);
       window.removeEventListener('minervini_chartlink_scan_received', handleChartlinkScanEvent);
+      window.removeEventListener('minervini_daily_scan_breakout_alert', handleDailyScanPivotAlert);
+      window.removeEventListener('minervini_sector_volatility_alert', handleSectorVolatilityEvent);
       window.removeEventListener('minervini_audio_settings_updated', handleAudioSettingsUpdate);
     };
   }, []);
@@ -369,6 +453,12 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
 
       // Check if scheduled daily scan is due
       checkAndRunScheduledScan(stocksRef.current);
+
+      // Daily Scan Alert System: Monitor 5paisa holdings and Stage 2 setups for pivot breakout zones
+      runDailyScanAlertsEvaluation(stocksRef.current);
+
+      // Sector Strength View: Real-time Sector Volatility Threshold Surveillance vs Broader Market
+      evaluateSectorVolatilityAlerts(stocksRef.current);
 
       const storedAlerts = getStoredAlerts();
       if (!storedAlerts || storedAlerts.length === 0) return;
@@ -1036,6 +1126,38 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
               >
                 <Sparkles className="w-3 h-3 text-amber-300 animate-pulse" />
                 <span>Test Scheduled Daily Stage 2 Scan 🎯</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  const stock = stocks[0];
+                  simulate5paisaHoldingPivotAlert(stock);
+                }}
+                className="bg-amber-600 hover:bg-amber-500 text-white px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center space-x-1.5 shadow-sm transition-all cursor-pointer border border-amber-400/40"
+              >
+                <Briefcase className="w-3 h-3 text-amber-200" />
+                <span>Test 5paisa Holding Pivot Alert 💼</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  const stock = stocks.find((s) => s.ticker === 'DIXON') || stocks[1] || stocks[0];
+                  simulateStage2BreakoutAlert(stock);
+                }}
+                className="bg-emerald-600 hover:bg-emerald-500 text-white px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center space-x-1.5 shadow-sm transition-all cursor-pointer border border-emerald-400/40"
+              >
+                <Target className="w-3 h-3 text-emerald-200" />
+                <span>Test Stage 2 Pivot Breakout Alert ⚡</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  simulateSectorVolatilitySurgeAlert(stocks);
+                }}
+                className="bg-purple-700 hover:bg-purple-600 text-white px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center space-x-1.5 shadow-sm transition-all cursor-pointer border border-purple-400/40"
+              >
+                <Activity className="w-3 h-3 text-amber-300 animate-pulse" />
+                <span>Test Sector Volatility Threshold Alert ⚡</span>
               </button>
             </div>
           </div>
@@ -1900,6 +2022,347 @@ export const GlobalNotificationToast: React.FC<GlobalNotificationToastProps> = (
             >
               <Sparkles className="w-3.5 h-3.5" />
               <span>Inspect All {result.qualifiedCount} Leaders</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Render Specialized Daily Scan Pivot Breakout Zone Alert (5paisa Holdings & New Stage 2 Breakouts)
+  const dailyScanPivotPayload = activeToast.dailyScanPivotPayload;
+  const isDailyScanPivotAlert =
+    (activeToast.crossoverType === 'DAILY_SCAN_PIVOT_BREAKOUT' ||
+      activeToast.crossoverType === 'FIVEPAISA_HOLDING_PIVOT_ALERT') &&
+    Boolean(dailyScanPivotPayload);
+
+  if (isDailyScanPivotAlert && dailyScanPivotPayload) {
+    const is5paisa = dailyScanPivotPayload.sourceType === '5PAISA_HOLDING';
+    const currSym = getCurrencySymbol(dailyScanPivotPayload.exchange);
+
+    return (
+      <div className="fixed top-5 right-5 z-50 max-w-xl w-full animate-slide-down shadow-2xl">
+        <div
+          className={`p-5 border-2 text-white shadow-2xl ${
+            is5paisa
+              ? 'bg-[#0f172a] border-amber-400 shadow-amber-500/30'
+              : 'bg-[#06181b] border-emerald-400 shadow-emerald-500/30'
+          }`}
+        >
+          {/* Top Header Tag */}
+          <div className="flex items-start justify-between border-b border-white/15 pb-2.5 mb-3">
+            <div className="flex items-center space-x-2.5">
+              <div
+                className={`w-9 h-9 flex items-center justify-center font-black shadow-md ${
+                  is5paisa ? 'bg-amber-400 text-slate-950' : 'bg-emerald-400 text-slate-950 animate-pulse'
+                }`}
+              >
+                {is5paisa ? <Briefcase className="w-5 h-5" /> : <Target className="w-5 h-5" />}
+              </div>
+
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className={`text-[10px] uppercase font-mono tracking-[0.2em] font-extrabold block ${
+                      is5paisa ? 'text-amber-400' : 'text-emerald-400'
+                    }`}
+                  >
+                    {is5paisa
+                      ? '💼 5PAISA HOLDING AT PIVOT BREAKOUT ZONE'
+                      : '⚡ NEW STAGE 2 SETUP IN BREAKOUT ZONE'}
+                  </span>
+                  <span className="bg-black/50 text-gray-300 border border-white/20 text-[9px] font-mono px-2 py-0.5 uppercase">
+                    Daily Scan Alert
+                  </span>
+                  {dailyScanPivotPayload.holdingShares && (
+                    <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[9px] font-mono font-bold px-2 py-0.5">
+                      {dailyScanPivotPayload.holdingShares} Shares Held
+                    </span>
+                  )}
+                </div>
+
+                <h4 className="text-xl font-mono font-black text-white leading-tight mt-0.5">
+                  {dailyScanPivotPayload.ticker} — {dailyScanPivotPayload.stockName}
+                </h4>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setActiveToast(null)}
+              className="text-gray-400 hover:text-white p-1 transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Details Grid */}
+          <div className="bg-white/5 border border-white/10 p-3.5 mb-3 font-mono text-xs space-y-2.5">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center pb-2 border-b border-white/10">
+              <div className="bg-black/30 p-2 rounded border border-white/5">
+                <span className="text-[10px] text-gray-400 block uppercase">Current Price</span>
+                <span className="text-sm font-bold text-white">
+                  {formatCurrency(dailyScanPivotPayload.currentPrice, currSym)}
+                </span>
+              </div>
+              <div className="bg-black/30 p-2 rounded border border-white/5">
+                <span className="text-[10px] text-gray-400 block uppercase">Pivot Target</span>
+                <span className="text-sm font-bold text-amber-300">
+                  {formatCurrency(dailyScanPivotPayload.pivotPrice, currSym)}
+                </span>
+              </div>
+              <div className="bg-black/30 p-2 rounded border border-white/5">
+                <span className="text-[10px] text-gray-400 block uppercase">Distance to Pivot</span>
+                <span
+                  className={`text-sm font-bold ${
+                    Math.abs(dailyScanPivotPayload.distanceToPivotPct) <= 2
+                      ? 'text-emerald-400 animate-pulse'
+                      : 'text-sky-300'
+                  }`}
+                >
+                  {dailyScanPivotPayload.distanceToPivotPct >= 0 ? '+' : ''}
+                  {dailyScanPivotPayload.distanceToPivotPct}%
+                </span>
+              </div>
+              <div className="bg-black/30 p-2 rounded border border-white/5">
+                <span className="text-[10px] text-gray-400 block uppercase">RS Rating</span>
+                <span className="text-sm font-bold text-emerald-400">
+                  RS {dailyScanPivotPayload.rsRating}
+                </span>
+              </div>
+            </div>
+
+            {/* Pattern & Volume Dry-up */}
+            <div className="flex flex-wrap items-center justify-between text-[11px] text-gray-300 pt-0.5">
+              <span>
+                Pattern: <strong className="text-white">{dailyScanPivotPayload.patternType || 'VCP Coil'}</strong>
+              </span>
+              <span>
+                Volume Dry-up: <strong className="text-emerald-400">{dailyScanPivotPayload.volumeDryUpPercent}%</strong>
+              </span>
+              <span>
+                Buy Zone Max: <strong className="text-gray-300">{formatCurrency(dailyScanPivotPayload.buyZoneMax, currSym)}</strong>
+              </span>
+            </div>
+
+            {/* SEPA Action Guidance */}
+            <div
+              className={`p-2.5 border-l-2 text-[11px] font-sans ${
+                is5paisa
+                  ? 'bg-amber-950/30 border-amber-400 text-amber-200'
+                  : 'bg-emerald-950/30 border-emerald-400 text-emerald-200'
+              }`}
+            >
+              <strong>SEPA Playbook: </strong>
+              {dailyScanPivotPayload.actionGuidance}
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex flex-wrap items-center justify-end gap-2 font-mono">
+            <button
+              onClick={() => setActiveToast(null)}
+              className="bg-white/10 hover:bg-white/20 text-gray-200 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider transition-colors border border-white/20 cursor-pointer"
+            >
+              Dismiss
+            </button>
+
+            <button
+              onClick={() => {
+                const match = stocks.find((s) => s.ticker === dailyScanPivotPayload.ticker);
+                if (match) onSelectStock(match);
+                onNavigateTab('chart');
+                setActiveToast(null);
+              }}
+              className="bg-white/10 hover:bg-white/20 text-cyan-300 px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wider flex items-center space-x-1.5 transition-all border border-cyan-400/40 cursor-pointer"
+            >
+              <BarChart3 className="w-3.5 h-3.5" />
+              <span>View VCP Chart</span>
+            </button>
+
+            <button
+              onClick={() => {
+                const match = stocks.find((s) => s.ticker === dailyScanPivotPayload.ticker);
+                if (match) onSelectStock(match);
+                onNavigateTab('five_paisa');
+                setActiveToast(null);
+              }}
+              className="bg-amber-500 hover:bg-amber-400 text-slate-950 px-4 py-1.5 text-[11px] font-black uppercase tracking-wider flex items-center space-x-1.5 transition-all shadow-md cursor-pointer"
+            >
+              <Zap className="w-3.5 h-3.5" />
+              <span>Execute on 5paisa</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Render Specialized Sector Volatility vs Broader Market Alert Toast
+  const sectorVolPayload = activeToast.sectorVolatilityPayload;
+  const isSectorVolAlert =
+    activeToast.crossoverType === 'SECTOR_VOLATILITY_ALERT' && Boolean(sectorVolPayload);
+
+  if (isSectorVolAlert && sectorVolPayload) {
+    const isSurge = sectorVolPayload.crossoverType === 'SURGE_ABOVE_THRESHOLD';
+    const isCritical = sectorVolPayload.severity === 'CRITICAL';
+
+    return (
+      <div className="fixed top-5 right-5 z-50 max-w-xl w-full animate-slide-down shadow-2xl">
+        <div
+          className={`p-5 border-2 text-white shadow-2xl ${
+            isCritical
+              ? 'bg-[#1a0815] border-rose-500 shadow-rose-500/30'
+              : isSurge
+              ? 'bg-[#181206] border-amber-400 shadow-amber-500/30'
+              : 'bg-[#081816] border-emerald-400 shadow-emerald-500/30'
+          }`}
+        >
+          {/* Header */}
+          <div className="flex items-start justify-between border-b border-white/15 pb-2.5 mb-3">
+            <div className="flex items-center space-x-2.5">
+              <div
+                className={`w-9 h-9 flex items-center justify-center font-black shadow-md ${
+                  isCritical
+                    ? 'bg-rose-500 text-white animate-pulse'
+                    : isSurge
+                    ? 'bg-amber-400 text-slate-950 animate-pulse'
+                    : 'bg-emerald-400 text-slate-950'
+                }`}
+              >
+                <Activity className="w-5 h-5" />
+              </div>
+
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className={`text-[10px] uppercase font-mono tracking-[0.2em] font-extrabold block ${
+                      isCritical ? 'text-rose-400' : isSurge ? 'text-amber-400' : 'text-emerald-400'
+                    }`}
+                  >
+                    {isSurge ? '⚡ SECTOR VOLATILITY SURGE DETECTED' : '🎯 SECTOR VOLATILITY COMPRESSION (VCP COIL)'}
+                  </span>
+                  <span className="bg-black/50 text-gray-300 border border-white/20 text-[9px] font-mono px-2 py-0.5 uppercase">
+                    Sector Strength Alert
+                  </span>
+                  <span className="bg-white/10 text-amber-300 border border-amber-500/40 text-[9px] font-mono font-bold px-2 py-0.5">
+                    vs {sectorVolPayload.marketBenchmark}
+                  </span>
+                </div>
+
+                <h4 className="text-xl font-mono font-black text-white leading-tight mt-0.5">
+                  {sectorVolPayload.sector} Sector ({sectorVolPayload.stockCount} Stocks)
+                </h4>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setActiveToast(null)}
+              className="text-gray-400 hover:text-white p-1 transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Metrics Grid */}
+          <div className="bg-white/5 border border-white/10 p-3.5 mb-3 font-mono text-xs space-y-2.5">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center pb-2 border-b border-white/10">
+              <div className="bg-black/30 p-2 rounded border border-white/5">
+                <span className="text-[10px] text-gray-400 block uppercase">Relative Ratio</span>
+                <span
+                  className={`text-base font-bold ${
+                    sectorVolPayload.relativeVolatilityRatio >= 2.0
+                      ? 'text-rose-400 font-black'
+                      : sectorVolPayload.relativeVolatilityRatio >= 1.5
+                      ? 'text-amber-400'
+                      : 'text-emerald-400'
+                  }`}
+                >
+                  {sectorVolPayload.relativeVolatilityRatio}x
+                </span>
+                <span className="text-[9px] text-gray-400 block">vs {sectorVolPayload.marketBenchmark}</span>
+              </div>
+              <div className="bg-black/30 p-2 rounded border border-white/5">
+                <span className="text-[10px] text-gray-400 block uppercase">Sector Annualized HV</span>
+                <span className="text-base font-bold text-white">
+                  {sectorVolPayload.avgSectorHvAnnualized}%
+                </span>
+                <span className="text-[9px] text-gray-400 block">Mkt: {sectorVolPayload.marketHvAnnualized}%</span>
+              </div>
+              <div className="bg-black/30 p-2 rounded border border-white/5">
+                <span className="text-[10px] text-gray-400 block uppercase">Volatility Rank</span>
+                <span className="text-base font-bold text-purple-300">
+                  {sectorVolPayload.avgVolatilityRank}/99
+                </span>
+                <span className="text-[9px] text-gray-400 block">Calibrated Curve</span>
+              </div>
+              <div className="bg-black/30 p-2 rounded border border-white/5">
+                <span className="text-[10px] text-gray-400 block uppercase">Alert Threshold</span>
+                <span className="text-base font-bold text-cyan-300">
+                  {sectorVolPayload.comparisonMode === 'RATIO_VS_MARKET'
+                    ? `${sectorVolPayload.thresholdValue}x`
+                    : `Rank ${sectorVolPayload.thresholdValue}`}
+                </span>
+                <span className="text-[9px] text-amber-300 font-bold block">Crossed ⚠️</span>
+              </div>
+            </div>
+
+            {/* Highest Vol Stock & Key Constituents */}
+            <div className="flex flex-wrap items-center justify-between text-[11px] text-gray-300 pt-0.5">
+              <span>
+                Highest Volatility Stock:{' '}
+                <strong className="text-amber-300">
+                  {sectorVolPayload.highestVolStock.ticker} (HV {sectorVolPayload.highestVolStock.hvAnnualized}% | Rank {sectorVolPayload.highestVolStock.volatilityRank})
+                </strong>
+              </span>
+              <span>
+                Constituents: <strong className="text-white">{sectorVolPayload.topConstituents.join(', ')}</strong>
+              </span>
+            </div>
+
+            {/* SEPA Risk & Action Playbook */}
+            <div
+              className={`p-2.5 border-l-2 text-[11px] font-sans ${
+                isCritical
+                  ? 'bg-rose-950/30 border-rose-500 text-rose-200'
+                  : isSurge
+                  ? 'bg-amber-950/30 border-amber-400 text-amber-200'
+                  : 'bg-emerald-950/30 border-emerald-400 text-emerald-200'
+              }`}
+            >
+              <strong>Mark Minervini SEPA Rule: </strong>
+              {sectorVolPayload.sepaRiskPlaybook}
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex flex-wrap items-center justify-end gap-2 font-mono">
+            <button
+              onClick={() => setActiveToast(null)}
+              className="bg-white/10 hover:bg-white/20 text-gray-200 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider transition-colors border border-white/20 cursor-pointer"
+            >
+              Dismiss
+            </button>
+
+            <button
+              onClick={() => {
+                onNavigateTab('market_volatility');
+                setActiveToast(null);
+              }}
+              className="bg-white/10 hover:bg-white/20 text-purple-300 px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wider flex items-center space-x-1.5 transition-all border border-purple-400/40 cursor-pointer"
+            >
+              <Activity className="w-3.5 h-3.5" />
+              <span>Volatility Dashboard</span>
+            </button>
+
+            <button
+              onClick={() => {
+                onNavigateTab('sector_heatmap');
+                setActiveToast(null);
+              }}
+              className="bg-amber-500 hover:bg-amber-400 text-slate-950 px-4 py-1.5 text-[11px] font-black uppercase tracking-wider flex items-center space-x-1.5 transition-all shadow-md cursor-pointer"
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>Inspect {sectorVolPayload.sector} in Sector View</span>
             </button>
           </div>
         </div>
