@@ -190,6 +190,7 @@ const TABS = [
 const APP_TAB = { screener: "screener", pocket: "pocket_pivot", vcp: "vcp_scanner", portfolio: "portfolio", earnings: "earnings", sector: "sector_heatmap", journal: "journal", alerts: "alert_history", export: "export_data" };
 
 // One tab failing should not take the others down, and the message should say where it failed.
+const TabBody = ({ fn }: any) => (typeof fn === "function" ? fn() : null);
 class TabBoundary extends Component<any, any> {
   declare state: any;
   declare props: any;
@@ -197,7 +198,7 @@ class TabBoundary extends Component<any, any> {
   static getDerivedStateFromError(err: any) { return { err }; }
   render() {
     const e = this.state.err;
-    if (!e) return this.props.render ? this.props.render() : null;
+    if (!e) return <TabBody fn={this.props.render} />;
     const where = String(e.stack || "").split("\n").slice(0, 4).join("\n");
     return (
       <div role="alert">
@@ -503,6 +504,7 @@ export class DeskTools extends Component<any, any> {
     return (
       <section className="dtools" role="alert">
         <p className="dt-note">The desk tools hit an error: {String(this.state.err?.message || this.state.err)}. The rest of the desk still works.</p>
+        <pre className="dt-pre" tabIndex={0}>{String(this.state.err?.stack || "").split("\n").slice(0, 4).join("\n")}</pre>
         <div className="dt-row"><button className="dt-btn" type="button" onClick={() => { clearSaved(); this.setState({ err: null, n: this.state.n + 1 }); }}>Clear saved tool data and retry</button></div>
       </section>
     );
