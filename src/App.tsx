@@ -31,6 +31,7 @@ import { SecurityShieldPanel } from './components/SecurityShieldPanel';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { HermesAgent } from './components/HermesAgent';
 import TradeDeskView, { makeProxyAskModel } from './components/TradeDeskView';
+import { useChartlinkScan, ChartlinkScanBadge, ChartlinkScanPanel } from './components/ChartlinkScanOverlay';
 import { WatchlistManager } from './components/WatchlistManager';
 import { DailyReview } from './components/DailyReview';
 import { SectorCorrelationLeadershipCard } from './components/SectorCorrelationLeadershipCard';
@@ -69,6 +70,7 @@ export default function App() {
   const [stocksList, setStocksList] = useState<MinerviniTradeSetup[]>(MOCK_STOCKS);
   const [selectedStock, setSelectedStock] = useState<MinerviniTradeSetup>(MOCK_STOCKS[0]);
   const [activeTab, setActiveTab] = useState<AppNavTab>('hermes_agent');
+  const chartlinkScan = useChartlinkScan(selectedStock, stocksList);
   const [isObsidian, setIsObsidian] = useState<boolean>(true); // Default to Obsidian Dark theme for luxury feel
   const [isDailyScanModalOpen, setIsDailyScanModalOpen] = useState<boolean>(false);
   const [isQuickInsightModalOpen, setIsQuickInsightModalOpen] = useState<boolean>(false);
@@ -910,8 +912,11 @@ export default function App() {
               className="space-y-8"
             >
               
+              {/* Chartink scan status for the stock on the chart */}
+              <ChartlinkScanPanel stock={selectedStock} scan={chartlinkScan} onOpenScanner={() => setActiveTab('chartlink_scanner')} />
+
               {/* Chart Component */}
-              <VcpChart stock={selectedStock} />
+              <VcpChart stock={selectedStock} overlay={<ChartlinkScanBadge scan={chartlinkScan} />} />
 
               {/* Breakout Probability Engine & Interactive Simulator */}
               <BreakoutProbabilityEngine stock={selectedStock} />

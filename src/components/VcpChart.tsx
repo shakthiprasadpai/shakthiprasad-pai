@@ -93,6 +93,8 @@ import {
 
 interface VcpChartProps {
   stock: MinerviniTradeSetup;
+  /** Optional overlay drawn in the chart's top-left corner (e.g. the Chartink scan badge). */
+  overlay?: React.ReactNode;
 }
 
 export type VolumeIntensityTier =
@@ -371,7 +373,7 @@ export function calculateVolumeOscillatorData(
   });
 }
 
-export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
+export const VcpChart: React.FC<VcpChartProps> = ({ stock, overlay }) => {
   const [chartSubTab, setChartSubTab] = useState<'vcp_candlestick' | 'technical_pro' | 'volatility_trend' | 'volatility_contraction' | 'risk_reward'>('vcp_candlestick');
   const [showEma10, setShowEma10] = useState(true);
   const [showEma21, setShowEma21] = useState(true);
@@ -2313,6 +2315,7 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock }) => {
         {/* Main Price Chart Column */}
         <div className="flex-1 min-w-0">
           <div className="w-full h-[380px] bg-[#f9f8f5] p-3 border border-[#e5e4e1] relative">
+        {overlay}
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart
             data={chartDataWithTrendlines}

@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { Component, useState, useMemo, useEffect } from "react";
 
 /* Desk tools: screener, pocket pivot, VCP scan, stage scan, portfolio, earnings, sector health,
    journal, pattern alerts and export. Everything is computed from the data passed in (40 daily
@@ -91,7 +91,14 @@ const EARN = [
 const SECTORS: [string, number][] = [["Airlines", 13.24], ["Oil, Gas & Energy", 9.56], ["Cement & Building", 9.47], ["Infra & Realty", 8.35], ["Diversified", 8.22], ["Pharma & Healthcare", 7.83], ["Consumer Discretionary", 7.35], ["Power & Utilities", 7.27], ["Telecom", 7.11], ["Banking", 6.2], ["IT & Technology", 5.95], ["Automobile", 5.93], ["FMCG", 4.79], ["Metals & Mining", 3.23], ["Financial Services", 3.03], ["Defence", -0.27], ["Chemicals", -1.89], ["Capital Goods", -6.84], ["Auto Components", -10.9]];
 
 /* ---------- storage ---------- */
-const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
+// Saved data must be an array of objects; anything else (old versions, hand edits) falls back to the default.
+const load = (k, d) => {
+  try {
+    const v = JSON.parse(localStorage.getItem(k));
+    return Array.isArray(v) && v.every((x) => x && typeof x === "object") ? v : d;
+  } catch { return d; }
+};
+const clearSaved = () => { try { ["gsa-pf", "gsa-journal", "gsa-earn"].forEach((k) => localStorage.removeItem(k)); } catch {} };
 const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
 
 const csvCell = (v) => { const s = String(v ?? ""); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
@@ -104,7 +111,7 @@ const TABS = [
 // Where each tool lives in the full app (used only when the desk is hosted inside it).
 const APP_TAB = { screener: "screener", pocket: "pocket_pivot", vcp: "vcp_scanner", portfolio: "portfolio", earnings: "earnings", sector: "sector_heatmap", journal: "journal", alerts: "alert_history", export: "export_data" };
 
-export default function DeskTools({ trades, levels, capital, riskPct, scan, onSelect, say, copy, beep, muted, onNavigate, onOpenStageScan, jumps = [] }) {
+function DeskToolsInner({ trades, levels, capital, riskPct, scan, onSelect, say, copy, beep, muted, onNavigate, onOpenStageScan, jumps = [] }) {
   const [tab, setTab] = useState("screener");
   const [pf, setPf] = useState(() => load("gsa-pf", []));
   const [jr, setJr] = useState(() => load("gsa-journal", []));
@@ -370,3 +377,22 @@ export const TOOLS_CSS = `
 .desk .dt-pre{margin:0;max-height:260px;overflow:auto;background:#08080c;border:1px solid var(--line);padding:12px;font:12px/1.5 var(--mono);color:var(--muted);white-space:pre}
 @media (max-width:560px){.desk .dt-sec>div{grid-template-columns:96px 1fr 56px}}
 `;
+
+// A failure inside one tool should not blank the whole desk.
+export class DeskTools extends Component<any, any> {
+  declare state: any;
+  declare props: any;
+  declare setState: any;
+  constructor(props: any) { super(props); this.state = { err: null, n: 0 }; }
+  static getDerivedStateFromError(err: any) { return { err }; }
+  render() {
+    if (!this.state.err) return <DeskToolsInner key={this.state.n} {...this.props} />;
+    return (
+      <section className="dtools" role="alert">
+        <p className="dt-note">The desk tools hit an error: {String(this.state.err?.message || this.state.err)}. The rest of the desk still works.</p>
+        <div className="dt-row"><button className="dt-btn" type="button" onClick={() => { clearSaved(); this.setState({ err: null, n: this.state.n + 1 }); }}>Clear saved tool data and retry</button></div>
+      </section>
+    );
+  }
+}
+export default DeskTools;
