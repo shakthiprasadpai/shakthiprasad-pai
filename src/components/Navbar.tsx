@@ -9,6 +9,7 @@ import { getChartLinkUrl } from '../utils/chartLinkHelper';
 export type AppNavTab = 
   | 'daily_review'
   | 'hermes_agent'
+  | 'trade_desk'
   | 'screener' 
   | 'trend_backtest'
   | 'bearish_market'
@@ -43,6 +44,7 @@ export type AppNavTab =
 export const TAB_LABELS: Record<AppNavTab, string> = {
   daily_review: 'Daily Review',
   hermes_agent: 'Hermes AI',
+  trade_desk: 'Trade Desk',
   screener: 'Screener',
   trend_backtest: 'SEPA Backtester',
   bearish_market: 'Bear Market & Shorts',
@@ -417,6 +419,19 @@ export const Navbar: React.FC<NavbarProps> = ({
                 HERMES AGENT
                 <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
               </span>
+            </button>
+
+            <button
+              id="nav-tab-trade-desk"
+              onClick={() => setActiveTab('trade_desk')}
+              className={`flex items-center space-x-1.5 py-2 px-2.5 rounded transition-all border-b-2 font-bold cursor-pointer ${
+                activeTab === 'trade_desk'
+                  ? 'bg-amber-500/10 border-amber-500 text-amber-500 shadow-xs'
+                  : 'border-transparent text-amber-600/90 hover:text-amber-500 hover:bg-amber-500/5'
+              }`}
+            >
+              <Monitor className="w-4 h-4 text-amber-500" />
+              <span className="font-mono tracking-wider font-extrabold">TRADE DESK</span>
             </button>
 
             <button

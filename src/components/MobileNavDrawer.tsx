@@ -71,6 +71,15 @@ const NAV_ITEMS: NavItemDef[] = [
     badgeColor: 'bg-amber-500/20 text-amber-300 border border-amber-500/30',
   },
   {
+    id: 'trade_desk',
+    title: 'Trade Desk',
+    subtitle: 'Today\'s swing and intraday picks with scans, plan, journal & export',
+    category: 'strategy',
+    icon: Monitor,
+    badge: 'NEW',
+    badgeColor: 'bg-amber-500/20 text-amber-300 border border-amber-500/30',
+  },
+  {
     id: 'screener',
     title: 'Minervini Screener',
     subtitle: 'SEPA 8-point trend template & pivot breakouts',

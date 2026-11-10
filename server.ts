@@ -653,6 +653,26 @@ Provide 3 to 5 high-signal keyword research items (always including Buyback, Exp
   });
 
   // API endpoint for Hermes Autonomous SEPA AI Trading Agent
+  // Generic chat endpoint for the Trade Desk's Hermes panel. Contract: POST { messages: [{role, content}] } -> { text }.
+  app.post('/api/desk-chat', async (req, res) => {
+    try {
+      const messages = Array.isArray(req.body?.messages) ? req.body.messages : [];
+      if (!messages.length) return res.status(400).json({ error: 'messages required' });
+      const ai = getGeminiClient();
+      if (!ai) {
+        return res.json({ text: 'The AI backend is not configured. Set GEMINI_API_KEY on the server to enable Hermes answers. The plan, sizing and scans on the desk still work.' });
+      }
+      const transcript = messages
+        .slice(-12)
+        .map((m: any) => `${m.role === 'assistant' ? 'Hermes' : 'User'}: ${String(m.content ?? '').slice(0, 8000)}`)
+        .join('\n\n');
+      const response = await generateContentWithFallback(ai, { model: 'gemini-3.7-flash', contents: transcript });
+      res.json({ text: response.text || '' });
+    } catch (err: any) {
+      res.status(502).json({ error: 'AI request failed' });
+    }
+  });
+
   app.post('/api/hermes-agent', async (req, res) => {
     try {
       const { prompt, stock, accountSize, riskPercent } = req.body || {};

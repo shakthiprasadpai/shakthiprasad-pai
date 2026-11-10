@@ -30,6 +30,7 @@ import { ExportTradeData } from './components/ExportTradeData';
 import { SecurityShieldPanel } from './components/SecurityShieldPanel';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { HermesAgent } from './components/HermesAgent';
+import TradeDeskView, { makeProxyAskModel } from './components/TradeDeskView';
 import { WatchlistManager } from './components/WatchlistManager';
 import { DailyReview } from './components/DailyReview';
 import { SectorCorrelationLeadershipCard } from './components/SectorCorrelationLeadershipCard';
@@ -59,6 +60,9 @@ import { getChartLinkUrl } from './utils/chartLinkHelper';
 import { TrendingUp, TrendingDown, Skull, ShieldAlert, ShieldCheck, Target, Droplets, ArrowUpRight, Flame, BarChart3, Calculator, Sparkles, Gem, Bot, Bell, Keyboard, Command, Search, Zap, History, Brain, Bookmark, ExternalLink, Activity, BellRing } from 'lucide-react';
 import { useAuth } from './context/AuthContext';
 import { LoginScreen } from './components/LoginScreen';
+
+// Hermes panel on the Trade Desk talks to the server's /api/desk-chat endpoint.
+const deskAskModel = makeProxyAskModel('/api/desk-chat');
 
 export default function App() {
   const { user, loading } = useAuth();
@@ -526,6 +530,22 @@ export default function App() {
                   setSelectedStock(stock);
                   setActiveTab('calculator');
                 }}
+              />
+            </motion.div>
+          )}
+
+          {activeTab === 'trade_desk' && (
+            <motion.div
+              key="trade_desk"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.25, ease: 'easeInOut' }}
+            >
+              <TradeDeskView
+                askModel={deskAskModel}
+                onNavigate={(tab: string) => setActiveTab(tab as AppNavTab)}
+                onOpenStageScan={() => setIsDailyScanModalOpen(true)}
               />
             </motion.div>
           )}
