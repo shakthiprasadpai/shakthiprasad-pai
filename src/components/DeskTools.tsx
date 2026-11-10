@@ -49,6 +49,32 @@ export function vcpScan(t) {
   return { contractions: last, tightening, recentVol: recent, priorVol: dry, swings: seq };
 }
 
+// EMA and Wilder RSI over t.pre (earlier closes, for warm-up) followed by t.closes; returns arrays aligned to t.closes.
+// EMA is seeded with the simple average of its first n closes, RSI with the average of its first n changes, as most charting packages do.
+const joined = (t: any): number[] => [...(Array.isArray(t.pre) ? t.pre : []), ...t.closes];
+export function emaSeries(t: any, n = 20): (number | null)[] {
+  const c = joined(t), k = 2 / (n + 1), out = new Array<number | null>(c.length).fill(null);
+  if (c.length < n) return out.slice(c.length - t.closes.length);
+  let e = avg(c.slice(0, n)); out[n - 1] = e;
+  for (let i = n; i < c.length; i++) { e = c[i] * k + e * (1 - k); out[i] = e; }
+  return out.slice(c.length - t.closes.length);
+}
+export function rsiSeries(t: any, n = 14): (number | null)[] {
+  const c = joined(t), out = new Array<number | null>(c.length).fill(null);
+  if (c.length <= n) return out.slice(c.length - t.closes.length);
+  let g = 0, l = 0;
+  for (let i = 1; i <= n; i++) { const d = c[i] - c[i - 1]; if (d >= 0) g += d; else l -= d; }
+  g /= n; l /= n;
+  const val = () => (l === 0 ? 100 : 100 - 100 / (1 + g / l));
+  out[n] = val();
+  for (let i = n + 1; i < c.length; i++) {
+    const d = c[i] - c[i - 1];
+    g = (g * (n - 1) + Math.max(d, 0)) / n; l = (l * (n - 1) + Math.max(-d, 0)) / n;
+    out[i] = val();
+  }
+  return out.slice(c.length - t.closes.length);
+}
+
 export function stageInfo(t) {
   const [m50, m150, m200] = t.ma;
   const stage2 = t.close > m50 && m50 > m150 && m150 > m200;
@@ -74,6 +100,13 @@ export function patternAlerts(t, L) {
   if (s.ext50 > 20) a.push(["warn", `Extended: ${s.ext50.toFixed(0)}% above the 50 DMA`]);
   const risk = ((L.entry - L.stop) / L.entry) * 100;
   if (risk > 5) a.push(["warn", `Wide stop: ${risk.toFixed(1)}% below entry`]);
+  const rs = rsiSeries(t), ema = emaSeries(t), r = rs[rs.length - 1], e = ema[ema.length - 1];
+  if (r != null) {
+    if (r >= 70) a.push(["warn", `RSI(14) is ${r.toFixed(0)}: overbought territory, strong stocks can stay there but a new entry is chasing`]);
+    else if (r <= 30) a.push(["warn", `RSI(14) is ${r.toFixed(0)}: oversold, the trend may be broken`]);
+    else a.push(["info", `RSI(14) is ${r.toFixed(0)}`]);
+  }
+  if (e != null) a.push([t.close > e ? "ok" : "warn", `Close is ${Math.abs((t.close / e - 1) * 100).toFixed(1)}% ${t.close > e ? "above" : "below"} the 20 EMA at ₹${fmt(e, 2)}`]);
   const gain2 = (c[c.length - 1] / c[c.length - 3] - 1) * 100;
   if (gain2 > 8) a.push(["warn", `Up ${gain2.toFixed(0)}% in two sessions, gap risk at the open`]);
   return a;

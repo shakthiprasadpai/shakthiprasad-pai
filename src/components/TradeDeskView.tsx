@@ -1,10 +1,10 @@
 import { useState, useMemo, useEffect, useRef } from "react";
-import DeskTools, { TOOLS_CSS, candlePatterns } from "./DeskTools";
+import DeskTools, { TOOLS_CSS, candlePatterns, emaSeries, rsiSeries } from "./DeskTools";
 
 // Screen output from NSE bhavcopy, session of 9 Nov 2026. Swap TRADES for your own screener results.
 const TRADES = [
   {
-    id: "swing", mode: "Swing · days to weeks", sym: "LAURUSLABS", name: "Laurus Labs",
+    id: "swing", mode: "Swing · days to weeks", sym: "LAURUSLABS", pre: [1854, 1858, 1850, 1851.7, 1787.3, 1809.7, 1814, 1801.8, 1825, 1802, 1801, 1866.2, 1887, 1929.4, 1938.5, 1915, 1861.6, 1864, 1868.5, 1840, 1876.7, 1946.9, 1937], name: "Laurus Labs",
     setup: "Pivot breakout from a tight base",
     close: 2454, prev: 2370, hi52: 2480, lo52: 917.95, ma: [2044.9, 1647.4, 1488.1],
     L: { entry: 2470, stop: 2320, t1: 2770, t2: 2920 },
@@ -19,7 +19,7 @@ const TRADES = [
     targets: "Sell a third at T1, trail the rest under the 10-day low.",
   },
   {
-    id: "intra", mode: "Intraday · square off by 3:15 pm", sym: "SAILIFE", name: "Sai Life Sciences",
+    id: "intra", mode: "Intraday · square off by 3:15 pm", sym: "SAILIFE", pre: [1426.2, 1444.4, 1463.6, 1451.2, 1449.9, 1416.4, 1440.1, 1422.2, 1471.6, 1457.4, 1435.9, 1455.5, 1461, 1488.2, 1485, 1459.7, 1518.1, 1587, 1574.8, 1584.3, 1579.6, 1647.1, 1675.4], name: "Sai Life Sciences",
     setup: "Prior-high break on heavy volume",
     close: 1836.8, prev: 1744, hi52: 1897.3, lo52: 783.85, ma: [1538.1, 1313.0, 1217.8],
     L: { entry: 1900, stop: 1855, t1: 1960, t2: 2000 },
@@ -70,20 +70,23 @@ const parseScan = (txt) => {
   return toks.length ? new Set(toks) : null;
 };
 
-function Chart({ t, L, scan, trail, mode }) {
+function Chart({ t, L, scan, trail, mode, showEma, showRsi }: any) {
   const candle = mode === "candle" && !!t.o;
   const pats = candle ? candlePatterns(t).filter((p) => p.i >= t.closes.length - 15) : [];
   const ss = scan ? (scan.has(t.sym) ? "yes" : "no") : "none";
   const W = 640, ml = 8, mr = 84, top = 10, ph = 200, vt = 228, vh = 56, n = t.closes.length;
-  const lo = Math.min(...(candle ? t.l : t.closes), L.stop, trail ?? Infinity) * 0.995, hi = Math.max(...(candle ? t.h : t.closes), L.t2) * 1.005;
+    const ema: (number | null)[] | null = showEma ? emaSeries(t) : null, rsi: (number | null)[] | null = showRsi ? rsiSeries(t) : null;
+  const rt = 316, rh = 64, H = showRsi ? 396 : 300, ry = (v) => rt + ((100 - v) / 100) * rh;
+  const lastEma = ema ? ema[n - 1] : null, lastRsi = rsi ? rsi[n - 1] : null;
+  const lo = Math.min(...(candle ? t.l : t.closes), L.stop, trail ?? Infinity, ...(ema ? (ema.filter((v) => v != null) as number[]) : [])) * 0.995, hi = Math.max(...(candle ? t.h : t.closes), L.t2) * 1.005;
   const x = (i) => ml + (i * (W - ml - mr)) / (n - 1);
   const y = (v) => top + ((hi - v) / (hi - lo)) * ph;
   const med = median(t.vols), vmax = Math.max(...t.vols), bw = ((W - ml - mr) / n) * 0.62;
   const lv = [["entry", L.entry, "Entry"], ["stop", L.stop, "Stop"], ["tgt", L.t1, "T1"], ["tgt", L.t2, "T2"], ...(trail ? [["trail", trail, "Trail"]] : [])];
-  const lab = lv.map(([k, v, name]) => ({ k, y: y(v), txt: `${name} ${fmt(v)}` })).sort((p, q) => p.y - q.y);
+  const lab = [...lv, ...(lastEma != null ? [["ema", lastEma, "EMA20"]] : [])].map(([k, v, name]: any) => ({ k, y: y(v), txt: `${name} ${fmt(v)}` })).sort((p, q) => p.y - q.y);
   for (let i = 1; i < lab.length; i++) if (lab[i].y - lab[i - 1].y < 13) lab[i].y = lab[i - 1].y + 13;
   return (
-    <svg className="chart" viewBox="0 0 640 300" role="img" aria-label={`Last 40 sessions of ${t.sym}`}>
+    <svg className="chart" viewBox={`0 0 640 ${H}`} role="img" aria-label={`Last 40 sessions of ${t.sym}`}>
       {[0, 0.25, 0.5, 0.75, 1].map((f) => <line key={f} x1={ml} x2={W - mr} y1={y(lo + (hi - lo) * f)} y2={y(lo + (hi - lo) * f)} stroke="#1a1a22" />)}
       {t.vols.map((v, i) => {
         const h = (v / vmax) * vh;
@@ -113,6 +116,17 @@ function Chart({ t, L, scan, trail, mode }) {
           <circle className="cdot" cx={x(n - 1)} cy={y(t.close)} r="3.5" />
         </>
       )}
+      {ema && <polyline className="ln-ema" points={ema.map((v, i) => (v == null ? null : `${x(i)},${y(v)}`)).filter(Boolean).join(" ")} />}
+      {rsi && (
+        <g>
+          <rect x={ml} y={rt} width={W - ml - mr} height={rh} fill="none" stroke="#1a1a22" />
+          <rect x={ml} y={ry(70)} width={W - ml - mr} height={ry(30) - ry(70)} fill="#ffffff08" />
+          {[70, 50, 30].map((v) => <line key={v} x1={ml} x2={W - mr} y1={ry(v)} y2={ry(v)} stroke="#2a2a36" strokeDasharray={v === 50 ? "1 4" : "3 3"} />)}
+          <polyline className="ln-rsi" points={rsi.map((v, i) => (v == null ? null : `${x(i)},${ry(v)}`)).filter(Boolean).join(" ")} />
+          <text x={ml} y={rt - 5}>RSI (14){lastRsi != null && <tspan style={{ fill: lastRsi >= 70 ? "#f5a524" : lastRsi <= 30 ? "#ff3347" : "#7dd3fc" }}>  {lastRsi.toFixed(0)}{lastRsi >= 70 ? " overbought" : lastRsi <= 30 ? " oversold" : ""}</tspan>}</text>
+          <text x={W - mr + 6} y={ry(70) + 3.5}>70</text><text x={W - mr + 6} y={ry(30) + 3.5}>30</text>
+        </g>
+      )}
       {ss === "yes" && <circle className="scan-ring" cx={x(n - 1)} cy={y(t.close)} r="9" />}
       {ss !== "none" && <text className="scan-tag" x={ml + 4} y={top + 26} style={{ fill: ss === "yes" ? "#3ddc97" : "#ff3347" }}>{ss === "yes" ? "CHARTINK SCAN: IN" : "CHARTINK SCAN: NOT IN"}</text>}
       {lab.map((l, i) => <text key={i} className={`lt ${l.k}`} x={W - mr + 6} y={l.y + 3.5}>{l.txt}</text>)}
@@ -129,6 +143,8 @@ export default function App({ askModel = defaultAskModel, onNavigate, onOpenStag
   const [riskPct, setRiskPct] = useState("1");
   const [muted, setMuted] = useState(true);
   const [chartMode, setChartMode] = useState("line");
+  const [showEma, setShowEma] = useState(true);
+  const [showRsi, setShowRsi] = useState(true);
   const [trailPct, setTrailPct] = useState("8");
   const [trailHigh, setTrailHigh] = useState("");
   const [scanTxt, setScanTxt] = useState(() => { try { return localStorage.getItem("gsa-scan") || ""; } catch { return ""; } });
@@ -408,9 +424,11 @@ export default function App({ askModel = defaultAskModel, onNavigate, onOpenStag
           <div className="cmode" role="group" aria-label="Chart type">
             <button type="button" className={chartMode === "line" ? "on" : ""} aria-pressed={chartMode === "line"} onClick={() => setChartMode("line")}>Line</button>
             <button type="button" className={chartMode === "candle" ? "on" : ""} aria-pressed={chartMode === "candle"} onClick={() => setChartMode("candle")}>Candles + patterns</button>
+            <button type="button" className={showEma ? "on" : ""} aria-pressed={showEma} onClick={() => setShowEma((v) => !v)}>EMA 20</button>
+            <button type="button" className={showRsi ? "on" : ""} aria-pressed={showRsi} onClick={() => setShowRsi((v) => !v)}>RSI 14</button>
             {chartMode === "candle" && <span className="cleg">▲ bullish  ▼ bearish  ◆ neutral · last 15 sessions</span>}
           </div>
-          <div className="chartbox" ref={chartRef}>{ok ? <Chart t={t} L={L} scan={scan} trail={trailInfo?.stop} mode={chartMode} /> : null}</div>
+          <div className="chartbox" ref={chartRef}>{ok ? <Chart t={t} L={L} scan={scan} trail={trailInfo?.stop} mode={chartMode} showEma={showEma} showRsi={showRsi} /> : null}</div>
           <p className="read">{t.base}</p>
 
           <div className="cols">
@@ -562,7 +580,7 @@ const CSS = `
 .chartbox{overflow-x:auto;background:#08080c;border:1px solid var(--line);padding:10px}
 svg.chart{display:block;width:100%;min-width:520px;height:auto}
 svg.chart text{font-family:var(--mono);font-size:10.5px;fill:var(--muted)}
-.ln-price{fill:none;stroke:var(--fg);stroke-width:1.6}.vb{fill:#2a2a36}.vb.hot{fill:var(--amber)}
+.ln-price{fill:none;stroke:var(--fg);stroke-width:1.6}.ln-ema{fill:none;stroke:#38bdf8;stroke-width:1.4}.ln-rsi{fill:none;stroke:#7dd3fc;stroke-width:1.4}svg.chart .lt.ema{fill:#38bdf8}.vb{fill:#2a2a36}.vb.hot{fill:var(--amber)}
 .lv{stroke-width:1;stroke-dasharray:4 3}.lv.trail{stroke:#a78bfa;stroke-dasharray:2 4}.lv.entry{stroke:var(--amber)}.lv.stop{stroke:var(--red-t)}.lv.tgt{stroke:var(--green-t)}
 svg.chart .lt.trail{fill:#a78bfa}svg.chart .lt.entry{fill:var(--amber)}svg.chart .lt.stop{fill:var(--red-t)}svg.chart .lt.tgt{fill:var(--green-t)}.cdot{fill:var(--fg)}
 .cols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:28px}
