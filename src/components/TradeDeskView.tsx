@@ -39,26 +39,17 @@ const fmt = (n, d = 0) => Number(n).toLocaleString("en-IN", { minimumFractionDig
 const median = (a) => [...a].sort((x, y) => x - y)[Math.floor(a.length / 2)];
 
 // ---- Hermes co-pilot ------------------------------------------------------
+// Hermes runs on Gemini through the app's own server (POST /api/desk-chat), so the key stays on the backend.
 // askModel(messages, onText) must resolve to the reply text. messages = [{ role: "user" | "assistant", content }].
-// Pass your own as <App askModel={...} /> to use any provider (Gemini, Claude API, etc.) through your own backend.
-// The default only works when the page is hosted as a claude.ai artifact with the "sample" capability.
-async function defaultAskModel(messages, onText) {
-  const sample = await (window as any).claude?.use?.("sample");
-  if (!sample) throw Object.assign(new Error("unavailable"), { code: "unavailable" });
-  const r = await sample(messages, { cache: false, onText: ({ text }) => onText?.(text) });
-  return r.text;
-}
-
-// Provider-neutral adapter: POSTs { messages } to a small backend you run and expects { text } back.
-// Keep the provider key (Azure AI Foundry, Gemini, Claude, ...) on that backend, never in the page.
-//   <App askModel={makeProxyAskModel("/api/hermes")} />
-export const makeProxyAskModel = (url, headers = {}) => async (messages, onText) => {
+// Pass your own <App askModel={...} /> to use a different backend.
+export const makeProxyAskModel = (url: string, headers: Record<string, string> = {}) => async (messages: any[], onText?: (t: string) => void) => {
   const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", ...headers }, body: JSON.stringify({ messages }) });
   if (!res.ok) throw Object.assign(new Error(`HTTP ${res.status}`), { code: res.status === 429 ? "rate_limited" : "http_error" });
   const { text } = await res.json();
   onText?.(text);
   return text;
 };
+const defaultAskModel = makeProxyAskModel("/api/desk-chat");
 
 const SYSTEM =
   "You are Hermes, the trading co-pilot on a Minervini SEPA trade desk for Indian equities. " +
@@ -145,17 +136,13 @@ export default function App({ askModel = defaultAskModel, onNavigate, onOpenStag
   const onScan = (v) => { setScanTxt(v); try { localStorage.setItem("gsa-scan", v); } catch {} };
   const [toast, setToast] = useState("");
   const timer = useRef();
-  const [ready, setReady] = useState(askModel !== defaultAskModel ? true : null);
+  const [ready, setReady] = useState(true);
   const [hist, setHist] = useState([]);
   const [msgs, setMsgs] = useState(() => [{ r: "a", t: GREETING, time: hhmm() }]);
   const [busy, setBusy] = useState(false);
   const [q, setQ] = useState("");
   const histRef = useRef(), inputRef = useRef(), dialogueRef = useRef(), benchRef = useRef();
 
-  useEffect(() => {
-    if (askModel !== defaultAskModel) return;
-    (async () => { try { setReady(!!(await (window as any).claude?.use?.("sample"))); } catch { setReady(false); } })();
-  }, [askModel]);
   useEffect(() => { histRef.current?.scrollTo({ top: histRef.current.scrollHeight }); }, [msgs]);
   const chartRef = useRef(), tplRef = useRef(), scanRef = useRef();
 
