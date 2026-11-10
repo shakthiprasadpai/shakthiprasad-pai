@@ -31,6 +31,8 @@ import {
   Grid,
   Filter,
   Sparkles,
+  AlertTriangle,
+  Radio,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -114,6 +116,82 @@ export function computeStockRsMomentum(stock: MinerviniTradeSetup) {
   };
 }
 
+// Divergence Alert representation
+export interface SectorDivergenceAlert {
+  isDivergent: boolean;
+  spreadVsMarket: number;
+  marketSymbol: string;
+  marketRs: number;
+  market1DChange: number;
+  type: 'BULLISH_ROTATION' | 'BEARISH_ROTATION' | 'CONVERGENT';
+  severity: 'MAJOR' | 'MODERATE' | 'NONE';
+  label: string;
+  badgeText: string;
+  summary: string;
+  rotationThesis: string;
+}
+
+// Calculates whether a sector's RS rating diverges significantly from the broader market trend (SPY)
+export function computeSectorDivergence(
+  sectorRs: number,
+  marketRs: number = 75,
+  momentumStatus: 'GAINING' | 'LOSING' | 'STEADY' = 'STEADY',
+  marketChange: number = 0.82
+): SectorDivergenceAlert {
+  const spreadVsMarket = Number((sectorRs - marketRs).toFixed(1));
+
+  // Bullish Sector Rotation: Sector RS is significantly outperforming broader market (>= +10 pts or >= +8 with Gaining momentum)
+  if (spreadVsMarket >= 10 || (spreadVsMarket >= 8 && momentumStatus === 'GAINING')) {
+    const severity = spreadVsMarket >= 15 ? 'MAJOR' : 'MODERATE';
+    return {
+      isDivergent: true,
+      spreadVsMarket,
+      marketSymbol: 'SPY',
+      marketRs,
+      market1DChange: marketChange,
+      type: 'BULLISH_ROTATION',
+      severity,
+      label: severity === 'MAJOR' ? 'MAJOR BULLISH DIVERGENCE' : 'BULLISH ROTATION DIVERGENCE',
+      badgeText: `+${spreadVsMarket} pts vs SPY`,
+      summary: `Sector RS (${sectorRs}) is strongly decoupling above the broader market (${marketRs}), signaling aggressive institutional capital inflow.`,
+      rotationThesis: `High-conviction sector rotation inflow. Capital is concentrating here ahead of broader market moves. Focus on Stage 2 VCP pivot breakouts.`,
+    };
+  }
+
+  // Bearish Sector Rotation: Sector RS is significantly lagging broader market (<= -10 pts or <= -8 with Losing momentum)
+  if (spreadVsMarket <= -10 || (spreadVsMarket <= -8 && momentumStatus === 'LOSING')) {
+    const severity = spreadVsMarket <= -15 ? 'MAJOR' : 'MODERATE';
+    return {
+      isDivergent: true,
+      spreadVsMarket,
+      marketSymbol: 'SPY',
+      marketRs,
+      market1DChange: marketChange,
+      type: 'BEARISH_ROTATION',
+      severity,
+      label: severity === 'MAJOR' ? 'MAJOR BEARISH DIVERGENCE' : 'BEARISH ROTATION DIVERGENCE',
+      badgeText: `${spreadVsMarket} pts vs SPY`,
+      summary: `Sector RS (${sectorRs}) is deteriorating sharply against the broader market (${marketRs}), warning of institutional liquidation & capital flight.`,
+      rotationThesis: `Institutional capital outflow. Avoid long breakouts in this group as sector headwind increases failure rates regardless of chart pattern.`,
+    };
+  }
+
+  // Convergent / Synced with broader market
+  return {
+    isDivergent: false,
+    spreadVsMarket,
+    marketSymbol: 'SPY',
+    marketRs,
+    market1DChange: marketChange,
+    type: 'CONVERGENT',
+    severity: 'NONE',
+    label: 'IN-LINE CONVERGENCE',
+    badgeText: `${spreadVsMarket >= 0 ? `+${spreadVsMarket}` : spreadVsMarket} pts vs SPY`,
+    summary: `Sector RS (${sectorRs}) moves in parity with the broader market (${marketRs}). No significant rotation divergence detected.`,
+    rotationThesis: `Market-neutral trend synchrony. Standard SEPA rules apply with normal beta weighting.`,
+  };
+}
+
 export interface SectorTrendMetrics {
   sectorKey: string;
   sectorName: string;
@@ -126,6 +204,7 @@ export interface SectorTrendMetrics {
   avgRs6M: number;
   rsMomentumDelta: number;
   momentumStatus: 'GAINING' | 'LOSING' | 'STEADY';
+  divergence: SectorDivergenceAlert;
   stage: string;
   changePercent: number;
 }
@@ -140,7 +219,18 @@ export const SectorCorrelationLeadershipCard: React.FC<SectorCorrelationLeadersh
 
   // Heatmap View state: visual grid vs tabular matrix
   const [heatmapViewMode, setHeatmapViewMode] = useState<'HEATMAP' | 'TABLE'>('HEATMAP');
-  const [momentumFilter, setMomentumFilter] = useState<'ALL' | 'GAINING' | 'LOSING' | 'ELITE'>('ALL');
+  const [momentumFilter, setMomentumFilter] = useState<'ALL' | 'DIVERGENT' | 'GAINING' | 'LOSING' | 'ELITE'>('ALL');
+
+  // Broader Market Benchmark (SPY)
+  const broadMarketEtf = SECTOR_BENCHMARK_ETFS['Broad Market'] || {
+    symbol: 'SPY',
+    name: 'SPDR S&P 500 ETF Trust',
+    sectorName: 'Broad Market',
+    rsRating: 75,
+    changePercent: 0.82,
+    stage: 'Stage 2 (Advancing)' as const,
+    dailyReturns: [],
+  };
 
   // Determine matched Sector ETF benchmark
   const defaultEtfKey = useMemo(() => {
@@ -232,6 +322,14 @@ export const SectorCorrelationLeadershipCard: React.FC<SectorCorrelationLeadersh
       const momentumStatus: 'GAINING' | 'LOSING' | 'STEADY' =
         rsMomentumDelta >= 3 ? 'GAINING' : rsMomentumDelta <= -3 ? 'LOSING' : 'STEADY';
 
+      // Compute Divergence Alert against Broader Market (SPY)
+      const divergence = computeSectorDivergence(
+        topStocksAvgRs,
+        broadMarketEtf.rsRating,
+        momentumStatus,
+        broadMarketEtf.changePercent
+      );
+
       return {
         sectorKey: key,
         sectorName: etf.sectorName,
@@ -244,16 +342,49 @@ export const SectorCorrelationLeadershipCard: React.FC<SectorCorrelationLeadersh
         avgRs6M,
         rsMomentumDelta,
         momentumStatus,
+        divergence,
         stage: etf.stage,
         changePercent: etf.changePercent,
       };
     });
-  }, [allStocks]);
+  }, [allStocks, broadMarketEtf.rsRating, broadMarketEtf.changePercent]);
+
+  // Active sector metrics & its Divergence Alert
+  const activeSectorMetrics = useMemo(() => {
+    return (
+      sectorMetricsList.find(
+        (s) => normalizeSectorName(s.sectorKey).toLowerCase() === normalizeSectorName(activeEtfKey).toLowerCase()
+      ) || sectorMetricsList[0]
+    );
+  }, [sectorMetricsList, activeEtfKey]);
+
+  const activeSectorDivergence = useMemo(() => {
+    return (
+      activeSectorMetrics?.divergence ||
+      computeSectorDivergence(benchmarkEtf.rsRating, broadMarketEtf.rsRating, 'STEADY', broadMarketEtf.changePercent)
+    );
+  }, [activeSectorMetrics, benchmarkEtf.rsRating, broadMarketEtf.rsRating, broadMarketEtf.changePercent]);
+
+  // Total count of sectors flashing divergence alerts
+  const divergentCount = useMemo(
+    () => sectorMetricsList.filter((s) => s.divergence.isDivergent).length,
+    [sectorMetricsList]
+  );
+  const bullishDivergentCount = useMemo(
+    () => sectorMetricsList.filter((s) => s.divergence.type === 'BULLISH_ROTATION').length,
+    [sectorMetricsList]
+  );
+  const bearishDivergentCount = useMemo(
+    () => sectorMetricsList.filter((s) => s.divergence.type === 'BEARISH_ROTATION').length,
+    [sectorMetricsList]
+  );
 
   // Filtered sector list based on UI selection
   const filteredSectorMetrics = useMemo(() => {
     let list = [...sectorMetricsList];
-    if (momentumFilter === 'GAINING') {
+    if (momentumFilter === 'DIVERGENT') {
+      list = list.filter((s) => s.divergence.isDivergent);
+    } else if (momentumFilter === 'GAINING') {
       list = list.filter((s) => s.momentumStatus === 'GAINING');
     } else if (momentumFilter === 'LOSING') {
       list = list.filter((s) => s.momentumStatus === 'LOSING');
@@ -476,6 +607,124 @@ export const SectorCorrelationLeadershipCard: React.FC<SectorCorrelationLeadersh
         </div>
       </div>
 
+      {/* DIVERGENCE ALERT TELEMETRY BANNER (FLASHES ON SIGNIFICANT ROTATION DIVERGENCE VS SPY) */}
+      <div
+        className={`p-3.5 border transition-all relative overflow-hidden font-mono ${
+          activeSectorDivergence.isDivergent
+            ? activeSectorDivergence.type === 'BULLISH_ROTATION'
+              ? 'bg-[#051c14] border-emerald-500 shadow-md shadow-emerald-950/60'
+              : 'bg-[#20070d] border-rose-500 shadow-md shadow-rose-950/60'
+            : 'bg-[#0d111a] border-gray-800'
+        }`}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          {/* Left: Flashing Beacon and Signal */}
+          <div className="flex items-start sm:items-center space-x-3">
+            {activeSectorDivergence.isDivergent ? (
+              <div className="relative flex items-center justify-center mt-0.5 sm:mt-0">
+                <span
+                  className={`w-3.5 h-3.5 rounded-full animate-ping absolute opacity-75 ${
+                    activeSectorDivergence.type === 'BULLISH_ROTATION' ? 'bg-emerald-400' : 'bg-rose-400'
+                  }`}
+                />
+                <span
+                  className={`w-2.5 h-2.5 rounded-full relative ${
+                    activeSectorDivergence.type === 'BULLISH_ROTATION' ? 'bg-emerald-500' : 'bg-rose-500'
+                  }`}
+                />
+              </div>
+            ) : (
+              <Radio className="w-4 h-4 text-gray-500 mt-0.5 sm:mt-0" />
+            )}
+
+            <div className="space-y-0.5">
+              <div className="flex flex-wrap items-center gap-2">
+                {activeSectorDivergence.isDivergent ? (
+                  <span
+                    className={`text-[11px] font-black uppercase tracking-wider px-2 py-0.5 border animate-pulse ${
+                      activeSectorDivergence.type === 'BULLISH_ROTATION'
+                        ? 'bg-emerald-500/25 text-emerald-200 border-emerald-400'
+                        : 'bg-rose-500/25 text-rose-200 border-rose-400'
+                    }`}
+                  >
+                    ⚡ DIVERGENCE ALERT: {activeSectorDivergence.label}
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-gray-800 text-gray-300 border border-gray-700">
+                    MARKET CONVERGENCE: IN-LINE WITH {broadMarketEtf.symbol}
+                  </span>
+                )}
+
+                <span className="text-[11px] font-bold text-white">
+                  {benchmarkEtf.sectorName} ({benchmarkEtf.symbol}) vs {broadMarketEtf.symbol}
+                </span>
+
+                <span
+                  className={`text-[10px] px-1.5 py-0.5 font-bold ${
+                    activeSectorDivergence.spreadVsMarket >= 0
+                      ? 'bg-emerald-950 text-emerald-300 border border-emerald-600'
+                      : 'bg-rose-950 text-rose-300 border border-rose-600'
+                  }`}
+                >
+                  Spread: {activeSectorDivergence.spreadVsMarket >= 0 ? `+${activeSectorDivergence.spreadVsMarket}` : activeSectorDivergence.spreadVsMarket} pts
+                </span>
+              </div>
+
+              <p className="text-[11px] text-gray-300 font-sans">
+                {activeSectorDivergence.isDivergent
+                  ? activeSectorDivergence.summary
+                  : `Active sector RS (${activeSectorMetrics?.topStocksAvgRs || benchmarkEtf.rsRating}) is tracking in-line with the broader market trend (${broadMarketEtf.symbol} RS ${broadMarketEtf.rsRating}).`}
+              </p>
+            </div>
+          </div>
+
+          {/* Right: Quick Action / Telemetry Summary */}
+          <div className="flex items-center space-x-2 text-[10px]">
+            <div className="hidden md:flex flex-col text-right pr-2 border-r border-gray-700">
+              <span className="text-gray-400">Total Market Divergences:</span>
+              <span className="font-bold text-amber-400">
+                {divergentCount} Active ({bullishDivergentCount} Bullish / {bearishDivergentCount} Bearish)
+              </span>
+            </div>
+
+            <button
+              onClick={() => {
+                setMomentumFilter('DIVERGENT');
+                setHeatmapViewMode('HEATMAP');
+              }}
+              className="px-2.5 py-1.5 bg-[#1b2230] hover:bg-amber-600 hover:text-white border border-gray-700 text-gray-200 font-bold uppercase transition-all cursor-pointer flex items-center space-x-1"
+            >
+              <span>View All Divergences</span>
+              <span className="bg-amber-500 text-black text-[9px] px-1 py-0.2 font-black rounded-none">
+                {divergentCount}
+              </span>
+            </button>
+          </div>
+        </div>
+
+        {/* Detailed Rotation Thesis when Divergent */}
+        {activeSectorDivergence.isDivergent && (
+          <div
+            className={`mt-2.5 pt-2 border-t text-[10px] font-sans flex flex-wrap items-center justify-between gap-2 ${
+              activeSectorDivergence.type === 'BULLISH_ROTATION'
+                ? 'border-emerald-500/30 text-emerald-200'
+                : 'border-rose-500/30 text-rose-200'
+            }`}
+          >
+            <div className="flex items-center space-x-1.5">
+              <Sparkles className="w-3.5 h-3.5 shrink-0" />
+              <span>
+                <strong>Institutional Rotation Shift Thesis:</strong> {activeSectorDivergence.rotationThesis}
+              </span>
+            </div>
+
+            <span className="text-[9px] text-gray-400 font-mono">
+              Market Benchmark: {broadMarketEtf.name} ({broadMarketEtf.symbol} RS {broadMarketEtf.rsRating})
+            </span>
+          </div>
+        )}
+      </div>
+
       {/* Top 4 KPI Metrics Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* KPI 1: Pearson Correlation Coefficient r */}
@@ -634,7 +883,7 @@ export const SectorCorrelationLeadershipCard: React.FC<SectorCorrelationLeadersh
         </div>
       </div>
 
-      {/* FEATURE 1 & 2: VISUAL TREND HEATMAP & RS MOMENTUM (3M vs 6M) SECTION */}
+      {/* FEATURE 1 & 2: VISUAL TREND HEATMAP, RS MOMENTUM (3M vs 6M) & DIVERGENCE ALERTS */}
       <div className="bg-[#0b0e14] border border-[#1e2330] p-5 space-y-4 text-white">
         {/* Heatmap Section Header & Controls */}
         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-gray-800 pb-3">
@@ -647,9 +896,15 @@ export const SectorCorrelationLeadershipCard: React.FC<SectorCorrelationLeadersh
               <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-mono px-2 py-0.5 font-bold uppercase">
                 3M vs 6M Momentum
               </span>
+              {divergentCount > 0 && (
+                <span className="bg-rose-500/20 text-rose-300 border border-rose-500/50 text-[10px] font-mono px-2 py-0.5 font-bold uppercase animate-pulse flex items-center space-x-1">
+                  <Zap className="w-3 h-3 text-rose-400 fill-rose-400" />
+                  <span>{divergentCount} Divergence Alerts</span>
+                </span>
+              )}
             </div>
             <p className="text-xs text-gray-400 font-sans">
-              Color-coded by the <strong className="text-gray-200">average RS rating of top-performing stocks</strong> in each sector. Compares 3-Month ($RS_{'{3M}'}$) against 6-Month ($RS_{'{6M}'}$) relative strength trends to pinpoint sectors <strong className="text-emerald-400">gaining</strong> versus <strong className="text-rose-400">losing</strong> institutional momentum.
+              Color-coded by the <strong className="text-gray-200">average RS rating of top-performing stocks</strong> in each sector. Compares 3-Month ($RS_{'{3M}'}$) against 6-Month ($RS_{'{6M}'}$) relative strength trends, with <strong className="text-amber-300">Divergence Alerts</strong> flashing when a sector decouples significantly from broader market {broadMarketEtf.symbol} ({broadMarketEtf.rsRating} RS).
             </p>
           </div>
 
@@ -660,6 +915,7 @@ export const SectorCorrelationLeadershipCard: React.FC<SectorCorrelationLeadersh
               {(
                 [
                   { id: 'ALL', label: `All (${sectorMetricsList.length})` },
+                  { id: 'DIVERGENT', label: `⚡ Divergences (${divergentCount})` },
                   { id: 'GAINING', label: `Gaining (${gainingCount})` },
                   { id: 'LOSING', label: `Losing (${losingCount})` },
                   { id: 'ELITE', label: `Elite 85+ (${eliteCount})` },
@@ -670,7 +926,9 @@ export const SectorCorrelationLeadershipCard: React.FC<SectorCorrelationLeadersh
                   onClick={() => setMomentumFilter(f.id)}
                   className={`px-2.5 py-1 text-[10px] font-bold uppercase transition-all cursor-pointer ${
                     momentumFilter === f.id
-                      ? 'bg-amber-600 text-white font-black'
+                      ? f.id === 'DIVERGENT'
+                        ? 'bg-rose-600 text-white font-black'
+                        : 'bg-amber-600 text-white font-black'
                       : 'text-gray-400 hover:text-white'
                   }`}
                 >
@@ -726,12 +984,15 @@ export const SectorCorrelationLeadershipCard: React.FC<SectorCorrelationLeadersh
           </div>
 
           <div className="flex items-center space-x-3 text-[10px] text-gray-400">
-            <span>
-              Gaining RS Ratio: <strong className="text-emerald-400">{gainingCount}</strong> / {sectorMetricsList.length} Sectors
+            <span className="flex items-center space-x-1">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping inline-block" />
+              <span>
+                Divergent Sectors: <strong className="text-amber-400">{divergentCount}</strong> / {sectorMetricsList.length}
+              </span>
             </span>
             <span className="text-gray-600">|</span>
             <span>
-              Active Sector: <strong className="text-amber-400">{benchmarkEtf.sectorName} ({benchmarkEtf.symbol})</strong>
+              Market Baseline: <strong className="text-cyan-400">{broadMarketEtf.symbol} ({broadMarketEtf.rsRating} RS)</strong>
             </span>
           </div>
         </div>
@@ -754,6 +1015,23 @@ export const SectorCorrelationLeadershipCard: React.FC<SectorCorrelationLeadersh
                     isSelectedSector ? 'ring-2 ring-amber-400 ring-offset-2 ring-offset-[#0b0e14]' : ''
                   }`}
                 >
+                  {/* Flashing Divergence Alert Indicator on Sector Card */}
+                  {sec.divergence.isDivergent && (
+                    <div
+                      className={`mb-2 px-2 py-1 border text-[10px] font-bold uppercase tracking-wider flex items-center justify-between animate-pulse ${
+                        sec.divergence.type === 'BULLISH_ROTATION'
+                          ? 'bg-emerald-500/25 border-emerald-400 text-emerald-200'
+                          : 'bg-rose-500/25 border-rose-400 text-rose-200'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-1">
+                        <Zap className="w-3 h-3 text-amber-300 fill-amber-300" />
+                        <span>DIVERGENCE ALERT</span>
+                      </div>
+                      <span className="font-mono">{sec.divergence.badgeText}</span>
+                    </div>
+                  )}
+
                   {/* Sector Header */}
                   <div className="space-y-1">
                     <div className="flex items-start justify-between">
@@ -882,6 +1160,10 @@ export const SectorCorrelationLeadershipCard: React.FC<SectorCorrelationLeadersh
                 <tr className="bg-[#151a27] text-gray-400 border-b border-gray-800 uppercase text-[10px]">
                   <th className="p-2.5">Sector & Benchmark ETF</th>
                   <th className="p-2.5 text-center">Top Stocks Avg RS</th>
+                  {/* DIVERGENCE ALERT COLUMN */}
+                  <th className="p-2.5 text-center bg-gray-900/90 text-amber-300 font-bold border-x border-gray-800">
+                    Divergence Alert (vs SPY {broadMarketEtf.rsRating})
+                  </th>
                   <th className="p-2.5 text-center">3-Month RS ($RS_{'{3M}'}$)</th>
                   <th className="p-2.5 text-center">6-Month RS ($RS_{'{6M}'}$)</th>
                   <th className="p-2.5 text-center bg-gray-900/80 border-x border-gray-800 text-amber-300 font-bold">
@@ -923,6 +1205,31 @@ export const SectorCorrelationLeadershipCard: React.FC<SectorCorrelationLeadersh
                         <span className={`text-xs px-2 py-0.5 font-bold border ${styles.badgeColor}`}>
                           {sec.topStocksAvgRs} RS
                         </span>
+                      </td>
+
+                      {/* Divergence Alert Column */}
+                      <td className="p-2.5 text-center bg-gray-900/70 border-x border-gray-800">
+                        {sec.divergence.isDivergent ? (
+                          <div className="inline-flex flex-col items-center">
+                            <span
+                              className={`text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider border flex items-center space-x-1 animate-pulse ${
+                                sec.divergence.type === 'BULLISH_ROTATION'
+                                  ? 'bg-emerald-950/80 text-emerald-200 border-emerald-400'
+                                  : 'bg-rose-950/80 text-rose-200 border-rose-400'
+                              }`}
+                            >
+                              <Zap className="w-3 h-3" />
+                              <span>{sec.divergence.badgeText}</span>
+                            </span>
+                            <span className="text-[8px] text-gray-400 mt-0.5">
+                              {sec.divergence.type === 'BULLISH_ROTATION' ? 'Bullish Inflow' : 'Bearish Outflow'}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-[10px] text-gray-500 font-sans">
+                            In-line ({sec.divergence.spreadVsMarket >= 0 ? `+${sec.divergence.spreadVsMarket}` : sec.divergence.spreadVsMarket} pts)
+                          </span>
+                        )}
                       </td>
 
                       {/* 3M RS */}
@@ -1103,7 +1410,6 @@ export const SectorCorrelationLeadershipCard: React.FC<SectorCorrelationLeadersh
                 <tr className="bg-gray-100 text-gray-600 border-b border-gray-200 uppercase text-[10px]">
                   <th className="p-2">Ticker / Name</th>
                   <th className="p-2 text-center">RS Rating</th>
-                  {/* RS Momentum column requested */}
                   <th className="p-2 text-center bg-amber-50/80 text-amber-900 border-x border-amber-200">
                     RS Momentum (3M vs 6M)
                   </th>
@@ -1295,14 +1601,14 @@ export const SectorCorrelationLeadershipCard: React.FC<SectorCorrelationLeadersh
               )}
             </div>
 
-            {/* SEPA RS Momentum Rule Box */}
+            {/* SEPA RS Momentum & Divergence Rule Box */}
             <div className="bg-[#0b1019] p-2.5 border border-cyan-500/30 space-y-1 text-[10px]">
               <div className="text-cyan-300 font-bold uppercase tracking-wider flex items-center space-x-1">
                 <Sparkles className="w-3 h-3 text-cyan-400" />
-                <span>3M vs 6M RS Momentum Rule:</span>
+                <span>Sector Rotation & Divergence Radar:</span>
               </div>
               <p className="text-gray-300 font-sans leading-relaxed">
-                When a sector’s 3-Month RS exceeds its 6-Month RS ($RS_{'{3M}'} &gt; RS_{'{6M}'}$), institutions are actively accumulating the group. Rotate capital into sectors labeled <strong className="text-emerald-300">GAINING STRENGTH</strong>.
+                When a sector’s RS diverges by $\ge 10$ points from broader market {broadMarketEtf.symbol}, a <strong className="text-amber-300">Sector Rotation Shift</strong> is in progress. Accumulate leadership stocks in sectors flashing <strong className="text-emerald-300">Bullish Divergence</strong> and avoid lagging groups showing <strong className="text-rose-300">Bearish Divergence</strong>.
               </p>
             </div>
           </div>
