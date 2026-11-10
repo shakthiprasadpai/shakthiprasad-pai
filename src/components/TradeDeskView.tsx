@@ -73,14 +73,14 @@ const parseScan = (txt) => {
   return toks.length ? new Set(toks) : null;
 };
 
-function Chart({ t, L, scan }) {
+function Chart({ t, L, scan, trail }) {
   const ss = scan ? (scan.has(t.sym) ? "yes" : "no") : "none";
   const W = 640, ml = 8, mr = 84, top = 10, ph = 200, vt = 228, vh = 56, n = t.closes.length;
-  const lo = Math.min(...t.closes, L.stop) * 0.995, hi = Math.max(...t.closes, L.t2) * 1.005;
+  const lo = Math.min(...t.closes, L.stop, trail ?? Infinity) * 0.995, hi = Math.max(...t.closes, L.t2) * 1.005;
   const x = (i) => ml + (i * (W - ml - mr)) / (n - 1);
   const y = (v) => top + ((hi - v) / (hi - lo)) * ph;
   const med = median(t.vols), vmax = Math.max(...t.vols), bw = ((W - ml - mr) / n) * 0.62;
-  const lv = [["entry", L.entry, "Entry"], ["stop", L.stop, "Stop"], ["tgt", L.t1, "T1"], ["tgt", L.t2, "T2"]];
+  const lv = [["entry", L.entry, "Entry"], ["stop", L.stop, "Stop"], ["tgt", L.t1, "T1"], ["tgt", L.t2, "T2"], ...(trail ? [["trail", trail, "Trail"]] : [])];
   const lab = lv.map(([k, v, name]) => ({ k, y: y(v), txt: `${name} ${fmt(v)}` })).sort((p, q) => p.y - q.y);
   for (let i = 1; i < lab.length; i++) if (lab[i].y - lab[i - 1].y < 13) lab[i].y = lab[i - 1].y + 13;
   return (
@@ -109,6 +109,8 @@ export default function App({ askModel = defaultAskModel, onNavigate, onOpenStag
   const [capital, setCapital] = useState("500000");
   const [riskPct, setRiskPct] = useState("1");
   const [muted, setMuted] = useState(true);
+  const [trailPct, setTrailPct] = useState("8");
+  const [trailHigh, setTrailHigh] = useState("");
   const [scanTxt, setScanTxt] = useState(() => { try { return localStorage.getItem("gsa-scan") || ""; } catch { return ""; } });
   const scan = useMemo(() => parseScan(scanTxt), [scanTxt]);
   const onScan = (v) => { setScanTxt(v); try { localStorage.setItem("gsa-scan", v); } catch {} };
@@ -144,6 +146,19 @@ export default function App({ askModel = defaultAskModel, onNavigate, onOpenStag
     return { cap, risk, qty, capped, value: qty * L.entry, r1: (L.t1 - L.entry) / risk, r2: (L.t2 - L.entry) / risk };
   }, [ok, L.entry, L.stop, L.t1, L.t2, capital, riskPct]);
 
+  // Trailing stop: highest price since entry x (1 - trail%). Until you enter a real high, the highest close in the 40 sessions is used.
+  useEffect(() => { setTrailHigh(""); }, [sel]); // a high entered for one stock must not carry to the other
+  const trailInfo = useMemo(() => {
+    const p = parseFloat(trailPct);
+    if (!(p > 0 && p < 50)) return null;
+    const dataHigh = Math.max(...t.closes);
+    const hi = parseFloat(trailHigh) > 0 ? parseFloat(trailHigh) : dataHigh;
+    const stop = hi * (1 - p / 100);
+    const initial = ok ? L.stop : NaN;
+    const activates = isFinite(initial) ? initial / (1 - p / 100) : NaN; // the high at which the trail overtakes the fixed stop
+    return { p, hi, stop, fromClose: (1 - stop / t.close) * 100, binding: isFinite(initial) && stop > initial, activates, usingData: !(parseFloat(trailHigh) > 0), dataHigh };
+  }, [trailPct, trailHigh, t, ok, L.stop]);
+
   const say = (m) => { setToast(m); clearTimeout(timer.current); timer.current = setTimeout(() => setToast(""), 2600); };
   const copy = (text, msg) => {
     try { navigator.clipboard.writeText(text).then(() => say(msg), () => say(text)); } catch { say(text); }
@@ -170,7 +185,7 @@ export default function App({ askModel = defaultAskModel, onNavigate, onOpenStag
   const ctxData = () => {
     const cap = parseFloat(capital) || 0, rp = parseFloat(riskPct) || 0;
     return {
-      session: "NSE close 9 Nov 2026, screen run 10 Nov 2026", marketBreadthAD: 0.77, capitalINR: cap, riskPerTradePct: rp, selected: t.sym,
+      session: "NSE close 9 Nov 2026, screen run 10 Nov 2026", marketBreadthAD: 0.77, capitalINR: cap, riskPerTradePct: rp, selected: t.sym, trailingStop: trailInfo ? { percent: trailInfo.p, highUsed: +trailInfo.hi.toFixed(2), stop: +trailInfo.stop.toFixed(2), highIsFromData: trailInfo.usingData } : null,
       setups: TRADES.map((x) => {
         const l = Object.fromEntries(Object.entries(lv[x.id]).map(([k, v]) => [k, parseFloat(v as string)]));
         const risk = l.entry - l.stop;
@@ -374,7 +389,7 @@ export default function App({ askModel = defaultAskModel, onNavigate, onOpenStag
               {scan ? <><span>{scan.size} tokens read</span>{TRADES.map((x) => { const m = scan.has(x.sym); return <span key={x.id}>{x.sym}: <b className={m ? "y" : "n"}>{m ? "in scan" : "not in scan"}</b></span>; })}</> : <span>No scan pasted yet. Run the clause in Chartink, paste the result here, and each chart shows whether its stock is in the scan.</span>}
             </div>
           </div>
-          <div className="chartbox" ref={chartRef}>{ok ? <Chart t={t} L={L} scan={scan} /> : null}</div>
+          <div className="chartbox" ref={chartRef}>{ok ? <Chart t={t} L={L} scan={scan} trail={trailInfo?.stop} /> : null}</div>
           <p className="read">{t.base}</p>
 
           <div className="cols">
@@ -402,6 +417,24 @@ export default function App({ askModel = defaultAskModel, onNavigate, onOpenStag
                 <div className="err">Check the levels: stop below entry, targets above entry, target 2 at or above target 1.</div>
               )}
               <div className="tg">{t.targets}</div>
+              <div className="tbox">
+                <div className="lab">Trailing stop</div>
+                <div className="trow">
+                  <label className="f"><span className="lab">Trail %</span><input type="number" min="1" max="49" step="0.5" value={trailPct} onChange={(e) => setTrailPct(e.target.value)} /></label>
+                  <label className="f"><span className="lab">Highest price since entry</span><input type="number" step="0.05" value={trailHigh} placeholder={`${fmt(Math.max(...t.closes), 2)} (40-session high close)`} onChange={(e) => setTrailHigh(e.target.value)} /></label>
+                </div>
+                {trailInfo ? (
+                  <table className="num"><tbody>
+                    <tr><td className="k">Trailing stop</td><td>₹{fmt(trailInfo.stop, 2)} ({trailInfo.p}% below ₹{fmt(trailInfo.hi, 2)})</td></tr>
+                    <tr><td className="k">Versus last close</td><td>{(trailInfo.stop / t.close * 100 - 100).toFixed(1)}%</td></tr>
+                    {ok && <tr><td className="k">Versus fixed stop ₹{fmt(L.stop, 2)}</td><td>{trailInfo.binding ? "Trail is higher: it now protects more" : `Fixed stop is tighter until the high passes ₹${fmt(trailInfo.activates, 2)}`}</td></tr>}
+                    {size && (trailInfo.stop > L.entry
+                      ? <tr><td className="k">Profit locked in if hit</td><td>₹{fmt((trailInfo.stop - L.entry) * size.qty)}</td></tr>
+                      : <tr><td className="k">Loss if trail is hit</td><td>₹{fmt((L.entry - trailInfo.stop) * size.qty)}</td></tr>)}
+                  </tbody></table>
+                ) : <div className="err">Enter a trail between 1 and 49 percent.</div>}
+                <div className="tg">{trailInfo?.usingData ? "No real high entered, so the highest close in the data is used. Enter your own high after you are in the trade. " : ""}Raise the stop only; never lower it. For SAILIFE, an intraday trade, an 8% trail is far wider than the day's range and works as a swing exit only.</div>
+              </div>
             </div>
             <div ref={tplRef}>
               <div className="lab">Trend template</div>
@@ -492,6 +525,7 @@ const CSS = `
 .desk label.f{display:flex;flex-direction:column;gap:5px}
 .desk input[type=number]{font:inherit;font-weight:500;color:var(--fg);background:#08080c;border:1px solid #2a2a36;padding:8px 10px;width:130px;min-width:0}
 .stats{display:flex;flex-wrap:wrap;gap:6px 24px;color:var(--muted);font-size:12px}.stats b{color:var(--fg);font-weight:500}
+.tbox{border-top:1px solid var(--line);margin-top:6px;padding-top:14px;display:flex;flex-direction:column;gap:10px}.tbox .trow{display:flex;gap:10px;flex-wrap:wrap}.tbox .trow .f{flex:1 1 140px;min-width:0}.tbox table{width:100%;border-collapse:collapse;font-size:12px}.tbox td{padding:6px 0;border-bottom:1px solid #15151c}.tbox td:last-child{text-align:right}.tbox .k{color:var(--muted)}
 .scan{background:var(--card2);border:1px solid var(--line);padding:12px;display:flex;flex-direction:column;gap:10px;min-width:0}
 .scan .srow{display:flex;gap:10px;flex-wrap:wrap;min-width:0}
 .scan textarea{flex:1 1 260px;min-width:0;background:#08080c;border:1px solid var(--line);color:var(--fg);font:12px/1.4 var(--mono);padding:8px 10px;resize:vertical}
@@ -506,8 +540,8 @@ const CSS = `
 svg.chart{display:block;width:100%;min-width:520px;height:auto}
 svg.chart text{font-family:var(--mono);font-size:10.5px;fill:var(--muted)}
 .ln-price{fill:none;stroke:var(--fg);stroke-width:1.6}.vb{fill:#2a2a36}.vb.hot{fill:var(--amber)}
-.lv{stroke-width:1;stroke-dasharray:4 3}.lv.entry{stroke:var(--amber)}.lv.stop{stroke:var(--red-t)}.lv.tgt{stroke:var(--green-t)}
-svg.chart .lt.entry{fill:var(--amber)}svg.chart .lt.stop{fill:var(--red-t)}svg.chart .lt.tgt{fill:var(--green-t)}.cdot{fill:var(--fg)}
+.lv{stroke-width:1;stroke-dasharray:4 3}.lv.trail{stroke:#a78bfa;stroke-dasharray:2 4}.lv.entry{stroke:var(--amber)}.lv.stop{stroke:var(--red-t)}.lv.tgt{stroke:var(--green-t)}
+svg.chart .lt.trail{fill:#a78bfa}svg.chart .lt.entry{fill:var(--amber)}svg.chart .lt.stop{fill:var(--red-t)}svg.chart .lt.tgt{fill:var(--green-t)}.cdot{fill:var(--fg)}
 .cols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:28px}
 @media (max-width:760px){.cols{grid-template-columns:minmax(0,1fr)}}
 .lvls{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
