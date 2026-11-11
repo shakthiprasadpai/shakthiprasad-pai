@@ -68,7 +68,6 @@ import {
   Radio,
 } from 'lucide-react';
 import { NewsSentimentD3Chart } from './NewsSentimentD3Chart';
-import { exportNewsSentimentToPdf } from '../utils/exportNewsPdf';
 import { SentimentResearchPanel } from './SentimentResearchPanel';
 import { NewsWordCloud } from './NewsWordCloud';
 
@@ -1499,8 +1498,17 @@ export const TickerNewsGrounding: React.FC<TickerNewsGroundingProps> = ({ stock 
   };
 
   // Export comprehensive news, sentiment, and trade plan as a formatted PDF report
-  const handleExportPdf = () => {
+  const handleExportPdf = async () => {
     if (!newsData) return;
+    // The PDF library is large and only needed here, so it loads on the first export.
+    let exportNewsSentimentToPdf: typeof import('../utils/exportNewsPdf').exportNewsSentimentToPdf;
+    try {
+      ({ exportNewsSentimentToPdf } = await import('../utils/exportNewsPdf'));
+    } catch {
+      setShareFeedback('Could not load the PDF exporter. Check your connection and try again.');
+      setTimeout(() => setShareFeedback(null), 3000);
+      return;
+    }
 
     const total = newsData.headlines.length || 0;
     const bullishAndCatalyst = (sentimentCounts.BULLISH || 0) + (sentimentCounts.CATALYST || 0);

@@ -7,49 +7,24 @@ import { TrendTemplateChecklist } from './components/TrendTemplateChecklist';
 import { TradePlanCard } from './components/TradePlanCard';
 import { AiMinerviniAnalyst } from './components/AiMinerviniAnalyst';
 import { CustomTickerScanner } from './components/CustomTickerScanner';
-import { EducationalGuide } from './components/EducationalGuide';
 import { GoogleSheetsIntegration } from './components/GoogleSheetsIntegration';
 import { MarketSentimentRibbon } from './components/MarketSentimentRibbon';
 import { PriceAlertSystem } from './components/PriceAlertSystem';
 import { MyPortfolio } from './components/MyPortfolio';
 import { EarningsCalendar } from './components/EarningsCalendar';
-import { MinerviniVideoMasterclass } from './components/MinerviniVideoMasterclass';
 import { TickerNewsGrounding } from './components/TickerNewsGrounding';
-import { ObsidianIntegration } from './components/ObsidianIntegration';
-import { SecondBrainHub } from './components/SecondBrainHub';
-import { PocketPivotScanner } from './components/PocketPivotScanner';
-import { VcpPatternScanner } from './components/VcpPatternScanner';
-import { TradeJournal } from './components/TradeJournal';
 import { BigMoneyTracker } from './components/BigMoneyTracker';
 import { GlobalNotificationToast } from './components/GlobalNotificationToast';
 import { HistoricalBacktestPanel } from './components/HistoricalBacktestPanel';
 import { BreakoutProbabilityEngine } from './components/BreakoutProbabilityEngine';
-import { SectorStrengthView } from './components/SectorStrengthView';
-import { PatternVisualsLibrary } from './components/PatternVisualsLibrary';
-import { ExportTradeData } from './components/ExportTradeData';
-import { SecurityShieldPanel } from './components/SecurityShieldPanel';
 import { MobileBottomNav } from './components/MobileBottomNav';
-import { HermesAgent } from './components/HermesAgent';
-import TradeDeskView, { makeProxyAskModel } from './components/TradeDeskView';
 import { useChartlinkScan, ChartlinkScanBadge, ChartlinkScanPanel } from './components/ChartlinkScanOverlay';
-import { WatchlistManager } from './components/WatchlistManager';
 import { DailyReview } from './components/DailyReview';
 import { SectorCorrelationLeadershipCard } from './components/SectorCorrelationLeadershipCard';
 import { PositionRiskCalculator } from './components/PositionRiskCalculator';
 import { DailyStage2ScannerModal } from './components/DailyStage2ScannerModal';
 import { RecentPriceAlertHistory } from './components/RecentPriceAlertHistory';
-import { BhavcopyView } from './components/BhavcopyView';
-import { RrgToolView } from './components/RrgToolView';
-import { FivePaisaTradingView } from './components/FivePaisaTradingView';
-import { GoogleDriveView } from './components/GoogleDriveView';
-import { GoogleSheetsView } from './components/GoogleSheetsView';
-import { GmailAlertsView } from './components/GmailAlertsView';
-import { ChartLinkScannerView } from './components/ChartLinkScannerView';
-import { ScreenerInView } from './components/ScreenerInView';
-import { MarketVolatilityDashboard } from './components/MarketVolatilityDashboard';
 import { QuickInsightModal } from './components/QuickInsightModal';
-import { BearishMarketDashboard } from './components/BearishMarketDashboard';
-import { TrendTemplateBacktestView } from './components/TrendTemplateBacktestView';
 import { getStoredWatchlists } from './utils/watchlistStorage';
 import { initializeAlertHistory } from './utils/priceAlertHistoryStorage';
 import { DEFAULT_NSE_BHAVCOPY, DEFAULT_BSE_BHAVCOPY } from './data/bhavcopyData';
@@ -61,9 +36,34 @@ import { getChartLinkUrl } from './utils/chartLinkHelper';
 import { TrendingUp, TrendingDown, Skull, ShieldAlert, ShieldCheck, Target, Droplets, ArrowUpRight, Flame, BarChart3, Calculator, Sparkles, Gem, Bot, Bell, Keyboard, Command, Search, Zap, History, Brain, Bookmark, ExternalLink, Activity, BellRing } from 'lucide-react';
 import { useAuth } from './context/AuthContext';
 import { LoginScreen } from './components/LoginScreen';
+import { lazyView } from './utils/lazyView';
 
-// Hermes panel on the Trade Desk talks to the server's /api/desk-chat endpoint.
-const deskAskModel = makeProxyAskModel('/api/desk-chat');
+// Tab-only views load on first use, which keeps the first download small.
+const TrendTemplateBacktestView = lazyView(() => import('./components/TrendTemplateBacktestView').then((m) => ({ default: m.TrendTemplateBacktestView })));
+const BhavcopyView = lazyView(() => import('./components/BhavcopyView').then((m) => ({ default: m.BhavcopyView })));
+const RrgToolView = lazyView(() => import('./components/RrgToolView').then((m) => ({ default: m.RrgToolView })));
+const FivePaisaTradingView = lazyView(() => import('./components/FivePaisaTradingView').then((m) => ({ default: m.FivePaisaTradingView })));
+const GoogleDriveView = lazyView(() => import('./components/GoogleDriveView').then((m) => ({ default: m.GoogleDriveView })));
+const GoogleSheetsView = lazyView(() => import('./components/GoogleSheetsView').then((m) => ({ default: m.GoogleSheetsView })));
+const GmailAlertsView = lazyView(() => import('./components/GmailAlertsView').then((m) => ({ default: m.GmailAlertsView })));
+const ChartLinkScannerView = lazyView(() => import('./components/ChartLinkScannerView').then((m) => ({ default: m.ChartLinkScannerView })));
+const ScreenerInView = lazyView(() => import('./components/ScreenerInView').then((m) => ({ default: m.ScreenerInView })));
+const MinerviniVideoMasterclass = lazyView(() => import('./components/MinerviniVideoMasterclass').then((m) => ({ default: m.MinerviniVideoMasterclass })));
+const PatternVisualsLibrary = lazyView(() => import('./components/PatternVisualsLibrary').then((m) => ({ default: m.PatternVisualsLibrary })));
+const BearishMarketDashboard = lazyView(() => import('./components/BearishMarketDashboard').then((m) => ({ default: m.BearishMarketDashboard })));
+const SecondBrainHub = lazyView(() => import('./components/SecondBrainHub').then((m) => ({ default: m.SecondBrainHub })));
+const ObsidianIntegration = lazyView(() => import('./components/ObsidianIntegration').then((m) => ({ default: m.ObsidianIntegration })));
+const EducationalGuide = lazyView(() => import('./components/EducationalGuide').then((m) => ({ default: m.EducationalGuide })));
+const ExportTradeData = lazyView(() => import('./components/ExportTradeData').then((m) => ({ default: m.ExportTradeData })));
+const MarketVolatilityDashboard = lazyView(() => import('./components/MarketVolatilityDashboard').then((m) => ({ default: m.MarketVolatilityDashboard })));
+const SectorStrengthView = lazyView(() => import('./components/SectorStrengthView').then((m) => ({ default: m.SectorStrengthView })));
+const HermesAgent = lazyView(() => import('./components/HermesAgent').then((m) => ({ default: m.HermesAgent })));
+const TradeJournal = lazyView(() => import('./components/TradeJournal').then((m) => ({ default: m.TradeJournal })));
+const WatchlistManager = lazyView(() => import('./components/WatchlistManager').then((m) => ({ default: m.WatchlistManager })));
+const PocketPivotScanner = lazyView(() => import('./components/PocketPivotScanner').then((m) => ({ default: m.PocketPivotScanner })));
+const VcpPatternScanner = lazyView(() => import('./components/VcpPatternScanner').then((m) => ({ default: m.VcpPatternScanner })));
+const SecurityShieldPanel = lazyView(() => import('./components/SecurityShieldPanel').then((m) => ({ default: m.SecurityShieldPanel })));
+const TradeDeskView = lazyView(() => import('./components/TradeDeskView'));
 
 export default function App() {
   const { user, loading } = useAuth();
@@ -545,7 +545,6 @@ export default function App() {
               transition={{ duration: 0.25, ease: 'easeInOut' }}
             >
               <TradeDeskView
-                askModel={deskAskModel}
                 onNavigate={(tab: string) => setActiveTab(tab as AppNavTab)}
                 onOpenStageScan={() => setIsDailyScanModalOpen(true)}
               />
