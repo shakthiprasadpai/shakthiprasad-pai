@@ -9,6 +9,7 @@ import { RiskRewardChart } from './RiskRewardChart';
 import { VolatilityTrendChart } from './VolatilityTrendChart';
 import { VolatilityContractionRatioSubchart } from './VolatilityContractionRatioSubchart';
 import { VolumeProfileSidebar } from './VolumeProfileSidebar';
+import { candlePatterns } from '../utils/deskIndicators';
 import { calculateVolumeProfile } from '../utils/volumeProfileCalculator';
 import { RsiSubchart } from './RsiSubchart';
 import { PivotPointLevelsCard } from './PivotPointLevelsCard';
@@ -377,6 +378,8 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock, overlay }) => {
   const [chartSubTab, setChartSubTab] = useState<'vcp_candlestick' | 'technical_pro' | 'volatility_trend' | 'volatility_contraction' | 'risk_reward'>('vcp_candlestick');
   const [showEma10, setShowEma10] = useState(true);
   const [showEma21, setShowEma21] = useState(true);
+  const [showEma20, setShowEma20] = useState(true);
+  const [showCandlePatterns, setShowCandlePatterns] = useState(true);
   const [showSma50, setShowSma50] = useState(true);
   const [showSma150, setShowSma150] = useState(true);
   const [showSma200, setShowSma200] = useState(true);
@@ -976,6 +979,25 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock, overlay }) => {
   const fullCloses = useMemo(() => (stock.priceHistory || []).map((p) => p.close), [stock.priceHistory]);
   const fullEma10 = useMemo(() => calculateEmaSeries(fullCloses, 10), [fullCloses]);
   const fullEma21 = useMemo(() => calculateEmaSeries(fullCloses, 21), [fullCloses]);
+  const fullEma20 = useMemo(() => calculateEmaSeries(fullCloses, 20), [fullCloses]);
+
+  const ema20Map = useMemo(() => {
+    const map: Record<string, number> = {};
+    (stock.priceHistory || []).forEach((p, idx) => {
+      map[p.date] = fullEma20[idx];
+    });
+    return map;
+  }, [stock.priceHistory, fullEma20]);
+
+  // Candlestick patterns (doji, hammer, engulfing, stars and so on) over the whole history; the chart marks the recent ones.
+  const candleMarks = useMemo(() => {
+    const hist = (stock.priceHistory || []).filter((p) => p && isFinite(p.open) && isFinite(p.high) && isFinite(p.low) && isFinite(p.close));
+    if (hist.length < 7) return [] as { date: string; name: string; bias: string; high: number; low: number }[];
+    const found = candlePatterns({ o: hist.map((p) => p.open), h: hist.map((p) => p.high), l: hist.map((p) => p.low), closes: hist.map((p) => p.close) });
+    return found
+      .filter((f: any) => f.i >= hist.length - 15)
+      .map((f: any) => ({ date: hist[f.i].date, name: f.name as string, bias: f.bias as string, high: hist[f.i].high, low: hist[f.i].low }));
+  }, [stock.priceHistory]);
 
   const ema10Map = useMemo(() => {
     const map: Record<string, number> = {};
@@ -1021,6 +1043,7 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock, overlay }) => {
         ...point,
         ema10: ema10Map[point.date] ?? point.close,
         ema21: ema21Map[point.date] ?? point.close,
+        ema20: ema20Map[point.date] ?? point.close,
       };
 
       customTrendlines.forEach((line) => {
@@ -1443,6 +1466,32 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock, overlay }) => {
             title="Toggle 21-day Exponential Moving Average (Swing Trend Guideline)"
           >
             <span>21 EMA</span>
+          </button>
+
+          <button
+            onClick={() => setShowEma20(!showEma20)}
+            aria-pressed={showEma20}
+            className={`px-3 py-1 border text-xs font-semibold uppercase tracking-wider font-mono transition-all cursor-pointer ${
+              showEma20
+                ? 'bg-[#0ea5e9] text-white border-[#0284c7] shadow-xs'
+                : 'bg-[#f9f8f5] text-gray-400 border-[#e5e4e1] line-through'
+            }`}
+            title="Toggle 20-day Exponential Moving Average (dashed sky-blue line)"
+          >
+            <span>20 EMA</span>
+          </button>
+
+          <button
+            onClick={() => setShowCandlePatterns(!showCandlePatterns)}
+            aria-pressed={showCandlePatterns}
+            className={`px-3 py-1 border text-xs font-semibold uppercase tracking-wider font-mono transition-all cursor-pointer ${
+              showCandlePatterns
+                ? 'bg-[#1a1a1a] text-white border-black shadow-xs'
+                : 'bg-[#f9f8f5] text-gray-400 border-[#e5e4e1] line-through'
+            }`}
+            title="Toggle candlestick pattern markers for the last 15 sessions: ▲ bullish, ▼ bearish, ◆ neutral. Hover a marker for its name."
+          >
+            <span>Candle patterns ({candleMarks.length})</span>
           </button>
 
           <button
@@ -2567,6 +2616,38 @@ export const VcpChart: React.FC<VcpChartProps> = ({ stock, overlay }) => {
                 dot={false}
               />
             )}
+            {showEma20 && (
+              <Line
+                type="monotone"
+                dataKey="ema20"
+                name="20 EMA"
+                stroke="#0ea5e9"
+                strokeWidth={2}
+                strokeDasharray="5 3"
+                dot={false}
+              />
+            )}
+            {showCandlePatterns && candleMarks
+              .filter((m) => displayedPriceHistory.some((p) => p.date === m.date))
+              .map((m, i) => {
+                const bear = m.bias === 'bear', bull = m.bias === 'bull';
+                const color = bull ? '#16a34a' : bear ? '#dc2626' : '#d97706';
+                return (
+                  <ReferenceDot
+                    key={`cp-${m.date}-${m.name}-${i}`}
+                    x={m.date}
+                    y={bear ? m.high : m.low}
+                    r={0}
+                    isFront={true}
+                    shape={(props: any) => (
+                      <text x={props.cx} y={props.cy + (bear ? -6 : 14)} textAnchor="middle" fontSize={11} fontWeight={700} fill={color}>
+                        <title>{`${m.date}: ${m.name}`}</title>
+                        {bear ? '▼' : bull ? '▲' : '◆'}
+                      </text>
+                    )}
+                  />
+                );
+              })}
             {showSma50 && (
               <Line
                 type="monotone"
@@ -4156,6 +4237,7 @@ const CustomChartTooltip = ({ active, payload, currencySymbol, stock, vcpNodes, 
         <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 pt-1 border-t border-gray-800 text-[10px]">
           {(data as any).ema10 && <span className="text-pink-400">10 EMA: {currencySymbol}{(data as any).ema10}</span>}
           {(data as any).ema21 && <span className="text-amber-400 text-right">21 EMA: {currencySymbol}{(data as any).ema21}</span>}
+          {(data as any).ema20 && <span className="text-sky-400">20 EMA: {currencySymbol}{(data as any).ema20}</span>}
           <span className="text-blue-300">50 SMA: {currencySymbol}{data.sma50}</span>
           <span className="text-amber-300 text-right">150 SMA: {currencySymbol}{data.sma150}</span>
           <span className="text-purple-300">200 SMA: {currencySymbol}{data.sma200}</span>

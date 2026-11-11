@@ -1,161 +1,15 @@
 import { Component, useState, useMemo, useEffect } from "react";
+import { fmt, median, avg, pocketPivots, vcpScan, emaSeries, rsiSeries, stageInfo, patternAlerts, candlePatterns } from "../utils/deskIndicators";
+export { pocketPivots, vcpScan, emaSeries, rsiSeries, stageInfo, patternAlerts, candlePatterns };
 
 /* Desk tools: screener, pocket pivot, VCP scan, stage scan, portfolio, earnings, sector health,
    journal, pattern alerts and export. Everything is computed from the data passed in (40 daily
    sessions per stock) or typed in by the user. Nothing here is fetched live. */
 
-const fmt = (n, d = 0) => Number(n).toLocaleString("en-IN", { minimumFractionDigits: d, maximumFractionDigits: d });
-const median = (a) => [...a].sort((x, y) => x - y)[Math.floor(a.length / 2)];
-const avg = (a) => a.reduce((s, v) => s + v, 0) / (a.length || 1);
-
-/* ---------- analysis (pure) ---------- */
-
-// Pocket pivot: an up day whose volume beats the biggest down-day volume of the prior 10 sessions,
-// closing above its 10-day average.
-export function pocketPivots(t) {
-  const { closes: c, vols: v } = t, out = [];
-  for (let i = 11; i < c.length; i++) {
-    if (!(c[i] > c[i - 1])) continue;
-    let maxDown = 0;
-    for (let j = i - 10; j < i; j++) if (c[j] < c[j - 1]) maxDown = Math.max(maxDown, v[j]);
-    const sma10 = avg(c.slice(i - 9, i + 1));
-    if (maxDown > 0 && v[i] > maxDown && c[i] > sma10) out.push({ i, ago: c.length - 1 - i, close: c[i], vol: v[i], maxDown });
-  }
-  return out;
-}
-
-// VCP from daily closes: swing highs and lows over a 5-session window, then the depth of each
-// high-to-low pullback. Approximate: closes only, no intraday highs and lows.
-export function vcpScan(t) {
-  const c = t.closes, n = c.length, k = 2, pts = [];
-  for (let i = k; i < n - k; i++) {
-    const w = c.slice(i - k, i + k + 1);
-    if (c[i] === Math.max(...w)) pts.push({ i, p: c[i], type: "H" });
-    else if (c[i] === Math.min(...w)) pts.push({ i, p: c[i], type: "L" });
-  }
-  const seq = [];
-  for (const p of pts) {
-    const last = seq[seq.length - 1];
-    if (!last || last.type !== p.type) seq.push(p);
-    else if ((p.type === "H" && p.p > last.p) || (p.type === "L" && p.p < last.p)) seq[seq.length - 1] = p;
-  }
-  const cons = [];
-  for (let j = 0; j + 1 < seq.length; j++) {
-    if (seq[j].type === "H" && seq[j + 1].type === "L") cons.push({ from: seq[j].i, to: seq[j + 1].i, depth: ((seq[j].p - seq[j + 1].p) / seq[j].p) * 100 });
-  }
-  const last = cons.slice(-4);
-  const tightening = last.length >= 2 && last.every((x, j) => j === 0 || x.depth < last[j - 1].depth);
-  const med = median(t.vols), recent = avg(t.vols.slice(-5)) / med, dry = avg(t.vols.slice(-10, -2)) / med;
-  return { contractions: last, tightening, recentVol: recent, priorVol: dry, swings: seq };
-}
-
-// EMA and Wilder RSI over t.pre (earlier closes, for warm-up) followed by t.closes; returns arrays aligned to t.closes.
-// EMA is seeded with the simple average of its first n closes, RSI with the average of its first n changes, as most charting packages do.
-const joined = (t: any): number[] => [...(Array.isArray(t.pre) ? t.pre : []), ...t.closes];
-export function emaSeries(t: any, n = 20): (number | null)[] {
-  const c = joined(t), k = 2 / (n + 1), out = new Array<number | null>(c.length).fill(null);
-  if (c.length < n) return out.slice(c.length - t.closes.length);
-  let e = avg(c.slice(0, n)); out[n - 1] = e;
-  for (let i = n; i < c.length; i++) { e = c[i] * k + e * (1 - k); out[i] = e; }
-  return out.slice(c.length - t.closes.length);
-}
-export function rsiSeries(t: any, n = 14): (number | null)[] {
-  const c = joined(t), out = new Array<number | null>(c.length).fill(null);
-  if (c.length <= n) return out.slice(c.length - t.closes.length);
-  let g = 0, l = 0;
-  for (let i = 1; i <= n; i++) { const d = c[i] - c[i - 1]; if (d >= 0) g += d; else l -= d; }
-  g /= n; l /= n;
-  const val = () => (l === 0 ? 100 : 100 - 100 / (1 + g / l));
-  out[n] = val();
-  for (let i = n + 1; i < c.length; i++) {
-    const d = c[i] - c[i - 1];
-    g = (g * (n - 1) + Math.max(d, 0)) / n; l = (l * (n - 1) + Math.max(-d, 0)) / n;
-    out[i] = val();
-  }
-  return out.slice(c.length - t.closes.length);
-}
-
-export function stageInfo(t) {
-  const [m50, m150, m200] = t.ma;
-  const stage2 = t.close > m50 && m50 > m150 && m150 > m200;
-  return {
-    stage2, ext50: (t.close / m50 - 1) * 100, fromHigh: (t.close / t.hi52 - 1) * 100, aboveLow: (t.close / t.lo52 - 1) * 100,
-    rows: [
-      ["Close above 50 DMA", t.close > m50], ["50 DMA above 150 DMA", m50 > m150], ["150 DMA above 200 DMA", m150 > m200],
-      ["Close above 200 DMA", t.close > m200], ["30%+ above 52-week low", t.close >= t.lo52 * 1.3], ["Within 25% of 52-week high", t.close >= t.hi52 * 0.75],
-    ],
-  };
-}
-
-export function patternAlerts(t, L) {
-  const a = [], c = t.closes, med = median(t.vols), s = stageInfo(t);
-  const dPiv = (L.entry / t.close - 1) * 100;
-  if (dPiv > 0 && dPiv <= 3) a.push(["warn", `Within ${dPiv.toFixed(1)}% below the pivot at ₹${fmt(L.entry, 2)}`]);
-  else if (dPiv > 3) a.push(["info", `${dPiv.toFixed(1)}% below the pivot, no trigger yet`]);
-  else a.push(["ok", `Closed above the pivot by ${(-dPiv).toFixed(1)}%`]);
-  const pp = pocketPivots(t).filter((x) => x.ago <= 3);
-  if (pp.length) a.push(["ok", `Pocket pivot ${pp[pp.length - 1].ago === 0 ? "today" : pp[pp.length - 1].ago + " sessions ago"} on ${pp[pp.length - 1].vol.toFixed(1)}M shares`]);
-  const vx = t.vols[t.vols.length - 1] / med;
-  if (vx >= 2) a.push(["ok", `Volume ${vx.toFixed(1)}x the 40-session median`]);
-  if (s.ext50 > 20) a.push(["warn", `Extended: ${s.ext50.toFixed(0)}% above the 50 DMA`]);
-  const risk = ((L.entry - L.stop) / L.entry) * 100;
-  if (risk > 5) a.push(["warn", `Wide stop: ${risk.toFixed(1)}% below entry`]);
-  const rs = rsiSeries(t), ema = emaSeries(t), r = rs[rs.length - 1], e = ema[ema.length - 1];
-  if (r != null) {
-    if (r >= 70) a.push(["warn", `RSI(14) is ${r.toFixed(0)}: overbought territory, strong stocks can stay there but a new entry is chasing`]);
-    else if (r <= 30) a.push(["warn", `RSI(14) is ${r.toFixed(0)}: oversold, the trend may be broken`]);
-    else a.push(["info", `RSI(14) is ${r.toFixed(0)}`]);
-  }
-  if (e != null) a.push([t.close > e ? "ok" : "warn", `Close is ${Math.abs((t.close / e - 1) * 100).toFixed(1)}% ${t.close > e ? "above" : "below"} the 20 EMA at ₹${fmt(e, 2)}`]);
-  const gain2 = (c[c.length - 1] / c[c.length - 3] - 1) * 100;
-  if (gain2 > 8) a.push(["warn", `Up ${gain2.toFixed(0)}% in two sessions, gap risk at the open`]);
-  return a;
-}
-
 
 // Trading sessions covered by the 40-bar arrays (10 Sep to 9 Nov 2026).
 export const SESSION_DATES = ["2026-09-10","2026-09-11","2026-09-15","2026-09-16","2026-09-17","2026-09-18","2026-09-21","2026-09-22","2026-09-23","2026-09-24","2026-09-25","2026-09-28","2026-09-29","2026-09-30","2026-10-01","2026-10-05","2026-10-06","2026-10-07","2026-10-08","2026-10-09","2026-10-12","2026-10-13","2026-10-14","2026-10-15","2026-10-16","2026-10-19","2026-10-21","2026-10-22","2026-10-23","2026-10-26","2026-10-27","2026-10-28","2026-10-29","2026-10-30","2026-11-02","2026-11-03","2026-11-04","2026-11-05","2026-11-06","2026-11-09"];
-export const sessionLabel = (i) => { const d = new Date(SESSION_DATES[i] + "T00:00:00"); return d.toLocaleDateString("en-IN", { day: "numeric", month: "short" }); };
-
-// Candlestick patterns from open, high, low, close. Thresholds are the common textbook ones; a pattern is a prompt to look
-// at the chart, not a trade signal by itself. Hammer vs hanging man (and inverted hammer vs shooting star) depend on the
-// prior 5-session direction.
-export function candlePatterns(t) {
-  const { o, h, l, closes: c } = t, out = [];
-  if (!o || !h || !l) return out;
-  const n = c.length;
-  const body = (i) => Math.abs(c[i] - o[i]), rng = (i) => h[i] - l[i];
-  const green = (i) => c[i] > o[i], red = (i) => c[i] < o[i];
-  const add = (i, name, bias, note) => out.push({ i, name, bias, note });
-  for (let i = 5; i < n; i++) {
-    const r = rng(i); if (!(r > 0)) continue;
-    const b = body(i), lo = Math.min(o[i], c[i]) - l[i], up = h[i] - Math.max(o[i], c[i]);
-    const down = c[i - 1] < c[i - 5], upTrend = c[i - 1] > c[i - 5];
-    if (b >= 0.9 * r) add(i, green(i) ? "Bullish marubozu" : "Bearish marubozu", green(i) ? "bull" : "bear", "Almost no wicks: one side controlled the whole session.");
-    else if (b <= 0.1 * r) add(i, "Doji", "neutral", "Open and close nearly equal: indecision.");
-    else if (b <= 0.35 * r && lo >= 2 * b && up <= 0.15 * r) {
-      if (down) add(i, "Hammer", "bull", "Long lower wick after a decline: sellers were rejected.");
-      else if (upTrend) add(i, "Hanging man", "bear", "Hammer shape after a rise: a warning, needs a weak next day to count.");
-    } else if (b <= 0.35 * r && up >= 2 * b && lo <= 0.15 * r) {
-      if (upTrend) add(i, "Shooting star", "bear", "Long upper wick after a rise: buyers were rejected.");
-      else if (down) add(i, "Inverted hammer", "bull", "Upper wick after a decline: needs a strong next day to count.");
-    }
-    const pb = body(i - 1);
-    if (red(i - 1) && green(i) && c[i] >= o[i - 1] && o[i] <= c[i - 1] && b > pb) add(i, "Bullish engulfing", "bull", "Green body covers the prior red body.");
-    if (green(i - 1) && red(i) && o[i] >= c[i - 1] && c[i] <= o[i - 1] && b > pb) add(i, "Bearish engulfing", "bear", "Red body covers the prior green body.");
-    if (red(i - 1) && green(i) && o[i] <= c[i - 1] && c[i] > (o[i - 1] + c[i - 1]) / 2 && c[i] < o[i - 1]) add(i, "Piercing line", "bull", "Closes above the middle of the prior red body.");
-    if (green(i - 1) && red(i) && o[i] >= c[i - 1] && c[i] < (o[i - 1] + c[i - 1]) / 2 && c[i] > o[i - 1]) add(i, "Dark cloud cover", "bear", "Closes below the middle of the prior green body.");
-    if (h[i] < h[i - 1] && l[i] > l[i - 1]) add(i, "Inside bar", "neutral", "Range held inside the prior day: a pause before the next move.");
-    if (i >= 2) {
-      const b2 = body(i - 2), r2 = rng(i - 2) || 1, r1 = rng(i - 1) || 1;
-      if (red(i - 2) && b2 >= 0.5 * r2 && body(i - 1) <= 0.3 * r1 && green(i) && c[i] > (o[i - 2] + c[i - 2]) / 2) add(i, "Morning star", "bull", "Big red, small body, then a green that retakes the middle.");
-      if (green(i - 2) && b2 >= 0.5 * r2 && body(i - 1) <= 0.3 * r1 && red(i) && c[i] < (o[i - 2] + c[i - 2]) / 2) add(i, "Evening star", "bear", "Big green, small body, then a red that gives back the middle.");
-      if ([i, i - 1, i - 2].every((k) => body(k) >= 0.5 * (rng(k) || 1)) && green(i) && green(i - 1) && green(i - 2) && c[i] > c[i - 1] && c[i - 1] > c[i - 2] && o[i] > o[i - 1] && o[i - 1] > o[i - 2] && o[i] < c[i - 1] && o[i - 1] < c[i - 2]) add(i, "Three white soldiers", "bull", "Three rising green candles with real bodies, each opening inside the last body.");
-      if ([i, i - 1, i - 2].every((k) => body(k) >= 0.5 * (rng(k) || 1)) && red(i) && red(i - 1) && red(i - 2) && c[i] < c[i - 1] && c[i - 1] < c[i - 2] && o[i] < o[i - 1] && o[i - 1] < o[i - 2] && o[i] > c[i - 1] && o[i - 1] > c[i - 2]) add(i, "Three black crows", "bear", "Three falling red candles with real bodies, each opening inside the last body.");
-    }
-  }
-  return out;
-}
+export const sessionLabel = (i: number, t?: any) => { const d = new Date((t?.dates?.[i] ?? SESSION_DATES[i]) + "T00:00:00"); if (isNaN(d.getTime())) return "session " + (i + 1); return d.toLocaleDateString("en-IN", { day: "numeric", month: "short" }); };
 
 /* ---------- reference data (fetched 10 Nov 2026) ---------- */
 
@@ -185,7 +39,7 @@ const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } cat
 const csvCell = (v) => { const s = String(v ?? ""); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
 export const toCSV = (rows) => rows.map((r) => r.map(csvCell).join(",")).join("\n");
 
-const TABS = [
+const ALL_TABS = [
   ["screener", "Screener"], ["pocket", "Pocket pivot"], ["candles", "Candle patterns"], ["vcp", "VCP scanner"], ["stage", "Stage scan"], ["portfolio", "Portfolio"],
   ["earnings", "Earnings"], ["sector", "Sector health"], ["journal", "Journal entry"], ["alerts", "Alert patterns"], ["export", "Export"],
 ];
@@ -193,6 +47,8 @@ const TABS = [
 const APP_TAB = { screener: "screener", pocket: "pocket_pivot", vcp: "vcp_scanner", portfolio: "portfolio", earnings: "earnings", sector: "sector_heatmap", journal: "journal", alerts: "alert_history", export: "export_data" };
 
 // One tab failing should not take the others down, and the message should say where it failed.
+// Change on the last session: from the stock's previous close, or from its own closes when none is given.
+const dayPct = (t: any) => { const prev = isFinite(t.prev) ? t.prev : t.closes?.[t.closes.length - 2]; return (t.close / prev - 1) * 100; };
 const TabBody = ({ fn }: any) => (typeof fn === "function" ? fn() : null);
 class TabBoundary extends Component<any, any> {
   declare state: any;
@@ -212,10 +68,11 @@ class TabBoundary extends Component<any, any> {
   }
 }
 
-function DeskToolsInner({ trades: tradesIn, levels: levelsIn, capital, riskPct, scan, onSelect, say, copy, beep, muted, onNavigate, onOpenStageScan, onShowCandles, jumps: jumpsIn }: any) {
+function DeskToolsInner({ trades: tradesIn, levels: levelsIn, capital, riskPct, scan, onSelect, say, copy, beep, muted, onNavigate, onOpenStageScan, onShowCandles, jumps: jumpsIn, hideTabs, dataNote, embedded }: any) {
   const trades: any[] = Array.isArray(tradesIn) ? tradesIn.filter((t: any) => t && Array.isArray(t.closes) && Array.isArray(t.vols)) : [];
   const levels: any = levelsIn || {};
   const jumps: any[] = Array.isArray(jumpsIn) ? jumpsIn : [];
+  const TABS = ALL_TABS.filter(([k]) => !(Array.isArray(hideTabs) && hideTabs.includes(k)));
   const [tab, setTab] = useState("screener");
   const [pf, setPf] = useState(() => load("gsa-pf", []));
   const [jr, setJr] = useState(() => load("gsa-journal", []));
@@ -290,10 +147,9 @@ tags:
 - Pattern: ${p.t.setup}
 - Entry ₹${fmt(p.l.entry, 2)}, stop ₹${fmt(p.l.stop, 2)}, T1 ₹${fmt(p.l.t1, 2)}, T2 ₹${fmt(p.l.t2, 2)}
 - Size at ₹${fmt(cap)} and ${rp}% risk: ${p.qty} shares
-- Not checked: 200 DMA slope, RS rating
-`;
+${(p.t.unchecked ?? 2) > 0 ? "- Not checked: 200 DMA slope, RS rating\n" : ""}`;
 
-  const open = (key) => onNavigate && APP_TAB[key] ? <button className="dt-link" type="button" onClick={() => onNavigate(APP_TAB[key])}>Open the full {TABS.find((x) => x[0] === key)[1].toLowerCase()} screen in the app →</button> : null;
+  const open = (key) => onNavigate && APP_TAB[key] && !(embedded && key === "screener") ? <button className="dt-link" type="button" onClick={() => onNavigate(APP_TAB[key])}>Open the full {ALL_TABS.find((x) => x[0] === key)[1].toLowerCase()} screen in the app →</button> : null;
 
   const body = {
     screener: () => (
@@ -301,10 +157,10 @@ tags:
         <table className="dt-table"><thead><tr><th>Stock</th><th>Style</th><th>Close</th><th>Day</th><th>Template</th><th>Pivot</th><th>Stop</th><th>Stop %</th><th>Chartink</th></tr></thead>
           <tbody>{plans.map(({ t, l }) => (
             <tr key={t.id} className="dt-click" onClick={() => onSelect(trades.indexOf(t))} tabIndex={0} onKeyDown={(e) => e.key === "Enter" && onSelect(trades.indexOf(t))}>
-              <td><b>{t.sym}</b></td><td>{t.id === "swing" ? "Swing" : "Intraday"}</td><td>₹{fmt(t.close, 2)}</td><td className="g">+{((t.close / t.prev - 1) * 100).toFixed(2)}%</td>
-              <td>{t.checks.filter((c) => c[2] === "pass").length}/8 <span className="dt-dim">(2 not checked)</span></td><td>₹{fmt(l.entry, 2)}</td><td>₹{fmt(l.stop, 2)}</td><td>{(((l.entry - l.stop) / l.entry) * 100).toFixed(1)}%</td><td>{scanOf(t)}</td>
+              <td><b>{t.sym}</b></td><td>{t.id === "swing" ? "Swing" : t.id === "intra" ? "Intraday" : t.mode || "-"}</td><td>₹{fmt(t.close, 2)}</td><td className={dayPct(t) >= 0 ? "g" : "rd"}>{isFinite(dayPct(t)) ? `${dayPct(t) >= 0 ? "+" : ""}${dayPct(t).toFixed(2)}%` : "-"}</td>
+              <td>{t.checks.filter((c) => c[2] === "pass").length}/8 {(t.unchecked ?? 2) > 0 && <span className="dt-dim">({t.unchecked ?? 2} not checked)</span>}</td><td>₹{fmt(l.entry, 2)}</td><td>₹{fmt(l.stop, 2)}</td><td>{(((l.entry - l.stop) / l.entry) * 100).toFixed(1)}%</td><td>{scanOf(t)}</td>
             </tr>))}</tbody></table>
-        <p className="dt-note">Two names from the 9 Nov NSE screen. Select a row to load it on the desk. RS rating was not computed, so it is not scored.</p>
+        <p className="dt-note">{dataNote || "Two names from the 9 Nov NSE screen. Select a row to load it on the desk. RS rating was not computed, so it is not scored."}</p>
       </>
     ),
     pocket: () => (
@@ -322,10 +178,10 @@ tags:
         const today = all.filter((x) => x.i === t.closes.length - 1);
         return (
           <div className="dt-card" key={t.id}><div className="dt-h"><b>{t.sym}</b><span className={`dt-pill ${today.length ? (today[0].bias === "bull" ? "ok" : today[0].bias === "bear" ? "bad" : "") : ""}`}>{today.length ? today.map((x) => x.name).join(" + ") : "no pattern on the last session"}</span></div>
-            {recent.length ? <ul className="dt-list">{recent.map((x, k) => <li key={k}><span><span className={`dt-dot ${x.bias === "bull" ? "ok" : x.bias === "bear" ? "bad" : ""}`} aria-hidden="true" /> {x.name}</span><span className="dt-dim">{sessionLabel(x.i)}</span><span className="dt-dim wide">{x.note}</span></li>)}</ul> : <p className="dt-note">No candlestick pattern in the last 10 sessions.</p>}
+            {recent.length ? <ul className="dt-list">{recent.map((x, k) => <li key={k}><span><span className={`dt-dot ${x.bias === "bull" ? "ok" : x.bias === "bear" ? "bad" : ""}`} aria-hidden="true" /> {x.name}</span><span className="dt-dim">{sessionLabel(x.i, t)}</span><span className="dt-dim wide">{x.note}</span></li>)}</ul> : <p className="dt-note">No candlestick pattern in the last 10 sessions.</p>}
             {onShowCandles && <button className="dt-btn ghost" type="button" onClick={() => onShowCandles(trades.indexOf(t))}>Show candles on the chart</button>}
           </div>);
-      })}<p className="dt-note">Patterns use daily open, high, low and close from the NSE bhavcopy, and the last 10 sessions are listed. Hammer versus hanging man depends on the prior 5-session direction. A pattern is a prompt to read the chart, not a signal on its own, and it counts most at a pivot or support on rising volume.</p></div>
+      })}<p className="dt-note">{embedded ? "Patterns use the open, high, low and close in this screen's price history. That history is sample data with near-identical wicks, so the same patterns repeat; real daily bars give real readings." : "Patterns use daily open, high, low and close from the NSE bhavcopy."} The last 10 sessions are listed. Hammer versus hanging man depends on the prior 5-session direction. A pattern is a prompt to read the chart, not a signal on its own, and it counts most at a pivot or support on rising volume.</p></div>
     ),
     vcp: () => (
       <div className="dt-cards">{trades.map((t) => {
@@ -343,7 +199,7 @@ tags:
         return (
           <div className="dt-card" key={t.id}><div className="dt-h"><b>{t.sym}</b><span className={`dt-pill ${s.stage2 ? "ok" : "bad"}`}>{s.stage2 ? "Stage 2 structure" : "not Stage 2"}</span></div>
             <ul className="dt-list">{s.rows.map(([k, p]) => <li key={k}><span>{k}</span><span className={p ? "g" : "rd"}>{p ? "Pass" : "Fail"}</span></li>)}</ul>
-            <p className="dt-note">{s.ext50.toFixed(0)}% above the 50 DMA{s.ext50 > 20 ? " (extended)" : ""}, {Math.abs(s.fromHigh).toFixed(1)}% below the 52-week high, {s.aboveLow.toFixed(0)}% above the low. The 200 DMA slope was not checked.</p>
+            <p className="dt-note">{s.ext50.toFixed(0)}% above the 50 DMA{s.ext50 > 20 ? " (extended)" : ""}, {Math.abs(s.fromHigh).toFixed(1)}% below the 52-week high, {s.aboveLow.toFixed(0)}% above the low. {(t.unchecked ?? 2) > 0 ? " The 200 DMA slope was not checked." : ""}</p>
           </div>);
       })}{onOpenStageScan && <button className="dt-link" type="button" onClick={onOpenStageScan}>Run the full Stage 2 scan in the app →</button>}</div>
     ),
@@ -358,7 +214,7 @@ tags:
           <div className="dt-scroll"><table className="dt-table"><thead><tr><th>Symbol</th><th>Qty</th><th>Avg</th><th>Last</th><th>Value</th><th>P&amp;L</th><th>Open risk</th><th /></tr></thead>
             <tbody>{pfRows.map((r) => <tr key={r.i}><td><b>{r.sym}</b></td><td>{fmt(r.qty)}</td><td>₹{fmt(r.avg, 2)}</td><td>{isFinite(r.last) ? "₹" + fmt(r.last, 2) : "enter last"}{r.known ? "" : ""}</td><td>{isFinite(r.value) ? "₹" + fmt(r.value) : "-"}</td><td className={r.pl >= 0 ? "g" : "rd"}>{isFinite(r.pl) ? `₹${fmt(r.pl)} (${r.plPct.toFixed(1)}%)` : "-"}</td><td>{r.openRisk == null ? "no stop" : "₹" + fmt(r.openRisk)}</td><td><button className="dt-x" type="button" aria-label={`Remove ${r.sym}`} onClick={() => setPf((p) => p.filter((_, j) => j !== r.i))}>×</button></td></tr>)}
               <tr className="dt-tot"><td colSpan={4}>Total</td><td>₹{fmt(pfTot.value)}</td><td className={pfTot.pl >= 0 ? "g" : "rd"}>₹{fmt(pfTot.pl)}</td><td>₹{fmt(pfTot.risk)}</td><td /></tr></tbody></table></div>
-        ) : <p className="dt-note">No positions yet. Add the ones you hold. They stay in this browser only. Last price fills itself for the two desk stocks (9 Nov close).</p>}
+        ) : <p className="dt-note">No positions yet. Add the ones you hold. They stay in this browser only. Last price fills itself for stocks on this screen.</p>}
       </>
     ),
     earnings: () => (
