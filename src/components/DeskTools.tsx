@@ -170,10 +170,13 @@ const SECTORS: [string, number][] = [["Airlines", 13.24], ["Oil, Gas & Energy", 
 
 /* ---------- storage ---------- */
 // Saved data must be an array of objects; anything else (old versions, hand edits) falls back to the default.
-const load = (k, d) => {
+const SHAPES = { "gsa-pf": ["sym", "qty", "avg", "stop", "last"], "gsa-journal": ["sym", "side", "entry", "stop", "qty", "when", "note"], "gsa-earn": ["sym", "date", "note"] };
+const load = (k: string, d: any): any => {
   try {
     const v = JSON.parse(localStorage.getItem(k));
-    return Array.isArray(v) && v.every((x) => x && typeof x === "object") ? v : d;
+    if (!Array.isArray(v)) return d;
+    // keep only the fields each tool uses, and only as plain text or numbers, so odd saved data cannot reach the render
+    return v.filter((x: any) => x && typeof x === "object" && !Array.isArray(x)).map((x: any) => Object.fromEntries(SHAPES[k].map((f) => [f, typeof x[f] === "number" || typeof x[f] === "string" ? x[f] : ""])));
   } catch { return d; }
 };
 const clearSaved = () => { try { ["gsa-pf", "gsa-journal", "gsa-earn"].forEach((k) => localStorage.removeItem(k)); } catch {} };
