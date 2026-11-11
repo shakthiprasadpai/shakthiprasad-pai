@@ -1,3 +1,4 @@
+import { parseLevels, sizePosition, obsidianNote, levelsOk, dayChangePct } from "../core/desk";
 import { Component, useState, useMemo, useEffect } from "react";
 import { fmt, median, avg, pocketPivots, vcpScan, emaSeries, rsiSeries, stageInfo, patternAlerts, candlePatterns } from "../utils/deskIndicators";
 export { pocketPivots, vcpScan, emaSeries, rsiSeries, stageInfo, patternAlerts, candlePatterns };
@@ -48,7 +49,7 @@ const APP_TAB = { screener: "screener", pocket: "pocket_pivot", vcp: "vcp_scanne
 
 // One tab failing should not take the others down, and the message should say where it failed.
 // Change on the last session: from the stock's previous close, or from its own closes when none is given.
-const dayPct = (t: any) => { const prev = isFinite(t.prev) ? t.prev : t.closes?.[t.closes.length - 2]; return (t.close / prev - 1) * 100; };
+const dayPct = (t: any) => dayChangePct(t);
 const TabBody = ({ fn }: any) => (typeof fn === "function" ? fn() : null);
 class TabBoundary extends Component<any, any> {
   declare state: any;
@@ -81,13 +82,11 @@ function DeskToolsInner({ trades: tradesIn, levels: levelsIn, capital, riskPct, 
   useEffect(() => save("gsa-journal", jr), [jr]);
   useEffect(() => save("gsa-earn", er), [er]);
 
-  const L = (t) => Object.fromEntries(Object.entries(levels[t.id] || {}).map(([k, v]) => [k, parseFloat(v as string)]));
+  const L = (t) => parseLevels(levels[t.id] || {});
   const cap = parseFloat(capital) || 0, rp = parseFloat(riskPct) || 0;
   const plans = trades.map((t) => {
-    const l = L(t), risk = l.entry - l.stop, okp = risk > 0 && l.t1 > l.entry;
-    let qty = okp ? Math.floor((cap * rp) / 100 / risk) : 0;
-    qty = Math.min(qty, Math.floor(cap / l.entry) || 0);
-    return { t, l, risk, qty, okp };
+    const l = L(t), risk = l.entry - l.stop, okp = levelsOk(l), sz = sizePosition(l, cap, rp);
+    return { t, l, risk, qty: sz ? sz.qty : 0, okp };
   });
   const scanOf = (t) => (scan ? (scan.has(t.sym) ? "in scan" : "not in scan") : "no scan pasted");
 
@@ -126,28 +125,7 @@ function DeskToolsInner({ trades: tradesIn, levels: levelsIn, capital, riskPct, 
       say("Download started. If nothing saved, use Copy.");
     } catch { copy(text, "Downloads are blocked here, copied instead"); }
   };
-  const mdNote = (p) => `---
-type: minervini-sepa-setup
-ticker: ${p.t.sym}
-name: "${p.t.name}"
-exchange: NSE
-current_price: ${p.t.close}
-pivot_price: ${p.l.entry}
-stop_loss: ${p.l.stop}
-target_1: ${p.l.t1}
-target_2: ${p.l.t2}
-trend_score: ${p.t.checks.filter((c) => c[2] === "pass").length}
-created_date: "${new Date().toISOString().slice(0, 10)}"
-tags:
-  - trading/minervini
----
-
-# ${p.t.sym}: ${p.t.name} (NSE)
-
-- Pattern: ${p.t.setup}
-- Entry ₹${fmt(p.l.entry, 2)}, stop ₹${fmt(p.l.stop, 2)}, T1 ₹${fmt(p.l.t1, 2)}, T2 ₹${fmt(p.l.t2, 2)}
-- Size at ₹${fmt(cap)} and ${rp}% risk: ${p.qty} shares
-${(p.t.unchecked ?? 2) > 0 ? "- Not checked: 200 DMA slope, RS rating\n" : ""}`;
+  const mdNote = (p) => obsidianNote(p.t, p.l, sizePosition(p.l, cap, rp));
 
   const open = (key) => onNavigate && APP_TAB[key] && !(embedded && key === "screener") ? <button className="dt-link" type="button" onClick={() => onNavigate(APP_TAB[key])}>Open the full {ALL_TABS.find((x) => x[0] === key)[1].toLowerCase()} screen in the app →</button> : null;
 

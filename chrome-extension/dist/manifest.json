@@ -33,7 +33,6 @@
         "https://www.nseindia.com/*"
       ],
       "js": [
-        "data.js",
         "widget.js"
       ],
       "run_at": "document_idle"

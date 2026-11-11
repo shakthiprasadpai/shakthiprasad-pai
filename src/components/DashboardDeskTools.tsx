@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import DeskTools, { TOOLS_CSS } from './DeskTools';
 import { stockToDeskTrade, stockLevels } from '../utils/deskAdapter';
+import { TRADES } from '../core/desk';
+import { loadDeskSettings, saveDeskSettings } from '../core/desk/settingsStore';
 import type { MinerviniTradeSetup } from '../types';
 
 // Desk tools on the dashboard: screener table, pocket pivots, candle patterns, VCP and Stage scans, portfolio,
@@ -38,19 +40,22 @@ const num = (v: string, d: number) => { const n = parseFloat(v); return isFinite
 const read = (k: string, d: string) => { try { return localStorage.getItem(k) || d; } catch { return d; } };
 
 export const DashboardDeskTools: React.FC<Props> = ({ stocks, selected, onSelectStock, onNavigate, onOpenStageScan }) => {
-  const [capital, setCapital] = useState(() => read('gsa-dash-capital', '500000'));
-  const [riskPct, setRiskPct] = useState(() => read('gsa-dash-risk', '1'));
+  // Same saved capital and risk as the Trade Desk tab, so changing one changes the other.
+  const saved = useMemo(() => loadDeskSettings(), []);
+  const [capital, setCapital] = useState(saved.capital);
+  const [riskPct, setRiskPct] = useState(saved.riskPct);
   const [muted, setMuted] = useState(() => read('gsa-dash-muted', '0') === '1');
   const [status, setStatus] = useState('');
   const timer = useRef<ReturnType<typeof setTimeout>>();
   useEffect(() => () => clearTimeout(timer.current), []);
-  useEffect(() => { try { localStorage.setItem('gsa-dash-capital', capital); localStorage.setItem('gsa-dash-risk', riskPct); localStorage.setItem('gsa-dash-muted', muted ? '1' : '0'); } catch { /* storage can be blocked */ } }, [capital, riskPct, muted]);
+  useEffect(() => { saveDeskSettings({ ...loadDeskSettings(), capital, riskPct }); try { localStorage.setItem('gsa-dash-muted', muted ? '1' : '0'); } catch { /* storage unavailable */ } }, [capital, riskPct, muted]);
 
   // NSE and BSE stocks only: the tools format prices in rupees. The selected stock comes first.
   const { trades, levels, source } = useMemo(() => {
     const list = (stocks || []).filter((s) => s && (s.exchange === 'NSE' || s.exchange === 'BSE'));
     if (selected) list.sort((a, b) => (a.ticker === selected.ticker ? -1 : b.ticker === selected.ticker ? 1 : 0));
-    const out: any[] = [], src: MinerviniTradeSetup[] = [], lv: Record<string, any> = {};
+    // The two desk picks come first, from the same data as the Trade Desk tab, then the stocks on this screen.
+    const out: any[] = [...TRADES], src: (MinerviniTradeSetup | null)[] = TRADES.map(() => null), lv: Record<string, any> = Object.fromEntries(TRADES.map((t) => [t.id, Object.fromEntries(Object.entries(t.L).map(([k, v]) => [k, String(v)]))]));
     list.forEach((s) => { const t = stockToDeskTrade(s); if (t) { out.push(t); src.push(s); lv[t.id] = stockLevels(s); } });
     return { trades: out, levels: lv, source: src };
   }, [stocks, selected]);
@@ -75,7 +80,7 @@ export const DashboardDeskTools: React.FC<Props> = ({ stocks, selected, onSelect
       <div className="de-head">
         <div>
           <h2 className="de-title">Desk tools</h2>
-          <p className="de-sub">Pocket pivots, candle patterns, VCP and Stage scans, portfolio, journal, alerts and export for the NSE stocks on this screen. Prices here come from the screen's sample history, not live data.</p>
+          <p className="de-sub">The two desk picks first, then the NSE stocks on this screen: pocket pivots, candle patterns, VCP and Stage scans, portfolio, journal, alerts and export. Prices here come from the screen's sample history, not live data.</p>
         </div>
         <div className="de-ctl">
           <label>Capital ₹<input type="number" inputMode="decimal" min="0" step="any" value={capital} onChange={(e) => setCapital(e.target.value)} /></label>

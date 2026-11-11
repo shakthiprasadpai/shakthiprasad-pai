@@ -1,9 +1,11 @@
 /* Floating on-page widget. Runs only on the sites listed in manifest.json, draws inside a shadow root so the
    page's CSS cannot touch it, reads the same saved settings as the popup, and makes no network requests. */
+import { buildSnapshot, parseLevels, sizePosition, trailStop, planText } from "../../src/core/desk";
+
 (function () {
   "use strict";
   if (window.top !== window || document.getElementById("gsa-desk-host")) return;
-  var D = window.GSA_DATA; if (!D || !D.trades) return;
+  var D = buildSnapshot();
   var st = {}, open = false, sel = 0, host, root, panel;
   var fmt = function (n, d) { return Number(n).toLocaleString("en-IN", { minimumFractionDigits: d || 0, maximumFractionDigits: d || 0 }); };
   var num = parseFloat;
@@ -41,16 +43,12 @@
 
   function levels(t) { var o = (st.levels || {})[t.id] || {}; var g = function (k) { return o[k] !== undefined ? o[k] : String(t.levels[k]); }; return { entry: g("entry"), stop: g("stop"), t1: g("t1"), t2: g("t2") }; }
   function plan(t) {
-    var r = levels(t), L = { entry: num(r.entry), stop: num(r.stop), t1: num(r.t1), t2: num(r.t2) };
-    var cap = num(st.capital); if (!isFinite(cap)) cap = 500000; var rp = num(st.risk); if (!isFinite(rp)) rp = 1;
-    var risk = L.entry - L.stop, ok = [L.entry, L.stop, L.t1, L.t2].every(function (v) { return isFinite(v) && v > 0; }) && risk > 0 && L.t1 > L.entry && L.t2 >= L.t1;
-    var q = ok ? Math.min(Math.floor((cap * rp) / 100 / risk), Math.floor(cap / L.entry)) : 0;
-    return { L: L, risk: risk, ok: ok, qty: Math.max(q, 0), cap: cap, rp: rp };
+    var L = parseLevels(levels(t)), z = sizePosition(L, st.capital != null ? st.capital : "500000", st.riskPct != null ? st.riskPct : (st.risk != null ? st.risk : "1"));
+    return { L: L, risk: L.entry - L.stop, ok: !!z, qty: z ? z.qty : 0, cap: z ? z.cap : 0, rp: z ? z.rp : 0, z: z };
   }
   function trail(t) {
-    var hi = num((st.trailHigh || {})[t.id]); if (!(isFinite(hi) && hi > 0)) hi = Math.max.apply(null, t.closes);
-    var p = num(st.trailPct); if (!(p > 0 && p < 100)) p = 8;
-    return { hi: hi, p: p, stop: hi * (1 - p / 100) };
+    var fixed = plan(t).L.stop, hi = (st.trailHigh || {})[t.id], p = st.trailPct != null ? st.trailPct : "8";
+    return trailStop(t.closes, t.close, p, hi, fixed) || trailStop(t.closes, t.close, "8", hi, fixed);
   }
 
   var status;
@@ -96,7 +94,7 @@
     var c = t.candles[t.candles.length - 1];
     if (c) body.appendChild(el("p", { "class": "note", text: "Latest candle: " + c.name + " on " + c.date.slice(5).replace("-", "/") }));
     body.appendChild(el("div", { "class": "row" }, [
-      el("button", { "class": "btn", type: "button", onclick: function () { var p = plan(t), tr = trail(t); copy(t.sym + " " + t.mode + "\nEntry ₹" + p.L.entry + " Stop ₹" + p.L.stop + " T1 ₹" + p.L.t1 + " T2 ₹" + p.L.t2 + "\nQty " + p.qty + " (risk ₹" + fmt(p.qty * p.risk) + ")\nTrail " + tr.p + "% = ₹" + fmt(tr.stop, 2), "Plan copied"); } }, ["Copy plan"]),
+      el("button", { "class": "btn", type: "button", onclick: function () { var p = plan(t), tr = trail(t); copy(planText(t, p.L, p.z, tr), "Plan copied"); } }, ["Copy plan"]),
       el("button", { "class": "btn g", type: "button", onclick: function () { copy(t.sym, "Symbol copied"); } }, ["Copy symbol"])
     ]));
     body.appendChild(status);

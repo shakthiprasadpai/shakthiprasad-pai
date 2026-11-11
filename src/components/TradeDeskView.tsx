@@ -1,39 +1,9 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import DeskTools, { TOOLS_CSS, candlePatterns, emaSeries, rsiSeries } from "./DeskTools";
+import { TRADES, parseLevels, levelsOk, sizePosition, trailStop, dayChangePct, previousClose } from "../core/desk";
+import { loadDeskSettings, saveDeskSettings } from "../core/desk/settingsStore";
 
-// Screen output from NSE bhavcopy, session of 9 Nov 2026. Swap TRADES for your own screener results.
-const TRADES = [
-  {
-    id: "swing", mode: "Swing · days to weeks", sym: "LAURUSLABS", pre: [1854, 1858, 1850, 1851.7, 1787.3, 1809.7, 1814, 1801.8, 1825, 1802, 1801, 1866.2, 1887, 1929.4, 1938.5, 1915, 1861.6, 1864, 1868.5, 1840, 1876.7, 1946.9, 1937], name: "Laurus Labs",
-    setup: "Pivot breakout from a tight base",
-    close: 2454, prev: 2370, hi52: 2480, lo52: 917.95, ma: [2044.9, 1647.4, 1488.1],
-    L: { entry: 2470, stop: 2320, t1: 2770, t2: 2920 },
-    closes: [1945,1969,1926.9,1905.5,1948.1,1954,2017.5,2006.5,2034,2026.2,2007,2010.7,1979,1980,1984,1971.4,2050,2052.8,1997.9,2036.6,2069.2,2059.4,2036.9,2018.5,2060.1,2069,2012.5,2002.5,1970,2058.9,2142,2181.9,2244,2405.5,2348,2323,2323.8,2346,2340,2454],
-    vols: [1.07,2.28,1.54,2.87,1.65,2.66,2.17,1.49,1.36,1.39,1.44,0.95,2.43,1.40,1.46,1.37,2.20,1.50,1.39,1.36,1.42,1.14,1.30,0.86,1.61,1.13,1.28,1.54,1.89,1.86,3.12,2.20,2.90,7.91,3.05,4.03,3.22,1.45,1.45,4.03],
-    o: [1932.6,1943,1975,1924.6,1898,1962,1966.6,2018,2009.5,2021.1,2026,2000,2020.7,1993,1973.6,1994,1968.9,2052,2055,1997.9,2044.1,2047.1,2049,2025,2030.4,2060.1,2052.9,1993.5,1987.5,1960,2075,2142,2190,2246.6,2406,2350.1,2291,2328.3,2329.7,2351.5],
-    h: [1950.5,1981.8,1981,1940.4,1964.5,1982,2023.5,2032.8,2037.2,2055.3,2040,2012.3,2024.9,2001.6,2006.9,2002,2054.9,2065.2,2055,2048,2069.2,2065,2057.3,2046.3,2086,2089,2079.8,2019.8,2009.6,2058.9,2143.1,2198.8,2244,2405.5,2441.9,2354.9,2343.9,2346,2341.5,2480],
-    l: [1920.9,1918.1,1915.6,1863.5,1894.8,1954,1963.8,2002.2,1999.7,2020,1979.2,1984.8,1979,1955.1,1952.1,1955.1,1958,2035.6,1997.9,1988.9,2036.1,2007.8,2019.2,2008,2028.7,2052.2,1993.4,1956.6,1933.5,1951.6,2067.4,2131.7,2166,2206.1,2347,2252.4,2285.6,2288.2,2309.1,2351.5],
-    checks: [["Price above 150 and 200 DMA","₹2,454 vs ₹1,647 / ₹1,488","pass"],["150 DMA above 200 DMA","1,647 > 1,488","pass"],["200 DMA rising for 1+ month","not checked","unk"],["50 DMA above 150 and 200","₹2,045","pass"],["Price above 50 DMA","+20.0%","pass"],["30%+ above 52-week low","+167% (₹918)","pass"],["Within 25% of 52-week high","−1.0% (₹2,480)","pass"],["RS rating 70 or higher","not checked","unk"]],
-    base: "Six-week base at ₹1,900–2,090. Breakout on 30 Oct on 7.9M shares, four quiet days at ₹2,320–2,350, then a new high on 9 Nov on 4.0M shares (2.0x average).",
-    note: "About 20% above its 50 DMA, so it is extended. Size down, or wait for a low-volume pullback to ₹2,350–2,400 if a 6% stop is too wide.",
-    targets: "Sell a third at T1, trail the rest under the 10-day low.",
-  },
-  {
-    id: "intra", mode: "Intraday · square off by 3:15 pm", sym: "SAILIFE", pre: [1426.2, 1444.4, 1463.6, 1451.2, 1449.9, 1416.4, 1440.1, 1422.2, 1471.6, 1457.4, 1435.9, 1455.5, 1461, 1488.2, 1485, 1459.7, 1518.1, 1587, 1574.8, 1584.3, 1579.6, 1647.1, 1675.4], name: "Sai Life Sciences",
-    setup: "Prior-high break on heavy volume",
-    close: 1836.8, prev: 1744, hi52: 1897.3, lo52: 783.85, ma: [1538.1, 1313.0, 1217.8],
-    L: { entry: 1900, stop: 1855, t1: 1960, t2: 2000 },
-    closes: [1591.1,1585,1541.5,1539.1,1545.7,1600.5,1608,1600.5,1609.6,1594.9,1592.2,1582.8,1559.9,1524.5,1541.2,1511.3,1558.1,1561.8,1505.6,1487.9,1471.3,1462.3,1432.1,1394.7,1389.4,1395.9,1393.6,1395.9,1395.3,1445.3,1486.2,1487.2,1495.7,1557.5,1542.3,1558.2,1546.1,1594.5,1785.1,1836.8],
-    vols: [1.17,1.17,0.43,0.80,0.44,0.87,0.37,0.27,0.27,0.52,0.27,0.27,0.36,0.54,0.58,0.33,0.28,0.66,0.51,0.43,0.38,0.72,0.41,0.63,0.64,0.29,0.43,0.18,0.67,0.28,0.23,0.38,0.28,1.26,0.63,0.40,0.33,0.55,13.23,10.12],
-    o: [1675.4,1590,1587.9,1539.8,1537.9,1553.4,1614,1608.1,1606.9,1601,1590,1600.2,1576,1565.7,1516,1549.5,1520,1558,1563.4,1509.8,1489,1472,1456.5,1432,1400,1381,1395,1390,1391.9,1380,1441,1473.8,1483.1,1499.4,1565.2,1565,1512.2,1560.8,1655.1,1738.8],
-    h: [1675.4,1616.1,1601,1557.8,1569.6,1613.9,1631,1615,1633.4,1649.8,1623.4,1611.1,1594.5,1577.9,1556.9,1557.9,1569,1590,1563.4,1518.9,1505.2,1479.8,1456.6,1444.7,1403.3,1412.6,1399.1,1407.8,1429,1450,1490.3,1515,1504.9,1568,1580,1573.3,1555.7,1599,1814.9,1897.3],
-    l: [1585,1571.4,1535.8,1494.4,1530.2,1550.3,1601,1592.5,1600.2,1589,1581,1564.1,1550,1516.4,1493.1,1501,1495,1544.1,1499,1470.6,1464,1426.7,1421.3,1390,1371.4,1370.4,1360.6,1371,1382.9,1375,1435.4,1461,1473.4,1496,1525,1522.9,1504,1548.6,1614.9,1699],
-    checks: [["Price above 150 and 200 DMA","₹1,837 vs ₹1,313 / ₹1,218","pass"],["150 DMA above 200 DMA","1,313 > 1,218","pass"],["200 DMA rising for 1+ month","not checked","unk"],["50 DMA above 150 and 200","₹1,538","pass"],["Price above 50 DMA","+19.4%","pass"],["30%+ above 52-week low","+134% (₹784)","pass"],["Within 25% of 52-week high","−3.2% (₹1,897)","pass"],["RS rating 70 or higher","not checked","unk"]],
-    base: "Flat at ₹1,390–1,600 for two months, then 13.2M shares on 6 Nov and 10.1M on 9 Nov against under 1M on a normal day. Turnover on 9 Nov was ₹1,866 cr. The 9 Nov high of ₹1,897 was sold into (close ₹1,837).",
-    note: "Up about 15% in two sessions. Skip it on a gap-up above 3%, and take no entry before 9:30. Alternative: buy a hold at ₹1,815–1,825 with a stop at ₹1,785.",
-    targets: "Book half at T1, move the stop to cost, exit the rest at T2 or 3:15 pm.",
-  },
-];
+
 
 const fmt = (n, d = 0) => Number(n).toLocaleString("en-IN", { minimumFractionDigits: d, maximumFractionDigits: d });
 const median = (a) => [...a].sort((x, y) => x - y)[Math.floor(a.length / 2)];
@@ -136,23 +106,26 @@ function Chart({ t, L, scan, trail, mode, showEma, showRsi }: any) {
   );
 }
 
-export default function App({ askModel = defaultAskModel, onNavigate, onOpenStageScan }) {
+export default function App({ askModel = defaultAskModel, checkReady, onNavigate, onOpenStageScan }: { askModel?: (messages: any[], onText?: (t: string) => void) => Promise<string>; checkReady?: () => Promise<boolean>; onNavigate?: (tab: string) => void; onOpenStageScan?: () => void }) {
   const [sel, setSel] = useState(0);
   const [lv, setLv] = useState(() => Object.fromEntries(TRADES.map((t) => [t.id, { ...t.L }])));
-  const [capital, setCapital] = useState("500000");
-  const [riskPct, setRiskPct] = useState("1");
+  const saved = useMemo(() => loadDeskSettings(), []);
+  const [capital, setCapital] = useState(saved.capital);
+  const [riskPct, setRiskPct] = useState(saved.riskPct);
   const [muted, setMuted] = useState(true);
   const [chartMode, setChartMode] = useState("line");
   const [showEma, setShowEma] = useState(true);
   const [showRsi, setShowRsi] = useState(true);
-  const [trailPct, setTrailPct] = useState("8");
+  const [trailPct, setTrailPct] = useState(saved.trailPct);
   const [trailHigh, setTrailHigh] = useState("");
   const [scanTxt, setScanTxt] = useState(() => { try { return localStorage.getItem("gsa-scan") || ""; } catch { return ""; } });
   const scan = useMemo(() => parseScan(scanTxt), [scanTxt]);
   const onScan = (v) => { setScanTxt(v); try { localStorage.setItem("gsa-scan", v); } catch {} };
   const [toast, setToast] = useState("");
   const timer = useRef();
-  const [ready, setReady] = useState(true);
+  // The Gemini proxy is assumed up. A host with its own model (the Claude artifact) passes checkReady to probe it first.
+  const [ready, setReady] = useState<boolean | null>(checkReady ? null : true);
+  useEffect(() => { if (checkReady) checkReady().then((v) => setReady(!!v), () => setReady(false)); }, []);
   const [hist, setHist] = useState([]);
   const [msgs, setMsgs] = useState(() => [{ r: "a", t: GREETING, time: hhmm() }]);
   const [busy, setBusy] = useState(false);
@@ -164,32 +137,17 @@ export default function App({ askModel = defaultAskModel, onNavigate, onOpenStag
 
   const t = TRADES[sel];
   const raw = lv[t.id];
-  const L = { entry: parseFloat(raw.entry), stop: parseFloat(raw.stop), t1: parseFloat(raw.t1), t2: parseFloat(raw.t2) };
-  const ok = Object.values(L).every((v) => isFinite(v) && v > 0) && L.entry > L.stop && L.t1 > L.entry && L.t2 >= L.t1;
+  const L = parseLevels(raw);
+  const ok = levelsOk(L);
+  useEffect(() => { saveDeskSettings({ capital, riskPct, trailPct }); }, [capital, riskPct, trailPct]);
   const passN = t.checks.filter((c) => c[2] === "pass").length;
-  const chg = (t.close / t.prev - 1) * 100;
+  const chg = dayChangePct(t);
 
-  const size = useMemo(() => {
-    if (!ok) return null;
-    const cap = parseFloat(capital) || 0, rp = parseFloat(riskPct) || 0, risk = L.entry - L.stop;
-    let qty = Math.floor((cap * rp) / 100 / risk);
-    const maxq = Math.floor(cap / L.entry), capped = qty > maxq;
-    if (capped) qty = maxq;
-    return { cap, risk, qty, capped, value: qty * L.entry, r1: (L.t1 - L.entry) / risk, r2: (L.t2 - L.entry) / risk };
-  }, [ok, L.entry, L.stop, L.t1, L.t2, capital, riskPct]);
+  const size = useMemo(() => sizePosition(L, capital, riskPct), [L.entry, L.stop, L.t1, L.t2, capital, riskPct]);
 
   // Trailing stop: highest price since entry x (1 - trail%). Until you enter a real high, the highest close in the 40 sessions is used.
   useEffect(() => { setTrailHigh(""); }, [sel]); // a high entered for one stock must not carry to the other
-  const trailInfo = useMemo(() => {
-    const p = parseFloat(trailPct);
-    if (!(p > 0 && p < 50)) return null;
-    const dataHigh = Math.max(...t.closes);
-    const hi = parseFloat(trailHigh) > 0 ? parseFloat(trailHigh) : dataHigh;
-    const stop = hi * (1 - p / 100);
-    const initial = ok ? L.stop : NaN;
-    const activates = isFinite(initial) ? initial / (1 - p / 100) : NaN; // the high at which the trail overtakes the fixed stop
-    return { p, hi, stop, fromClose: (1 - stop / t.close) * 100, binding: isFinite(initial) && stop > initial, activates, usingData: !(parseFloat(trailHigh) > 0), dataHigh };
-  }, [trailPct, trailHigh, t, ok, L.stop]);
+  const trailInfo = useMemo(() => trailStop(t.closes, t.close, trailPct, trailHigh, ok ? L.stop : undefined), [trailPct, trailHigh, t, ok, L.stop]);
 
   const say = (m) => { setToast(m); clearTimeout(timer.current); timer.current = setTimeout(() => setToast(""), 2600); };
   const copy = (text, msg) => {
@@ -219,11 +177,11 @@ export default function App({ askModel = defaultAskModel, onNavigate, onOpenStag
     return {
       session: "NSE close 9 Nov 2026, screen run 10 Nov 2026", marketBreadthAD: 0.77, capitalINR: cap, riskPerTradePct: rp, selected: t.sym, trailingStop: trailInfo ? { percent: trailInfo.p, highUsed: +trailInfo.hi.toFixed(2), stop: +trailInfo.stop.toFixed(2), highIsFromData: trailInfo.usingData } : null,
       setups: TRADES.map((x) => {
-        const l = Object.fromEntries(Object.entries(lv[x.id]).map(([k, v]) => [k, parseFloat(v as string)]));
+        const l = parseLevels(lv[x.id]);
         const risk = l.entry - l.stop;
-        const qty = Math.min(Math.floor((cap * rp) / 100 / risk), Math.floor(cap / l.entry));
+        const qty = sizePosition(l, cap, rp)?.qty ?? 0;
         return {
-          symbol: x.sym, name: x.name, style: x.mode, setup: x.setup, close: x.close, prevClose: x.prev,
+          symbol: x.sym, name: x.name, style: x.mode, setup: x.setup, close: x.close, prevClose: previousClose(x),
           high52w: x.hi52, low52w: x.lo52, dma50_150_200: x.ma, levels: l,
           riskPerShare: +risk.toFixed(2), riskPctOfEntry: +((risk / l.entry) * 100).toFixed(2), quantity: qty, positionValue: Math.round(qty * l.entry),
           rToT1: +((l.t1 - l.entry) / risk).toFixed(2), rToT2: +((l.t2 - l.entry) / risk).toFixed(2),

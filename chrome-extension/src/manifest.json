@@ -1,0 +1,41 @@
+{
+  "manifest_version": 3,
+  "name": "Growth Stock Alpha Desk",
+  "version": "1.0.0",
+  "description": "Your swing and intraday picks in the toolbar and on trading pages: levels, position size, 8% trailing stop, RSI, 20 EMA and candle patterns.",
+  "action": {
+    "default_title": "Growth Stock Alpha Desk",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "permissions": [
+    "storage"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chartink.com/*",
+        "https://*.chartink.com/*",
+        "https://www.tradingview.com/*",
+        "https://in.tradingview.com/*",
+        "https://*.5paisa.com/*",
+        "https://www.screener.in/*",
+        "https://www.nseindia.com/*"
+      ],
+      "js": [
+        "widget.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}

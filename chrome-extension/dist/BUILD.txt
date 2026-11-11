@@ -1,0 +1,1 @@
+Built from src/core/desk by scripts/build-extension.ts on 2026-11-11

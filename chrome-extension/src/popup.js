@@ -1,7 +1,9 @@
+import { buildSnapshot, parseLevels, sizePosition, trailStop, planText, obsidianNote } from "../../src/core/desk";
+
 (function () {
   "use strict";
-  var D = window.GSA_DATA, I = window.GSAInd;
-  var DEFAULTS = { showWidget: true, capital: 500000, risk: 1, trailPct: 8, appUrl: "", levels: {}, trailHigh: {}, tab: 0 };
+  var D = buildSnapshot();
+  var DEFAULTS = { showWidget: true, capital: "500000", riskPct: "1", trailPct: "8", appUrl: "", levels: {}, trailHigh: {}, tab: 0 };
   var st = JSON.parse(JSON.stringify(DEFAULTS));
 
   /* ---------- storage: chrome.storage when installed, localStorage when opened as a plain page ---------- */
@@ -65,18 +67,12 @@
     return { entry: pick("entry"), stop: pick("stop"), t1: pick("t1"), t2: pick("t2") };
   }
   function plan(t) {
-    var raw = levelsFor(t), L = { entry: num(raw.entry), stop: num(raw.stop), t1: num(raw.t1), t2: num(raw.t2) };
-    var cap = num(st.capital) || 0, rp = num(st.risk) || 0, risk = L.entry - L.stop;
-    var valid = [L.entry, L.stop, L.t1, L.t2].every(function (v) { return isFinite(v) && v > 0; }) && risk > 0 && L.t1 > L.entry && L.t2 >= L.t1;
-    var qty = valid ? Math.floor((cap * rp) / 100 / risk) : 0;
-    qty = Math.min(qty, Math.floor(cap / L.entry) || 0);
-    return { L: L, raw: raw, risk: risk, valid: valid, qty: qty, cap: cap, rp: rp };
+    var raw = levelsFor(t), L = parseLevels(raw), z = sizePosition(L, st.capital, st.riskPct);
+    return { L: L, raw: raw, risk: L.entry - L.stop, valid: !!z, qty: z ? z.qty : 0, cap: z ? z.cap : (num(st.capital) || 0), rp: z ? z.rp : (num(st.riskPct) || 0), z: z };
   }
   function trail(t) {
-    var hi = num(st.trailHigh[t.id]), usingData = !(isFinite(hi) && hi > 0);
-    if (usingData) hi = Math.max.apply(null, t.closes);
-    var p = num(st.trailPct); if (!(p > 0 && p < 100)) p = 8;
-    return { hi: hi, p: p, stop: hi * (1 - p / 100), usingData: usingData };
+    var fixed = plan(t).L.stop;
+    return trailStop(t.closes, t.close, st.trailPct, st.trailHigh[t.id], fixed) || trailStop(t.closes, t.close, "8", st.trailHigh[t.id], fixed);
   }
 
   /* ---------- sparkline ---------- */
@@ -109,20 +105,9 @@
     return svg;
   }
 
-  /* ---------- Obsidian note, same fields as the desk's note ---------- */
-  function note(t, P) {
-    var pass = t.checks.filter(function (c) { return c[2] === "pass"; }).length;
-    return "---\ntype: minervini-sepa-setup\nticker: " + t.sym + "\nname: \"" + t.name + "\"\nexchange: NSE\ncurrent_price: " + t.close +
-      "\npivot_price: " + P.L.entry + "\nstop_loss: " + P.L.stop + "\ntarget_1: " + P.L.t1 + "\ntarget_2: " + P.L.t2 + "\ntrend_score: " + pass +
-      "\nrsi_14: " + t.rsi[t.rsi.length - 1] + "\nema_20: " + t.ema20[t.ema20.length - 1] + "\ncreated_date: \"" + new Date().toISOString().slice(0, 10) +
-      "\"\ntags:\n  - trading/minervini\n---\n\n# " + t.sym + ": " + t.name + " (NSE)\n\n- Pattern: " + t.setup + "\n- Entry ₹" + fmt(P.L.entry, 2) + ", stop ₹" + fmt(P.L.stop, 2) +
-      ", T1 ₹" + fmt(P.L.t1, 2) + ", T2 ₹" + fmt(P.L.t2, 2) + "\n- Size at ₹" + fmt(P.cap) + " and " + P.rp + "% risk: " + P.qty + " shares\n- Not checked: 200 DMA slope, RS rating\n";
-  }
-  function planText(t, P, T) {
-    return t.sym + " (" + t.mode + ")\nEntry ₹" + fmt(P.L.entry, 2) + "  Stop ₹" + fmt(P.L.stop, 2) + "  T1 ₹" + fmt(P.L.t1, 2) + "  T2 ₹" + fmt(P.L.t2, 2) +
-      "\nQty " + P.qty + " at ₹" + fmt(P.cap) + " capital and " + P.rp + "% risk" + (P.valid ? " (risk ₹" + fmt(P.qty * P.risk) + ")" : "") +
-      "\nTrailing stop " + T.p + "% below ₹" + fmt(T.hi, 2) + " = ₹" + fmt(T.stop, 2);
-  }
+  /* ---------- Obsidian note and plan text come from the shared core ---------- */
+  function note(t, P) { return obsidianNote(t, P.L, P.z, undefined, { rsi: t.rsi[t.rsi.length - 1], ema20: t.ema20[t.ema20.length - 1] }); }
+  function planTxt(t, P, T) { return planText(t, P.L, P.z, T); }
 
   /* ---------- view ---------- */
   var sel = 0;
@@ -185,7 +170,7 @@
 
     // actions
     view.appendChild(h("div", { "class": "row" }, [
-      h("button", { "class": "btn", type: "button", onclick: function () { var P = plan(t); copy(planText(t, P, trail(t)), "Plan copied"); } }, ["Copy plan"]),
+      h("button", { "class": "btn", type: "button", onclick: function () { var P = plan(t); copy(planTxt(t, P, trail(t)), "Plan copied"); } }, ["Copy plan"]),
       h("button", { "class": "btn ghost", type: "button", onclick: function () { copy(note(t, plan(t)), "Obsidian note copied"); } }, ["Copy Obsidian note"])
     ]));
 
@@ -228,7 +213,7 @@
 
   /* ---------- settings ---------- */
   function bindSettings() {
-    var map = { capital: "capital", risk: "risk", trailPct: "trailPct", appUrl: "appUrl" };
+    var map = { capital: "capital", riskPct: "riskPct", trailPct: "trailPct", appUrl: "appUrl" };
     Object.keys(map).forEach(function (id) {
       var el = $(id); el.value = st[id];
       el.addEventListener("input", function () { st[id] = el.value; saveState(); if (id === "appUrl") link(); else render(); });
@@ -251,7 +236,9 @@
   }
 
   loadState().then(function (saved) {
+    if (saved && saved.risk !== undefined && saved.riskPct === undefined) saved.riskPct = saved.risk; // settings saved by the first version
     st = Object.assign({}, DEFAULTS, saved);
+    ["capital", "riskPct", "trailPct"].forEach(function (k) { st[k] = String(st[k]); });
     st.levels = st.levels || {}; st.trailHigh = st.trailHigh || {};
     sel = Math.min(Math.max(parseInt(st.tab, 10) || 0, 0), D.trades.length - 1);
     $("asof").textContent = D.meta.label + " · snapshot";

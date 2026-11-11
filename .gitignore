@@ -6,3 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# the built Chrome extension is committed so it can be loaded unpacked straight from a clone
+!chrome-extension/dist/

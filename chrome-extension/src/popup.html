@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Growth Stock Alpha Desk</title>
+<link rel="stylesheet" href="popup.css">
+</head>
+<body>
+<header class="top">
+  <div>
+    <div class="brand">GROWTH STOCK ALPHA</div>
+    <div class="asof" id="asof"></div>
+  </div>
+  <button class="icon" id="gear" type="button" aria-expanded="false" aria-controls="settings" title="Settings">Settings</button>
+</header>
+
+<section id="settings" class="settings" hidden aria-label="Settings">
+  <label>Capital ₹<input id="capital" type="number" inputmode="decimal" min="0" step="any"></label>
+  <label>Risk per trade %<input id="riskPct" type="number" inputmode="decimal" min="0" step="any"></label>
+  <label>Trailing stop %<input id="trailPct" type="number" inputmode="decimal" min="0" step="any"></label>
+  <label class="wide">Full desk link (optional)<input id="appUrl" type="url" placeholder="https://your-app.example"></label>
+  <label class="chk"><input id="showWidget" type="checkbox"> Show the floating widget on Chartink, TradingView, 5paisa, Screener and NSE</label>
+  <button class="btn ghost" id="reset" type="button">Reset levels and settings</button>
+</section>
+
+<nav class="tabs" id="tabs" role="tablist" aria-label="Picks"></nav>
+
+<main id="view" class="view" role="tabpanel" aria-live="polite"></main>
+
+<div class="status" id="status" role="status" aria-live="polite"></div>
+
+<footer class="foot">
+  Snapshot data from the NSE bhavcopy, not live. 200 DMA slope and RS rating were not checked. Plans and sizing are mechanics, not advice.
+  <a id="open" href="#" target="_blank" rel="noopener" hidden>Open the full desk</a>
+</footer>
+
+<script src="popup.js"></script>
+</body>
+</html>
