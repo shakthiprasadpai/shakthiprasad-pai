@@ -59,7 +59,7 @@ export const TrendTemplateBacktestView: React.FC<TrendTemplateBacktestViewProps>
   const [stopLossMode, setStopLossMode] = useState<StopLossMode>('2x_atr');
   const [profitTargetMode, setProfitTargetMode] = useState<ProfitTargetMode>('2r');
   const [initialCapital, setInitialCapital] = useState<number>(100000);
-  const [maxRiskPerTradePct, setMaxRiskPerTradePct] = useState<number>(1.5);
+  const [maxRiskPerTradePct, setMaxRiskPerTradePct] = useState<number>(1);
   const [maxConcurrentPositions, setMaxConcurrentPositions] = useState<number>(6);
   const [maxHoldingDays, setMaxHoldingDays] = useState<number>(65);
 
