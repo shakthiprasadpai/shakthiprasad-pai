@@ -9,3 +9,7 @@ coverage/
 
 # the built Chrome extension is committed so it can be loaded unpacked straight from a clone
 !chrome-extension/dist/
+
+# python
+__pycache__/
+*.pyc

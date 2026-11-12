@@ -1,0 +1,19 @@
+[project]
+name = "trade-desk"
+version = "0.1.0"
+description = "Minervini trade desk: position sizing, trailing stops, tracker, indicators and the ten chart patterns, for NSE daily bars."
+requires-python = ">=3.9"
+dependencies = []          # standard library only
+
+[project.scripts]
+trade-desk = "trade_desk.cli:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["trade_desk*"]
+
+[tool.setuptools.package-data]
+trade_desk = ["data/*.json"]
