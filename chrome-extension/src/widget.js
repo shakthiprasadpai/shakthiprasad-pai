@@ -1,6 +1,6 @@
 /* Floating on-page widget. Runs only on the sites listed in manifest.json, draws inside a shadow root so the
    page's CSS cannot touch it, reads the same saved settings as the popup, and makes no network requests. */
-import { buildSnapshot, parseLevels, sizePosition, trailStop, planText, trailFor } from "../../src/core/desk";
+import { buildSnapshot, parseLevels, sizePosition, trailStop, planText, trailFor, trackerView, sanitizePositions } from "../../src/core/desk";
 
 (function () {
   "use strict";
@@ -13,7 +13,7 @@ import { buildSnapshot, parseLevels, sizePosition, trailStop, planText, trailFor
   var CSS = ':host{all:initial}*{box-sizing:border-box}' +
     '.w{position:fixed;z-index:2147483647;right:16px;bottom:16px;font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#f2f2f5}' +
     '.pill{display:flex;align-items:center;gap:8px;background:#121218;border:1px solid #f5a524;color:#f5a524;padding:7px 11px;cursor:pointer;font:inherit;letter-spacing:.08em;box-shadow:0 6px 24px rgba(0,0,0,.45)}' +
-    '.pill b{color:#f2f2f5;font-weight:600}.up{color:#3ddc97}.dn{color:#ff3347}' +
+    '.pill b{color:#f2f2f5;font-weight:600}.pill.hit{background:#5a0f1f;border-color:#ff3347;color:#fff}.up{color:#3ddc97}.dn{color:#ff3347}' +
     '.panel{width:300px;background:#0c0c10;border:1px solid #2a2a35;box-shadow:0 10px 36px rgba(0,0,0,.55)}' +
     '.hd{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-bottom:1px solid #2a2a35;cursor:grab;user-select:none}' +
     '.hd span{color:#f5a524;letter-spacing:.14em;font-size:10px}.hd button{background:none;border:0;color:#9a9aa8;cursor:pointer;font:inherit;padding:2px 6px}' +
@@ -65,8 +65,10 @@ import { buildSnapshot, parseLevels, sizePosition, trailStop, planText, trailFor
     var w = el("div", { "class": "w" });
     if (st.widgetPos) { w.style.left = st.widgetPos.x + "px"; w.style.top = st.widgetPos.y + "px"; w.style.right = "auto"; w.style.bottom = "auto"; }
     if (!open) {
-      w.appendChild(el("button", { "class": "pill", type: "button", title: "Open the desk", onclick: function () { open = true; draw(); } }, [
-        "GSA", el("b", { text: t.sym }), el("span", { "class": day >= 0 ? "up" : "dn", text: (day >= 0 ? "+" : "") + day.toFixed(1) + "%" })]));
+      var hitNow = D.trades.filter(function (x) { var q = (st.positions || {})[x.id]; return q && q.hit; })[0];
+      w.appendChild(el("button", { "class": "pill" + (hitNow ? " hit" : ""), type: "button", title: "Open the desk", onclick: function () { open = true; draw(); } }, hitNow
+        ? ["STOP HIT", el("b", { text: hitNow.sym })]
+        : ["GSA", el("b", { text: t.sym }), el("span", { "class": day >= 0 ? "up" : "dn", text: (day >= 0 ? "+" : "") + day.toFixed(1) + "%" })]));
       root.appendChild(w); return;
     }
     var P = plan(t), T = trail(t), body = el("div", { "class": "bd" });
@@ -86,6 +88,8 @@ import { buildSnapshot, parseLevels, sizePosition, trailStop, planText, trailFor
       rows.push(["Size", fmt(P.qty) + " sh at " + P.rp + "% risk"], ["Money at risk", "₹" + fmt(P.qty * P.risk)], ["Risk / share", "₹" + fmt(P.risk, 2) + " (" + (P.risk / P.L.entry * 100).toFixed(1) + "%)"],
         ["T1 / T2", ((P.L.t1 - P.L.entry) / P.risk).toFixed(1) + "R / " + ((P.L.t2 - P.L.entry) / P.risk).toFixed(1) + "R"]);
     }
+    var q = (st.positions || {})[t.id], qv = q && T ? trackerView(q, T.p) : null;
+    if (qv) rows.push(["Tracked stop", (q.hit ? "HIT ₹" + fmt(q.hitAt, 2) : "₹" + fmt(qv.stop, 2) + " (" + qv.distancePct.toFixed(1) + "% below price)")]);
     rows.push(["Trail " + T.p + "%", "₹" + fmt(T.stop, 2)], ["RSI 14", rsi.toFixed(0) + (rsi >= 70 ? " (overbought)" : rsi <= 30 ? " (oversold)" : "")],
       ["20 EMA", "₹" + fmt(ema) + " (" + ((t.close / ema - 1) * 100).toFixed(1) + "%)"]);
     var tbl = el("table", {}, rows.map(function (r) { return el("tr", {}, [el("td", { "class": "k", text: r[0] }), el("td", { text: r[1] })]); }));
@@ -127,7 +131,7 @@ import { buildSnapshot, parseLevels, sizePosition, trailStop, planText, trailFor
     draw();
   }
   store.get(function (s) {
-    st = s || {};
+    st = s || {}; st.positions = sanitizePositions(st.positions);
     if (st.showWidget === false) return;
     sel = Math.min(Math.max(parseInt(st.tab, 10) || 0, 0), D.trades.length - 1);
     mount();
@@ -135,7 +139,7 @@ import { buildSnapshot, parseLevels, sizePosition, trailStop, planText, trailFor
   try {
     chrome.storage.onChanged.addListener(function (ch, area) {
       if (area !== "local" || !ch.gsa) return;
-      st = ch.gsa.newValue || {};
+      st = ch.gsa.newValue || {}; st.positions = sanitizePositions(st.positions);
       if (st.showWidget === false) { if (host) { host.remove(); host = null; root = null; } return; }
       if (!document.getElementById("gsa-desk-host")) mount(); else draw();
     });

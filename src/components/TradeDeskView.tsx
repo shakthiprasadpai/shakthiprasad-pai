@@ -2,7 +2,8 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import DeskTools, { TOOLS_CSS, candlePatterns, emaSeries, rsiSeries } from "./DeskTools";
 import { stockToDeskTrade, stockLevels } from "../utils/deskAdapter";
 import type { MinerviniTradeSetup } from "../types";
-import { TRADES, parseLevels, levelsOk, sizePosition, trailStop, dayChangePct, previousClose, trailFor } from "../core/desk";
+import { TRADES, parseLevels, levelsOk, sizePosition, trailStop, dayChangePct, previousClose, trailFor, openPosition, applyBar, trackerView, type Position } from "../core/desk";
+import { loadPositions, savePositions } from "../core/desk/positionsStore";
 import { loadDeskSettings, saveDeskSettings } from "../core/desk/settingsStore";
 
 
@@ -162,6 +163,32 @@ export default function App({ askModel = defaultAskModel, checkReady, onNavigate
   useEffect(() => { setTrailHigh(""); }, [sel]); // a high entered for one stock must not carry to the other
   const trailPct = trailFor({ trails }, t.id);
   const setTrailPct = (v: string) => setTrails((m) => ({ ...m, [t.id]: v }));
+  // Position tracker: your fill, the stop that only moves up, and a hit flag. It works on the prices you enter; there is no live feed.
+  const [positions, setPositions] = useState<Record<string, Position>>(() => loadPositions());
+  useEffect(() => { savePositions(positions); }, [positions]);
+  const [tin, setTin] = useState<Record<string, Record<string, string>>>({});
+  const ti = tin[t.id] || {};
+  const setTi = (k: string) => (e: any) => setTin((m) => ({ ...m, [t.id]: { ...(m[t.id] || {}), [k]: e.target.value } }));
+  const posn = positions[t.id];
+  const trailNum = parseFloat(trailPct);
+  const trk = posn && trailNum > 0 && trailNum < 50 ? trackerView(posn, trailNum) : null;
+  const startTrack = () => {
+    const p = openPosition({ fill: parseFloat(ti.fill || String(L.entry)), qty: parseInt(ti.qty || String(size?.qty ?? 0), 10), stop0: L.stop });
+    if (!p) return say("Check the fill, the share count and the stop: the stop must be below the fill.");
+    setPositions((m) => ({ ...m, [t.id]: p })); setTin((m) => ({ ...m, [t.id]: {} })); say(`Tracking ${t.sym} from ₹${fmt(p.fill, 2)}, stop ₹${fmt(p.stop, 2)}`);
+  };
+  const updateTrack = () => {
+    if (!posn) return;
+    const price = parseFloat(ti.price || String(t.close));
+    if (!(price > 0)) return say("Enter the latest price.");
+    const next = applyBar(posn, { price, high: parseFloat(ti.high) || undefined, low: parseFloat(ti.low) || undefined }, trailNum);
+    if (next === posn) return say("Enter a trail between 1 and 49 percent first.");
+    setPositions((m) => ({ ...m, [t.id]: next })); setTin((m) => ({ ...m, [t.id]: {} }));
+    if (next.hit) { say(`STOP HIT: ${t.sym} traded through ₹${fmt(next.hitAt!, 2)}`); if (!muted) beep(); }
+    else if (next.stop > posn.stop) say(`Stop raised to ₹${fmt(next.stop, 2)}`);
+    else say("No change: the stop only moves up");
+  };
+  const closeTrack = () => { setPositions((m) => { const n = { ...m }; delete n[t.id]; return n; }); say(`${t.sym} tracker cleared`); };
   const trailInfo = useMemo(() => trailStop(t.closes, t.close, trailPct, trailHigh, ok ? L.stop : undefined), [trailPct, trailHigh, t, ok, L.stop]);
 
   const say = (m) => { setToast(m); clearTimeout(timer.current); timer.current = setTimeout(() => setToast(""), 2600); };
@@ -447,6 +474,47 @@ export default function App({ askModel = defaultAskModel, checkReady, onNavigate
                 ) : <div className="err">Enter a trail between 1 and 49 percent.</div>}
                 <div className="tg">{trailInfo?.usingData ? "No real high entered, so the highest close in the data is used. Enter your own high after you are in the trade. " : ""}Raise the stop only; never lower it. {t.id === "intra" ? "SAILIFE is the intraday trade, so it starts at a 3% trail; an 8% trail is far wider than the day's range and works as a swing exit only." : "LAURUSLABS is the swing trade, so it starts at an 8% trail; 3% is an intraday setting and would stop you out on normal pullbacks."}</div>
               </div>
+              <div className="tbox tk" aria-label="Position tracker">
+                <div className="lab">Position tracker</div>
+                {!posn ? (
+                  <>
+                    <div className="trow">
+                      <label className="f"><span className="lab">Your fill ₹</span><input type="number" step="0.05" value={ti.fill ?? ""} placeholder={String(L.entry)} onChange={setTi("fill")} /></label>
+                      <label className="f"><span className="lab">Shares</span><input type="number" step="1" min="1" value={ti.qty ?? ""} placeholder={String(size?.qty ?? "")} onChange={setTi("qty")} /></label>
+                    </div>
+                    <button type="button" className="tkbtn" onClick={startTrack}>Start tracking</button>
+                    <div className="tg">Enter what you actually paid. The stop starts at your fixed stop ₹{fmt(L.stop, 2)} and then only moves up with the highest price you enter.</div>
+                  </>
+                ) : trk ? (
+                  <>
+                    <div className={`tkflag ${trk.status}`} role="status">
+                      {trk.status === "hit" ? `STOP HIT at ₹${fmt(posn.hitAt!, 2)} on ${posn.hitOn}. Exit the position and clear the tracker.` : trk.status === "danger" ? `Within ${trk.distancePct.toFixed(1)}% of the stop at ₹${fmt(trk.stop, 2)}.` : `Open. ${trk.distancePct.toFixed(1)}% above the stop.`}
+                    </div>
+                    <table className="num"><tbody>
+                      <tr><td className="k">Fill / shares</td><td>₹{fmt(posn.fill, 2)} × {posn.qty}</td></tr>
+                      <tr><td className="k">Last price</td><td>₹{fmt(posn.last, 2)} ({trk.pnlPct >= 0 ? "+" : ""}{trk.pnlPct.toFixed(2)}%, {trk.pnl >= 0 ? "+" : "-"}₹{fmt(Math.abs(trk.pnl))})</td></tr>
+                      <tr><td className="k">Highest since entry</td><td>₹{fmt(posn.high, 2)}</td></tr>
+                      <tr><td className="k">Trailing level ({trailNum}%)</td><td>₹{fmt(trk.trailLevel, 2)}</td></tr>
+                      <tr><td className="k">Protective stop</td><td><b>₹{fmt(trk.stop, 2)}</b> {trk.binding === "trail" ? `(raised ₹${fmt(trk.raisedBy, 2)} from ₹${fmt(posn.stop0, 2)})` : "(your fixed stop; the trail is still below it)"}</td></tr>
+                      <tr><td className="k">Open profit in R</td><td>{trk.openR.toFixed(2)}R</td></tr>
+                      <tr><td className="k">{trk.lockedIfStopped >= 0 ? "Profit locked in" : "Loss if stopped"}</td><td>{trk.lockedIfStopped >= 0 ? "+" : "-"}₹{fmt(Math.abs(trk.lockedIfStopped))}</td></tr>
+                    </tbody></table>
+                    {!posn.hit && (
+                      <>
+                        <div className="trow">
+                          <label className="f"><span className="lab">Latest price ₹</span><input type="number" step="0.05" value={ti.price ?? ""} placeholder={String(t.close)} onChange={setTi("price")} /></label>
+                          <label className="f"><span className="lab">Day high ₹ (optional)</span><input type="number" step="0.05" value={ti.high ?? ""} onChange={setTi("high")} /></label>
+                          <label className="f"><span className="lab">Day low ₹ (optional)</span><input type="number" step="0.05" value={ti.low ?? ""} onChange={setTi("low")} /></label>
+                        </div>
+                        <button type="button" className="tkbtn" onClick={updateTrack}>Update stop</button>
+                      </>
+                    )}
+                    <button type="button" className="tkbtn ghost" onClick={closeTrack}>{posn.hit ? "Clear tracker" : "Close position"}</button>
+                    {posn.log.length > 1 && <ul className="tklog">{posn.log.slice(-5).reverse().map((l, i) => <li key={i}><span>{l.on}</span><span>₹{fmt(l.price, 2)}</span><span>{l.note}</span></li>)}</ul>}
+                    <div className="tg">Checked only against prices you enter, so it cannot alert you in the market. If the price gaps through the stop you will fill below it. A day low under the stop counts as a hit.</div>
+                  </>
+                ) : <div className="err">Enter a trail between 1 and 49 percent above to track.</div>}
+              </div>
             </div>
             <div ref={tplRef}>
               <div className="lab">Trend template</div>
@@ -495,6 +563,9 @@ const CSS = `
   background:var(--bg);color:var(--fg);font-family:var(--mono);font-size:13px;line-height:1.5;min-height:100vh;padding-bottom:96px}
 .desk.desk-in-dash{min-height:0;padding-bottom:0;border:1px solid var(--line)}
 .desk-in-dash .mon,.desk-in-dash .bar{display:none}
+.tk .tkbtn{background:var(--amber);color:#14110a;border:0;padding:8px 14px;font-weight:700;font-size:11px;letter-spacing:.08em;text-transform:uppercase;margin:8px 8px 0 0}.tk .tkbtn.ghost{background:transparent;color:var(--muted);border:1px solid var(--line)}
+.tkflag{padding:8px 10px;margin:6px 0 8px;font-size:12px;border:1px solid var(--line)}.tkflag.ok{color:var(--green-t);border-color:#14472f}.tkflag.danger{color:var(--amber);border-color:#5a4214}.tkflag.hit{color:#fff;background:#5a0f1f;border-color:var(--red-t);font-weight:700}
+.tklog{list-style:none;margin:10px 0 0;padding:0;font-size:11px;color:var(--muted)}.tklog li{display:grid;grid-template-columns:86px 80px 1fr;gap:8px;padding:3px 0;border-top:1px solid var(--line)}
 .presets{display:flex;gap:4px;margin-top:4px}.presets button{background:#0c0c14;border:1px solid var(--line);color:var(--muted);padding:2px 8px;font-size:10px;font-weight:700}.presets button.on{border-color:var(--amber);color:var(--amber)}
 .desk *{box-sizing:border-box}
 .desk button{font:inherit;color:inherit;cursor:pointer}

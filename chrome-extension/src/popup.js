@@ -1,9 +1,9 @@
-import { buildSnapshot, parseLevels, sizePosition, trailStop, planText, obsidianNote, trailFor } from "../../src/core/desk";
+import { buildSnapshot, parseLevels, sizePosition, trailStop, planText, obsidianNote, trailFor, openPosition, applyBar, trackerView, sanitizePositions } from "../../src/core/desk";
 
 (function () {
   "use strict";
   var D = buildSnapshot();
-  var DEFAULTS = { showWidget: true, capital: "500000", riskPct: "1", trailPct: "8", trails: {}, appUrl: "", levels: {}, trailHigh: {}, tab: 0 };
+  var DEFAULTS = { showWidget: true, capital: "500000", riskPct: "1", trailPct: "8", trails: {}, positions: {}, appUrl: "", levels: {}, trailHigh: {}, tab: 0 };
   var st = JSON.parse(JSON.stringify(DEFAULTS));
 
   /* ---------- storage: chrome.storage when installed, localStorage when opened as a plain page ---------- */
@@ -175,6 +175,53 @@ import { buildSnapshot, parseLevels, sizePosition, trailStop, planText, obsidian
         h("label", { style: lab }, ["Highest price since entry", hiInp])]),
       trailBox]));
 
+    // position tracker: fill, ratcheting stop, hit flag. Works on the prices you enter; there is no live feed.
+    var trkBox = h("div"), ti = {};
+    view.appendChild(h("section", { "class": "card" }, [h("h3", { text: "Position tracker" }), trkBox]));
+    function tin(key, label, ph) {
+      var i = h("input", { type: "number", step: "any", inputmode: "decimal", "aria-label": label, placeholder: ph == null ? "" : String(ph), value: ti[key] || "" });
+      i.addEventListener("input", function () { ti[key] = i.value; });
+      return h("label", { style: "display:flex;flex-direction:column;gap:4px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#9a9aa8" }, [label, i]);
+    }
+    function drawTrk() {
+      trkBox.textContent = "";
+      var P = plan(t), pos = st.positions[t.id], pct = parseFloat(trailFor(st, t.id));
+      if (!pos) {
+        trkBox.appendChild(h("div", { "class": "lv", style: "grid-template-columns:1fr 1fr" }, [tin("fill", "Your fill ₹", P.L.entry), tin("qty", "Shares", P.qty || "")]));
+        trkBox.appendChild(h("button", { "class": "btn", type: "button", style: "margin-top:8px", onclick: function () {
+          var p = openPosition({ fill: parseFloat(ti.fill || P.L.entry), qty: parseInt(ti.qty || P.qty || 0, 10), stop0: P.L.stop });
+          if (!p) return say("Check the fill, the share count and the stop: the stop must be below the fill.");
+          st.positions[t.id] = p; ti = {}; saveState(); say("Tracking from ₹" + fmt(p.fill, 2)); drawTrk();
+        } }, ["Start tracking"]));
+        trkBox.appendChild(h("p", { "class": "note", text: "Enter what you paid. The stop starts at your fixed stop ₹" + fmt(P.L.stop, 2) + " and only moves up with the highest price you enter." }));
+        return;
+      }
+      if (!(pct > 0 && pct < 50)) { trkBox.appendChild(h("p", { "class": "note bad", text: "Enter a trail between 1 and 49 percent to track." })); return; }
+      var v = trackerView(pos, pct);
+      trkBox.appendChild(h("p", { "class": "note " + (v.status === "hit" ? "bad" : v.status === "danger" ? "warn" : "good"), style: v.status === "hit" ? "font-weight:700" : "", role: "status",
+        text: v.status === "hit" ? "STOP HIT at ₹" + fmt(pos.hitAt, 2) + " on " + pos.hitOn + ". Exit and clear the tracker." : v.status === "danger" ? "Within " + v.distancePct.toFixed(1) + "% of the stop at ₹" + fmt(v.stop, 2) + "." : "Open. " + v.distancePct.toFixed(1) + "% above the stop." }));
+      var rows = [["Fill / shares", "₹" + fmt(pos.fill, 2) + " × " + pos.qty], ["Last price", "₹" + fmt(pos.last, 2) + " (" + (v.pnlPct >= 0 ? "+" : "") + v.pnlPct.toFixed(2) + "%)"],
+        ["Highest since entry", "₹" + fmt(pos.high, 2)], ["Trailing level (" + pct + "%)", "₹" + fmt(v.trailLevel, 2)],
+        ["Protective stop", "₹" + fmt(v.stop, 2) + (v.binding === "trail" ? " (raised ₹" + fmt(v.raisedBy, 2) + ")" : " (fixed)")],
+        [v.lockedIfStopped >= 0 ? "Profit locked in" : "Loss if stopped", (v.lockedIfStopped >= 0 ? "+" : "-") + "₹" + fmt(Math.abs(v.lockedIfStopped))]];
+      trkBox.appendChild(h("table", {}, rows.map(function (r) { return h("tr", {}, [h("td", { "class": "k", text: r[0] }), h("td", { text: r[1] })]); })));
+      if (!pos.hit) {
+        trkBox.appendChild(h("div", { "class": "lv", style: "grid-template-columns:1fr 1fr 1fr;margin-top:8px" }, [tin("price", "Latest ₹", t.close), tin("high", "Day high", ""), tin("low", "Day low", "")]));
+        trkBox.appendChild(h("button", { "class": "btn", type: "button", style: "margin:8px 6px 0 0", onclick: function () {
+          var price = parseFloat(ti.price || t.close);
+          if (!(price > 0)) return say("Enter the latest price.");
+          var nx = applyBar(pos, { price: price, high: parseFloat(ti.high) || undefined, low: parseFloat(ti.low) || undefined }, pct);
+          st.positions[t.id] = nx; ti = {}; saveState();
+          say(nx.hit ? "STOP HIT: traded through ₹" + fmt(nx.hitAt, 2) : nx.stop > pos.stop ? "Stop raised to ₹" + fmt(nx.stop, 2) : "No change: the stop only moves up");
+          drawTrk();
+        } }, ["Update stop"]));
+      }
+      trkBox.appendChild(h("button", { "class": "btn ghost", type: "button", style: "margin-top:8px", onclick: function () { delete st.positions[t.id]; ti = {}; saveState(); say("Tracker cleared"); drawTrk(); } }, [pos.hit ? "Clear tracker" : "Close position"]));
+      if (pos.log.length > 1) trkBox.appendChild(h("ul", {}, pos.log.slice(-4).reverse().map(function (l) { return h("li", {}, [h("span", { "class": "dim", text: l.on.slice(5) + "  ₹" + fmt(l.price, 2) }), h("span", { text: l.note })]); })));
+      trkBox.appendChild(h("p", { "class": "note", text: "Checked only against prices you enter, so it cannot alert you in the market. A gap through the stop fills below it. A day low under the stop counts as a hit." }));
+    }
+    drawTrk();
+
     // candles + alerts
     var cList = t.candles.length ? h("ul", {}, t.candles.slice().reverse().map(function (c) {
       return h("li", {}, [h("span", {}, [h("span", { "class": "dot " + (c.bias === "bull" ? "ok" : c.bias === "bear" ? "bad" : "") }), c.name]), h("span", { "class": "dim", text: c.date.slice(5).replace("-", "/") })]);
@@ -208,6 +255,7 @@ import { buildSnapshot, parseLevels, sizePosition, trailStop, planText, obsidian
         planBox.appendChild(h("table", {}, rows.map(function (r) { return h("tr", {}, [h("td", { "class": "k", text: r[0] }), h("td", { text: r[1] })]); })));
         planBox.appendChild(h("p", { "class": "note", text: "Sized at ₹" + fmt(P.cap) + " and " + P.rp + "% risk. Change both in Settings." }));
       }
+      if (typeof drawTrk === "function") drawTrk();
       trailBox.textContent = "";
       var rows2 = [["Trailing stop", "₹" + fmt(T.stop, 2) + " (" + T.p + "% below ₹" + fmt(T.hi, 2) + ")"], ["Versus last close", (T.stop / t.close * 100 - 100).toFixed(1) + "%"]];
       if (P.valid) {
@@ -256,6 +304,7 @@ import { buildSnapshot, parseLevels, sizePosition, trailStop, planText, obsidian
     st = JSON.parse(JSON.stringify(Object.assign({}, DEFAULTS, saved))); // copy, so edits never touch DEFAULTS
     ["capital", "riskPct", "trailPct"].forEach(function (k) { st[k] = String(st[k]); });
     st.trails = st.trails || {};
+    st.positions = sanitizePositions(st.positions);
     st.levels = st.levels || {}; st.trailHigh = st.trailHigh || {};
     sel = Math.min(Math.max(parseInt(st.tab, 10) || 0, 0), D.trades.length - 1);
     $("asof").textContent = D.meta.label + " · snapshot";

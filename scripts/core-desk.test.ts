@@ -62,3 +62,40 @@ assert.equal(previousClose(laurus), 2340); assert.equal(previousClose(sail), 178
 assert.equal(+dayChangePct(laurus).toFixed(2), 4.87); assert.equal(+dayChangePct(sail).toFixed(2), 2.9);
 assert.equal(+dayChangePct({ close: 110, prev: 100 }).toFixed(2), 10); // no series: falls back to prev
 console.log("day change: consistent");
+
+// ---- trailing-stop tracker ----
+import { openPosition, applyBar, trackerView, sanitizePositions } from "../src/core/desk";
+{
+  // SAILIFE intraday: fill 1900, 50 shares, fixed stop 1855, 3% trail
+  const p0 = openPosition({ fill: 1900, qty: 50, stop0: 1855, on: "2026-11-12" })!;
+  assert.ok(p0); assert.equal(p0.stop, 1855); assert.equal(p0.high, 1900);
+  assert.equal(openPosition({ fill: 1900, qty: 50, stop0: 1900 }), null);   // stop must be below the fill
+  assert.equal(openPosition({ fill: 1900, qty: 0, stop0: 1855 }), null);
+  assert.equal(openPosition({ fill: -1, qty: 5, stop0: 1 }), null);
+  // price runs to 1980: trail = 1980 x 0.97 = 1920.60, above the fixed stop, so the stop is raised
+  const p1 = applyBar(p0, { price: 1975, high: 1980, low: 1940 }, 3);
+  assert.equal(+p1.high.toFixed(2), 1980); assert.equal(+p1.stop.toFixed(2), 1920.6); assert.equal(p1.hit, false);
+  // a lower price does not lower the stop
+  const p2 = applyBar(p1, { price: 1950 }, 3);
+  assert.equal(+p2.stop.toFixed(2), 1920.6); assert.equal(+p2.high.toFixed(2), 1980);
+  // the new high only counts after the old stop is checked: a low of 1915 under the old stop 1920.60 is a hit even though the high was 2100
+  const p3 = applyBar(p2, { price: 2050, high: 2100, low: 1915 }, 3);
+  assert.equal(p3.hit, true); assert.equal(+p3.hitAt!.toFixed(2), 1920.6); assert.equal(+p3.high.toFixed(2), 1980);
+  // hit is sticky: later prices change nothing
+  assert.equal(applyBar(p3, { price: 3000, high: 3000 }, 3), p3);
+  // stop never drops when the trail % is widened
+  const wide = applyBar(p1, { price: 1975 }, 8); assert.equal(+wide.stop.toFixed(2), 1920.6);
+  // views
+  const v = trackerView(p1, 3);
+  assert.equal(+v.stop.toFixed(2), 1920.6); assert.equal(v.binding, "trail"); assert.equal(+v.raisedBy.toFixed(2), 65.6);
+  assert.equal(v.pnl, 3750); assert.equal(+v.openR.toFixed(2), 1.67); assert.equal(+v.lockedIfStopped.toFixed(2), 1030); assert.equal(v.status, "ok");
+  assert.equal(trackerView(applyBar(p0, { price: 1860 }, 3), 3).status, "danger");   // 0.27% above the stop
+  assert.equal(trackerView(applyBar(p0, { price: 1850 }, 3), 3).status, "hit");
+  assert.equal(+trackerView(applyBar(p0, { price: 1850 }, 3), 3).lockedIfStopped.toFixed(0), -2250);
+  // bad bar or bad trail changes nothing
+  assert.equal(applyBar(p0, { price: NaN }, 3), p0); assert.equal(applyBar(p0, { price: 1900 }, 0), p0); assert.equal(applyBar(p0, { price: 1900 }, 60), p0);
+  // saved junk is dropped, good records survive a round trip
+  assert.deepEqual(sanitizePositions("x"), {}); assert.deepEqual(sanitizePositions({ a: 5, b: { fill: "x" }, c: { fill: 100, stop0: 120, qty: 1, high: 1, stop: 1, last: 1 } }), {});
+  assert.deepEqual(sanitizePositions(JSON.parse(JSON.stringify({ intra: p1 }))).intra.stop, p1.stop);
+  console.log("tracker: ratchet, hit, sticky, junk handling ok");
+}
