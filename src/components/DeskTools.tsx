@@ -69,7 +69,7 @@ class TabBoundary extends Component<any, any> {
   }
 }
 
-function DeskToolsInner({ trades: tradesIn, levels: levelsIn, capital, riskPct, scan, onSelect, say, copy, beep, muted, onNavigate, onOpenStageScan, onShowCandles, jumps: jumpsIn, hideTabs, dataNote, embedded }: any) {
+function DeskToolsInner({ trades: tradesIn, levels: levelsIn, capital, riskPct, scan, onSelect, say, copy, beep, muted, onNavigate, onOpenStageScan, onShowCandles, jumps: jumpsIn, hideTabs, dataNote, embedded, hideSelfLink }: any) {
   const trades: any[] = Array.isArray(tradesIn) ? tradesIn.filter((t: any) => t && Array.isArray(t.closes) && Array.isArray(t.vols)) : [];
   const levels: any = levelsIn || {};
   const jumps: any[] = Array.isArray(jumpsIn) ? jumpsIn : [];
@@ -127,7 +127,7 @@ function DeskToolsInner({ trades: tradesIn, levels: levelsIn, capital, riskPct, 
   };
   const mdNote = (p) => obsidianNote(p.t, p.l, sizePosition(p.l, cap, rp));
 
-  const open = (key) => onNavigate && APP_TAB[key] && !(embedded && key === "screener") ? <button className="dt-link" type="button" onClick={() => onNavigate(APP_TAB[key])}>Open the full {ALL_TABS.find((x) => x[0] === key)[1].toLowerCase()} screen in the app →</button> : null;
+  const open = (key) => onNavigate && APP_TAB[key] && !((embedded || hideSelfLink) && key === "screener") ? <button className="dt-link" type="button" onClick={() => onNavigate(APP_TAB[key])}>Open the full {ALL_TABS.find((x) => x[0] === key)[1].toLowerCase()} screen in the app →</button> : null;
 
   const body = {
     screener: () => (

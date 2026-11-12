@@ -63,7 +63,6 @@ const WatchlistManager = lazyView(() => import('./components/WatchlistManager').
 const PocketPivotScanner = lazyView(() => import('./components/PocketPivotScanner').then((m) => ({ default: m.PocketPivotScanner })));
 const VcpPatternScanner = lazyView(() => import('./components/VcpPatternScanner').then((m) => ({ default: m.VcpPatternScanner })));
 const SecurityShieldPanel = lazyView(() => import('./components/SecurityShieldPanel').then((m) => ({ default: m.SecurityShieldPanel })));
-const DashboardDeskTools = lazyView(() => import('./components/DashboardDeskTools').then((m) => ({ default: m.DashboardDeskTools })));
 const TradeDeskView = lazyView(() => import('./components/TradeDeskView'));
 
 export default function App() {
@@ -546,6 +545,9 @@ export default function App() {
               transition={{ duration: 0.25, ease: 'easeInOut' }}
             >
               <TradeDeskView
+                stocks={stocksList}
+                selectedStock={selectedStock}
+                onSelectStock={(stk) => setSelectedStock(stk)}
                 onNavigate={(tab: string) => setActiveTab(tab as AppNavTab)}
                 onOpenStageScan={() => setIsDailyScanModalOpen(true)}
               />
@@ -807,10 +809,11 @@ export default function App() {
                   onNavigateToJournal={() => setActiveTab('journal')}
                 />
 
-                {/* Desk tools: pocket pivots, candle patterns, VCP and Stage scans, portfolio, journal, alerts, export */}
-                <DashboardDeskTools
+                {/* The desk: the two picks and this screen's stocks, with the chart, plan, tools, journal and co-pilot (same view as the Trade Desk tab) */}
+                <TradeDeskView
+                  inDashboard
                   stocks={stocksList}
-                  selected={selectedStock}
+                  selectedStock={selectedStock}
                   onSelectStock={(stk) => setSelectedStock(stk)}
                   onNavigate={(tab: string) => setActiveTab(tab as AppNavTab)}
                   onOpenStageScan={() => setIsDailyScanModalOpen(true)}

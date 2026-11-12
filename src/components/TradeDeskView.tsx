@@ -1,5 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import DeskTools, { TOOLS_CSS, candlePatterns, emaSeries, rsiSeries } from "./DeskTools";
+import { stockToDeskTrade, stockLevels } from "../utils/deskAdapter";
+import type { MinerviniTradeSetup } from "../types";
 import { TRADES, parseLevels, levelsOk, sizePosition, trailStop, dayChangePct, previousClose } from "../core/desk";
 import { loadDeskSettings, saveDeskSettings } from "../core/desk/settingsStore";
 
@@ -106,9 +108,19 @@ function Chart({ t, L, scan, trail, mode, showEma, showRsi }: any) {
   );
 }
 
-export default function App({ askModel = defaultAskModel, checkReady, onNavigate, onOpenStageScan }: { askModel?: (messages: any[], onText?: (t: string) => void) => Promise<string>; checkReady?: () => Promise<boolean>; onNavigate?: (tab: string) => void; onOpenStageScan?: () => void }) {
+export default function App({ askModel = defaultAskModel, checkReady, onNavigate, onOpenStageScan, stocks, selectedStock, onSelectStock, inDashboard }: { askModel?: (messages: any[], onText?: (t: string) => void) => Promise<string>; checkReady?: () => Promise<boolean>; onNavigate?: (tab: string) => void; onOpenStageScan?: () => void; stocks?: MinerviniTradeSetup[]; selectedStock?: MinerviniTradeSetup | null; onSelectStock?: (s: MinerviniTradeSetup) => void; inDashboard?: boolean }) {
   const [sel, setSel] = useState(0);
   const [lv, setLv] = useState(() => Object.fromEntries(TRADES.map((t) => [t.id, { ...t.L }])));
+  // One desk: the two picks first, then the NSE/BSE stocks on the dashboard screen (the selected one first), all in the same tools.
+  const extra = useMemo(() => {
+    const list = (stocks || []).filter((x) => x && (x.exchange === "NSE" || x.exchange === "BSE"));
+    if (selectedStock) list.sort((a, b) => (a.ticker === selectedStock.ticker ? -1 : b.ticker === selectedStock.ticker ? 1 : 0));
+    const trades: any[] = [], source: MinerviniTradeSetup[] = [], levels: Record<string, any> = {};
+    list.forEach((x) => { const t = stockToDeskTrade(x); if (t && !TRADES.some((p) => p.sym === t.sym)) { trades.push(t); source.push(x); levels[t.id] = stockLevels(x); } });
+    return { trades, source, levels };
+  }, [stocks, selectedStock]);
+  const deskTrades: any[] = useMemo(() => [...TRADES, ...extra.trades], [extra]);
+  const deskLevels = useMemo(() => ({ ...extra.levels, ...lv }), [extra, lv]);
   const saved = useMemo(() => loadDeskSettings(), []);
   const [capital, setCapital] = useState(saved.capital);
   const [riskPct, setRiskPct] = useState(saved.riskPct);
@@ -164,7 +176,7 @@ export default function App({ askModel = defaultAskModel, checkReady, onNavigate
   const next = () => setSel((s) => (s + 1) % TRADES.length);
 
   useEffect(() => {
-    const h = (e) => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); next(); } };
+    const h = (e) => { if (!inDashboard && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); next(); } };
     document.addEventListener("keydown", h);
     return () => document.removeEventListener("keydown", h);
   }, []);
@@ -220,7 +232,7 @@ export default function App({ askModel = defaultAskModel, checkReady, onNavigate
   const pos = ((t.close - t.lo52) / (t.hi52 - t.lo52)) * 100;
 
   return (
-    <div className="desk">
+    <div className={`desk${inDashboard ? " desk-in-dash" : ""}`}>
       <style>{CSS + TOOLS_CSS}</style>
 
       <div className="bar">
@@ -447,10 +459,12 @@ export default function App({ askModel = defaultAskModel, checkReady, onNavigate
         </section>
 
         <DeskTools
-          trades={TRADES} levels={lv} capital={capital} riskPct={riskPct} scan={scan}
-          onSelect={setSel} say={say} copy={copy} beep={beep} muted={muted}
+          trades={deskTrades} levels={deskLevels} capital={capital} riskPct={riskPct} scan={scan}
+          hideSelfLink={inDashboard}
+          dataNote={extra.trades.length ? "Rows after the two picks are the NSE and BSE stocks on this screen, scored on all 8 Trend Template rules from their own price and moving averages. Their price history is sample data, so their candle patterns repeat; the two picks use real NSE bars. Selecting one of them loads it in the dashboard." : undefined}
+          onSelect={(i: number) => { if (i < TRADES.length) setSel(i); else { const x = extra.source[i - TRADES.length]; if (x && onSelectStock) onSelectStock(x); } }} say={say} copy={copy} beep={beep} muted={muted}
           onNavigate={onNavigate} onOpenStageScan={onOpenStageScan}
-          onShowCandles={(i) => { setSel(i); setChartMode("candle"); chartRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }); }}
+          onShowCandles={(i: number) => { if (i < TRADES.length) { setSel(i); setChartMode("candle"); chartRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }); } else { const x = extra.source[i - TRADES.length]; if (x && onSelectStock) onSelectStock(x); onNavigate?.("chart"); } }}
           jumps={[["Hermes agent", () => { dialogueRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }); inputRef.current?.focus(); }], ["VCP chart", scrollTo(chartRef)], ["Trade plan", scrollTo(benchRef)], ["Scanner", scrollTo(scanRef)]]}
         />
 
@@ -476,6 +490,8 @@ const CSS = `
   --amber:#f5a524;--amber-d:#3a2a0e;--red:#e11d48;--red-t:#ff3347;--green:#12985a;--green-t:#3ddc97;--blue:#1d4ed8;--violet:#4f46e5;
   --cream:#faf3df;--ink:#14110a;--mauve:#7d6b70;--serif:"Playfair Display",Georgia,serif;--mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
   background:var(--bg);color:var(--fg);font-family:var(--mono);font-size:13px;line-height:1.5;min-height:100vh;padding-bottom:96px}
+.desk.desk-in-dash{min-height:0;padding-bottom:0;border:1px solid var(--line)}
+.desk-in-dash .mon{display:none}
 .desk *{box-sizing:border-box}
 .desk button{font:inherit;color:inherit;cursor:pointer}
 .desk .lab{font-size:10px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--muted)}
