@@ -3,6 +3,7 @@ import { mkdtempSync, writeFileSync, readFileSync, rmSync, existsSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { run, expandGlob } from "./desk-cli";
+import { renderDash, sparkline, ladder, wrapLine } from "./desk-dash";
 import { buildHistory, readBhavText, parseBhavDate, barsToSeries, scanPatterns } from "../src/core/desk";
 
 const ok = (...a: string[]) => { const r = run(a); assert.equal(r.code, 0, `${a.join(" ")}: ${r.err}`); return r.out; };
@@ -82,6 +83,31 @@ try {
   assert.ok(bad("track", "update", ...S).includes("Name the pick"));
   assert.ok(bad("track", "frobnicate", ...S).includes("track needs one of"));
 } finally { rmSync(dir, { recursive: true, force: true }); }
+
+// dashboard: pure text, fits the width, shows both picks, the ladder, and open positions
+assert.equal(sparkline([1, 2, 3, 4, 5, 6, 7, 8], 8), "▁▂▃▄▅▆▇█");
+assert.equal(sparkline([5, 5, 5], 3), "▄▄▄");
+const lad = ladder({ stop: 90, entry: 100, t1: 110, t2: 120 }, 95, 31);
+assert.equal(lad.length, 31); assert.equal(lad[0], "S"); assert.equal(lad[30], "2"); assert.equal(lad[5], "●"); assert.equal(lad[10], "E");
+const plain = renderDash({ width: 100, color: false });
+assert.ok(!plain.includes("\x1b"));
+for (const l of plain.split("\n")) assert.ok([...l].length <= 100, `too wide: ${l}`);
+for (const t of ["LAURUSLABS", "SAILIFE", "Qty 33", "Qty 111", "none. Start one with", "Inverse head and shoulders confirmed"]) assert.ok(plain.includes(t), t);
+assert.ok(renderDash({ width: 100, color: true }).includes("\x1b[32m"));
+assert.deepEqual(wrapLine("  aaa bbb ccc ddd", 11), ["  aaa bbb", "    ccc ddd"]);
+assert.deepEqual(wrapLine("short", 11), ["short"]);
+assert.ok(renderDash({ width: 60, color: false }).split("\n").every((l) => [...l].length <= 60));
+const dd = mkdtempSync(join(tmpdir(), "dash-"));
+try {
+  const st = join(dd, "pos.json");
+  ok("track", "open", "swing", "--fill", "2470", "--qty", "33", "--on", "2026-11-10", "--state", st);
+  ok("track", "update", "swing", "--price", "2600", "--high", "2610", "--on", "2026-11-11", "--state", st);
+  const d2 = ok("dash", "--no-color", "--width", "100", "--state", st);
+  assert.ok(d2.includes("33 @ ₹2,470.00") && d2.includes("stop ₹2,401.20 (trail)") && d2.includes("+₹4,290") && d2.includes("OK"), d2);
+  assert.ok(!d2.includes("none. Start one"));
+  assert.ok(ok("dash", "--no-color", "--state", join(dd, "missing.json")).includes("none. Start one"));
+  assert.ok(bad("dash", "--width", "abc").includes("--width needs a number"));
+} finally { rmSync(dd, { recursive: true, force: true }); }
 
 assert.ok(bad("nope").includes("Unknown command"));
 assert.ok(bad("picks", "--bogus").length > 0);

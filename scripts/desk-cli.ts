@@ -7,6 +7,7 @@
 //   npm run desk -- note LAURUSLABS [--vault DIR]
 //   npm run desk -- track open swing --fill 2470 --qty 33
 //   npm run desk -- track update swing --price 2600 [--high 2610 --low 2580 --on 2026-11-12]
+//   npm run desk -- dash [--watch] [--no-color] [--width 100]
 //   npm run desk -- track show [swing]
 //   npm run desk -- track close swing
 import { parseArgs } from "node:util";
@@ -19,12 +20,14 @@ import {
   buildHistory, barsToSeries, type DeskPick, type Position, type Series, type PatternResult, type DailyBar,
 } from "../src/core/desk";
 import { REAL_BARS } from "../src/data/realNseBars";
+import { renderDash } from "./desk-dash";
 
 const HELP = `Minervini trade desk (TypeScript). Commands:
   picks [--capital 500000 --risk 1]
   size --entry 2470 --stop 2320 --t1 2770 --t2 2920 [--capital 500000 --risk 1 --trail 8]
   patterns [--symbols TRENT SUVEN] [--bhavcopy FILES...] [--all] [--json]
   note <pick> [--vault DIR]
+  dash [--watch] [--no-color] [--width 100]   one-screen dashboard; --watch redraws every 2 s
   track open <pick> --fill 2470 --qty 33 [--stop N]
   track update <pick> --price 2600 [--high N --low N --on YYYY-MM-DD]
   track show [pick]
@@ -46,6 +49,7 @@ const OPTIONS = {
   symbols: { type: "string", multiple: true }, bhavcopy: { type: "string", multiple: true }, all: { type: "boolean" }, json: { type: "boolean" },
   vault: { type: "string" },
   fill: { type: "string" }, qty: { type: "string" }, price: { type: "string" }, high: { type: "string" }, low: { type: "string" }, on: { type: "string" },
+  watch: { type: "boolean" }, "no-color": { type: "boolean" }, width: { type: "string" },
   state: { type: "string", default: STATE }, help: { type: "boolean", short: "h" },
 } as const;
 
@@ -122,6 +126,12 @@ export function run(argv: string[]): Result {
       }
       p();
       p("Not checked: " + PICKS_META.uncheckedRules.join(", ") + ". Levels are from the bhavcopy screen, not advice.");
+      return { code: 0, out, err };
+    }
+
+    if (cmd === "dash") {
+      const w = a.width !== undefined ? need(a.width, "width") : process.stdout.columns || 100;
+      p(renderDash({ width: w, color: !a["no-color"] && !process.env.NO_COLOR && (process.stdout.isTTY || a.watch === true), positions: loadPositions(a.state!), capital: a.capital, risk: a.risk }).trimEnd());
       return { code: 0, out, err };
     }
 

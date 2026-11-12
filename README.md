@@ -15,8 +15,9 @@ npm run desk -- note LAURUSLABS --vault "C:\path\to\vault"
 npm run desk -- track open swing --fill 2470 --qty 33
 npm run desk -- track update swing --price 2600 --high 2610
 npm run desk -- track show
+npm run desk -- dash --watch                  # one-screen dashboard, redraws every 2 s (Ctrl+C to quit)
 ```
 
 Both bhavcopy formats are read (`BhavCopy_NSE_CM_*` and `sec_bhavdata_full_*`), EQ series only. Open positions are kept in
-`~/.trade_desk/positions.json`, the same file the Python version uses. The code is `scripts/desk-cli.ts` and `src/core/desk/bhavcopy.ts`;
+`~/.trade_desk/positions.json`, the same file the Python version uses. `dash` shows both picks with a sparkline and a stop-to-target ladder, your open positions and the live pattern hits; with `--watch` it re-reads the positions file, so a `track update` in another window appears within 2 seconds (`--no-color` and `--width N` are available). The code is `scripts/desk-cli.ts`, `scripts/desk-dash.ts` and `src/core/desk/bhavcopy.ts`;
 `npm run test:core` covers it.
