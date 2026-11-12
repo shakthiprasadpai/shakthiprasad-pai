@@ -1,5 +1,6 @@
-import { parseLevels, sizePosition, obsidianNote, levelsOk, dayChangePct, scanPatterns, seriesFromTrade, summarizePatterns, FRESH } from "../core/desk";
+import { parseLevels, sizePosition, obsidianNote, levelsOk, dayChangePct, scanPatterns, seriesFromTrade, summarizePatterns, FRESH, parsePatternCsv, checkRow } from "../core/desk";
 import { REAL_BARS } from "../data/realNseBars";
+import { PATTERN_SHEET_CSV, PATTERN_SHEET_DATE, PATTERN_SHEET_URL } from "../data/patternSheet";
 import { Component, useState, useMemo, useEffect } from "react";
 import { fmt, median, avg, pocketPivots, vcpScan, emaSeries, rsiSeries, stageInfo, patternAlerts, candlePatterns } from "../utils/deskIndicators";
 export { pocketPivots, vcpScan, emaSeries, rsiSeries, stageInfo, patternAlerts, candlePatterns };
@@ -68,6 +69,42 @@ class TabBoundary extends Component<any, any> {
       </div>
     );
   }
+}
+
+
+/* The spreadsheet view: rows from the "Dashboard Pattern Summary" sheet, each checked against the live scan.
+   Starts from the copy bundled with the app; "Load CSV" replaces it with a fresh export (kept in this browser). */
+const SHEET_KEY = "gsa-patsheet";
+function PatternSheet({ scans }: { scans: Record<string, any[]> }) {
+  const [text, setText] = useState<string>(() => { try { return localStorage.getItem(SHEET_KEY) || PATTERN_SHEET_CSV; } catch { return PATTERN_SHEET_CSV; } });
+  const [name, setName] = useState<string>(() => { try { return localStorage.getItem(SHEET_KEY + "-name") || ""; } catch { return ""; } });
+  const [err, setErr] = useState("");
+  const parsed = useMemo(() => parsePatternCsv(text), [text]);
+  const rows = parsed.rows, checks = useMemo(() => rows.map((r) => checkRow(r, scans)), [rows, scans]);
+  const diff = checks.filter((c) => c.check === "differs").length;
+  const onFile = async (f?: File | null) => {
+    if (!f) return;
+    const t = await f.text(), p = parsePatternCsv(t);
+    if (p.error) { setErr(p.error); return; }
+    setErr(""); setText(t); setName(f.name);
+    try { localStorage.setItem(SHEET_KEY, t); localStorage.setItem(SHEET_KEY + "-name", f.name); } catch { /* storage can be blocked */ }
+  };
+  const reset = () => { setText(PATTERN_SHEET_CSV); setName(""); setErr(""); try { localStorage.removeItem(SHEET_KEY); localStorage.removeItem(SHEET_KEY + "-name"); } catch { /* ignore */ } };
+  return (
+    <div className="dt-card" style={{ marginBottom: 12 }}>
+      <div className="dt-h"><b>From the spreadsheet</b><span className="dt-pill">{rows.length} rows · {diff ? `${diff} differ from the live scan` : "all match the live scan"}</span></div>
+      <p className="dt-dim">{name ? `Loaded from ${name}.` : `Copy bundled with the app, from ${PATTERN_SHEET_DATE}.`} Each row is checked against the scan above, so a row that says Differs means the sheet is out of date or the chart has moved.</p>
+      <div className="dt-scroll"><table className="dt-table"><thead><tr><th>Stock</th><th>Pattern</th><th>Sheet says</th><th>Live scan</th><th>Check</th><th>Note</th></tr></thead>
+        <tbody>{rows.map((r, i) => <tr key={r.label + r.pattern + i}><td><b>{r.stock}</b></td><td>{r.pattern}</td><td>{r.status}</td><td>{checks[i].live}</td><td><span className={`dt-pill ${checks[i].check === "match" ? "ok" : checks[i].check === "differs" ? "bad" : ""}`}>{checks[i].check}</span></td><td className="dt-dim" style={{ textAlign: "left" }}>{r.note}</td></tr>)}</tbody></table></div>
+      <div className="dt-row" style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8, alignItems: "center" }}>
+        <label className="dt-link" style={{ cursor: "pointer" }}>Load CSV from the spreadsheet<input type="file" accept=".csv,text/csv" style={{ display: "none" }} onChange={(e) => { onFile(e.target.files?.[0]); e.target.value = ""; }} /></label>
+        {name ? <button className="dt-link" type="button" onClick={reset}>Use the bundled copy</button> : null}
+        <a className="dt-link" href={PATTERN_SHEET_URL} target="_blank" rel="noreferrer">Open the spreadsheet →</a>
+      </div>
+      {err ? <p className="dt-note" role="alert">{err}</p> : null}
+      <p className="dt-note">The app cannot sign in to the spreadsheet itself. To refresh: open it, download the Patterns sheet as CSV, then use Load CSV here.</p>
+    </div>
+  );
 }
 
 function DeskToolsInner({ trades: tradesIn, levels: levelsIn, capital, riskPct, scan, onSelect, say, copy, beep, muted, onNavigate, onOpenStageScan, onShowCandles, jumps: jumpsIn, hideTabs, dataNote, embedded, hideSelfLink }: any) {
@@ -164,6 +201,7 @@ function DeskToolsInner({ trades: tradesIn, levels: levelsIn, capital, riskPct, 
         <div>
           <div className="dt-scroll"><table className="dt-table"><thead><tr><th>Stock</th><th>Pattern</th><th>Status</th><th>Bias</th><th>Trigger</th><th>Target</th></tr></thead>
             <tbody>{hits.length ? hits.map((h, i) => <tr key={h.sym + h.family + i}><td><b>{h.sym}</b>{h.source === "sample" ? <div className="dt-dim">sample data</div> : null}</td><td>{h.name}</td><td><span className={`dt-pill ${h.state === "forming" ? "" : h.bias === "bearish" ? "bad" : ""}`}>{h.state}</span></td><td>{h.bias}</td><td>{h.level != null ? "₹" + fmt(h.level, 2) : "-"}</td><td>{h.target != null ? "₹" + fmt(h.target, 2) : "-"}</td></tr>) : <tr><td colSpan={6}>No pattern is confirmed or forming on these stocks.</td></tr>}</tbody></table></div>
+          <PatternSheet scans={Object.fromEntries(scans.map((x) => [x.t.sym, x.rs]))} />
           <div className="dt-cards">{scans.map(({ t, series, rs, sum, source }) => (
             <div className="dt-card" key={t.id}>
               <div className="dt-h"><b>{t.sym}</b><span className="dt-pill">{sum.confirmed.length} confirmed · {sum.forming.length} forming · {series.c.length} bars{source === "sample" ? " · sample data" : ""}</span></div>

@@ -4,3 +4,4 @@ export * from "../../utils/deskIndicators";
 export * from "./snapshot";
 export * from "./tracker";
 export * from "./chartPatterns";
+export * from "./patternSheet";
