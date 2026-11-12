@@ -3,7 +3,7 @@
 import { TRADES, scanPatterns, seriesFromTrade, FAMILIES } from "../src/core/desk";
 import { MOCK_STOCKS } from "../src/data/mockStocks";
 import { stockToDeskTrade } from "../src/utils/deskAdapter";
-import { REAL_BARS } from "./real-nse-bars";
+import { REAL_BARS } from "../src/data/realNseBars";
 
 const rows: { sym: string; real: boolean; bars: number; res: ReturnType<typeof scanPatterns> }[] = [];
 for (const t of TRADES) { const s = seriesFromTrade(t); rows.push({ sym: t.sym, real: true, bars: s.c.length, res: scanPatterns(s) }); }

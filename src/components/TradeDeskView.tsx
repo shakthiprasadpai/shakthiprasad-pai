@@ -532,7 +532,7 @@ export default function App({ askModel = defaultAskModel, checkReady, onNavigate
         <DeskTools
           trades={deskTrades} levels={deskLevels} capital={capital} riskPct={riskPct} scan={scan}
           hideSelfLink={inDashboard}
-          dataNote={extra.trades.length ? "Rows after the two picks are the NSE and BSE stocks on this screen, scored on all 8 Trend Template rules from their own price and moving averages. Their price history is sample data, so their candle patterns repeat; the two picks use real NSE bars. Selecting one of them loads it in the dashboard." : undefined}
+          dataNote={extra.trades.length ? "Rows after the two picks are the NSE and BSE stocks on this screen, scored on all 8 Trend Template rules from their own price and moving averages. Their moving-average and candle scores use sample price history, so those candle patterns repeat; the two picks use real NSE bars. The Chart patterns tab uses real NSE daily bars (12 Aug to 11 Nov 2026) for TRENT, SUVEN, MOSCHIP, GOLDIAM, DIXON, PAYTM and ZEEL, and marks any other row as sample data. Selecting one of them loads it in the dashboard." : undefined}
           onSelect={(i: number) => { if (i < TRADES.length) setSel(i); else { const x = extra.source[i - TRADES.length]; if (x && onSelectStock) onSelectStock(x); } }} say={say} copy={copy} beep={beep} muted={muted}
           onNavigate={onNavigate} onOpenStageScan={onOpenStageScan}
           onShowCandles={(i: number) => { if (i < TRADES.length) { setSel(i); setChartMode("candle"); chartRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }); } else { const x = extra.source[i - TRADES.length]; if (x && onSelectStock) onSelectStock(x); onNavigate?.("chart"); } }}
