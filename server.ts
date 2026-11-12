@@ -2,6 +2,7 @@ import express from 'express';
 import path from 'path';
 import fs from 'fs';
 import { GoogleGenAI } from '@google/genai';
+import { mountDeskPositions } from './src/server/deskPositions';
 
 async function startServer() {
   const app = express();
@@ -13,6 +14,9 @@ async function startServer() {
   app.use(express.json());
   app.use(express.text({ type: ['text/*', 'application/json', 'text/plain'] }));
   app.use(express.urlencoded({ extended: true }));
+
+  // Open positions shared with the desk command line (~/.trade_desk/positions.json)
+  mountDeskPositions(app);
 
   // Helper for Gemini AI instance
   const getGeminiClient = () => {

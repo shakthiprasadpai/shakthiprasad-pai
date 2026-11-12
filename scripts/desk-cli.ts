@@ -21,6 +21,7 @@ import {
 } from "../src/core/desk";
 import { REAL_BARS } from "../src/data/realNseBars";
 import { renderDash } from "./desk-dash";
+import { defaultPositionsFile, readPositionsFile, writePositionsFile } from "../src/server/deskPositions";
 
 const HELP = `Minervini trade desk (TypeScript). Commands:
   picks [--capital 500000 --risk 1]
@@ -33,7 +34,7 @@ const HELP = `Minervini trade desk (TypeScript). Commands:
   track show [pick]
   track close <pick>
 Picks are swing (LAURUSLABS) and intra (SAILIFE). Positions are kept in ~/.trade_desk/positions.json (override with --state).`;
-const STATE = join(homedir(), ".trade_desk", "positions.json");
+const STATE = defaultPositionsFile();
 export const fmtIn = (n: number, d = 0) => Number(n).toLocaleString("en-IN", { minimumFractionDigits: d, maximumFractionDigits: d });
 const inr = (v: number) => "₹" + fmtIn(v, 2);
 const signed = (x: number, d: number) => (x < 0 ? "" : "+") + x.toFixed(d);
@@ -84,13 +85,8 @@ const getPick = (key: string): DeskPick => {
 };
 const withDates = (t: DeskPick) => ({ ...t, dates: SESSION_DATES });
 
-function loadPositions(path: string): Record<string, Position> {
-  try { return sanitizePositions(JSON.parse(readFileSync(path, "utf-8"))); } catch { return {}; }
-}
-function savePositions(path: string, pos: Record<string, Position>) {
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, JSON.stringify(pos, null, 1), "utf-8");
-}
+const loadPositions = (path: string): Record<string, Position> => readPositionsFile(path);
+const savePositions = (path: string, pos: Record<string, Position>) => writePositionsFile(pos, path);
 
 type V = ReturnType<typeof parseArgs<{ options: typeof OPTIONS; allowPositionals: true }>>["values"];
 

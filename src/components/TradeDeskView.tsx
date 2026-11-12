@@ -3,7 +3,7 @@ import DeskTools, { TOOLS_CSS, candlePatterns, emaSeries, rsiSeries } from "./De
 import { stockToDeskTrade, stockLevels } from "../utils/deskAdapter";
 import type { MinerviniTradeSetup } from "../types";
 import { TRADES, parseLevels, levelsOk, sizePosition, trailStop, dayChangePct, previousClose, trailFor, openPosition, applyBar, trackerView, type Position } from "../core/desk";
-import { loadPositions, savePositions } from "../core/desk/positionsStore";
+import { useSharedPositions } from "../hooks/useSharedPositions";
 import { loadDeskSettings, saveDeskSettings } from "../core/desk/settingsStore";
 
 
@@ -164,8 +164,7 @@ export default function App({ askModel = defaultAskModel, checkReady, onNavigate
   const trailPct = trailFor({ trails }, t.id);
   const setTrailPct = (v: string) => setTrails((m) => ({ ...m, [t.id]: v }));
   // Position tracker: your fill, the stop that only moves up, and a hit flag. It works on the prices you enter; there is no live feed.
-  const [positions, setPositions] = useState<Record<string, Position>>(() => loadPositions());
-  useEffect(() => { savePositions(positions); }, [positions]);
+  const [positions, setPositions, sharedPositions] = useSharedPositions();
   const [tin, setTin] = useState<Record<string, Record<string, string>>>({});
   const ti = tin[t.id] || {};
   const setTi = (k: string) => (e: any) => setTin((m) => ({ ...m, [t.id]: { ...(m[t.id] || {}), [k]: e.target.value } }));
@@ -476,6 +475,7 @@ export default function App({ askModel = defaultAskModel, checkReady, onNavigate
               </div>
               <div className="tbox tk" aria-label="Position tracker">
                 <div className="lab">Position tracker</div>
+                <div className="tg" role="status">{sharedPositions ? "Synced with the desk command line (~/.trade_desk/positions.json): npm run desk -- track / dash." : "Kept in this browser only. Run the dev server (npm run dev) to share positions with the desk command line."}</div>
                 {!posn ? (
                   <>
                     <div className="trow">

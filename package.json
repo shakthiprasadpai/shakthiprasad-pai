@@ -10,7 +10,7 @@
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
     "desk": "tsx scripts/desk.ts",
-    "test:core": "tsx scripts/core-desk.test.ts && tsx scripts/patterns.test.ts && tsx scripts/pattern-sheet.test.ts && tsx scripts/desk-cli.test.ts",
+    "test:core": "tsx scripts/core-desk.test.ts && tsx scripts/patterns.test.ts && tsx scripts/pattern-sheet.test.ts && tsx scripts/desk-cli.test.ts && tsx scripts/desk-sync.test.ts",
     "build:extension": "tsx scripts/build-extension.ts",
     "build:artifact": "tsx scripts/build-artifact.ts"
   },
