@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import DeskTools, { TOOLS_CSS, candlePatterns, emaSeries, rsiSeries } from "./DeskTools";
 import { stockToDeskTrade, stockLevels } from "../utils/deskAdapter";
 import type { MinerviniTradeSetup } from "../types";
-import { TRADES, parseLevels, levelsOk, sizePosition, trailStop, dayChangePct, previousClose } from "../core/desk";
+import { TRADES, parseLevels, levelsOk, sizePosition, trailStop, dayChangePct, previousClose, trailFor } from "../core/desk";
 import { loadDeskSettings, saveDeskSettings } from "../core/desk/settingsStore";
 
 
@@ -128,7 +128,8 @@ export default function App({ askModel = defaultAskModel, checkReady, onNavigate
   const [chartMode, setChartMode] = useState("line");
   const [showEma, setShowEma] = useState(true);
   const [showRsi, setShowRsi] = useState(true);
-  const [trailPct, setTrailPct] = useState(saved.trailPct);
+  // Trail % is kept per pick: the swing starts at 8%, the intraday trade at 3%.
+  const [trails, setTrails] = useState<Record<string, string>>(saved.trails);
   const [trailHigh, setTrailHigh] = useState("");
   const [scanTxt, setScanTxt] = useState(() => { try { return localStorage.getItem("gsa-scan") || ""; } catch { return ""; } });
   const scan = useMemo(() => parseScan(scanTxt), [scanTxt]);
@@ -151,7 +152,7 @@ export default function App({ askModel = defaultAskModel, checkReady, onNavigate
   const raw = lv[t.id];
   const L = parseLevels(raw);
   const ok = levelsOk(L);
-  useEffect(() => { saveDeskSettings({ capital, riskPct, trailPct }); }, [capital, riskPct, trailPct]);
+  useEffect(() => { saveDeskSettings({ ...loadDeskSettings(), capital, riskPct, trails }); }, [capital, riskPct, trails]);
   const passN = t.checks.filter((c) => c[2] === "pass").length;
   const chg = dayChangePct(t);
 
@@ -159,6 +160,8 @@ export default function App({ askModel = defaultAskModel, checkReady, onNavigate
 
   // Trailing stop: highest price since entry x (1 - trail%). Until you enter a real high, the highest close in the 40 sessions is used.
   useEffect(() => { setTrailHigh(""); }, [sel]); // a high entered for one stock must not carry to the other
+  const trailPct = trailFor({ trails }, t.id);
+  const setTrailPct = (v: string) => setTrails((m) => ({ ...m, [t.id]: v }));
   const trailInfo = useMemo(() => trailStop(t.closes, t.close, trailPct, trailHigh, ok ? L.stop : undefined), [trailPct, trailHigh, t, ok, L.stop]);
 
   const say = (m) => { setToast(m); clearTimeout(timer.current); timer.current = setTimeout(() => setToast(""), 2600); };
@@ -429,7 +432,7 @@ export default function App({ askModel = defaultAskModel, checkReady, onNavigate
               <div className="tbox">
                 <div className="lab">Trailing stop</div>
                 <div className="trow">
-                  <label className="f"><span className="lab">Trail %</span><input type="number" min="1" max="49" step="0.5" value={trailPct} onChange={(e) => setTrailPct(e.target.value)} /></label>
+                  <label className="f"><span className="lab">Trail %</span><input type="number" min="1" max="49" step="0.5" value={trailPct} onChange={(e) => setTrailPct(e.target.value)} /><span className="presets">{["3", "5", "8"].map((v) => <button key={v} type="button" className={trailPct === v ? "on" : ""} aria-pressed={trailPct === v} onClick={() => setTrailPct(v)}>{v}%</button>)}</span></label>
                   <label className="f"><span className="lab">Highest price since entry</span><input type="number" step="0.05" value={trailHigh} placeholder={`${fmt(Math.max(...t.closes), 2)} (40-session high close)`} onChange={(e) => setTrailHigh(e.target.value)} /></label>
                 </div>
                 {trailInfo ? (
@@ -442,7 +445,7 @@ export default function App({ askModel = defaultAskModel, checkReady, onNavigate
                       : <tr><td className="k">Loss if trail is hit</td><td>₹{fmt((L.entry - trailInfo.stop) * size.qty)}</td></tr>)}
                   </tbody></table>
                 ) : <div className="err">Enter a trail between 1 and 49 percent.</div>}
-                <div className="tg">{trailInfo?.usingData ? "No real high entered, so the highest close in the data is used. Enter your own high after you are in the trade. " : ""}Raise the stop only; never lower it. For SAILIFE, an intraday trade, an 8% trail is far wider than the day's range and works as a swing exit only.</div>
+                <div className="tg">{trailInfo?.usingData ? "No real high entered, so the highest close in the data is used. Enter your own high after you are in the trade. " : ""}Raise the stop only; never lower it. {t.id === "intra" ? "SAILIFE is the intraday trade, so it starts at a 3% trail; an 8% trail is far wider than the day's range and works as a swing exit only." : "LAURUSLABS is the swing trade, so it starts at an 8% trail; 3% is an intraday setting and would stop you out on normal pullbacks."}</div>
               </div>
             </div>
             <div ref={tplRef}>
@@ -492,6 +495,7 @@ const CSS = `
   background:var(--bg);color:var(--fg);font-family:var(--mono);font-size:13px;line-height:1.5;min-height:100vh;padding-bottom:96px}
 .desk.desk-in-dash{min-height:0;padding-bottom:0;border:1px solid var(--line)}
 .desk-in-dash .mon,.desk-in-dash .bar{display:none}
+.presets{display:flex;gap:4px;margin-top:4px}.presets button{background:#0c0c14;border:1px solid var(--line);color:var(--muted);padding:2px 8px;font-size:10px;font-weight:700}.presets button.on{border-color:var(--amber);color:var(--amber)}
 .desk *{box-sizing:border-box}
 .desk button{font:inherit;color:inherit;cursor:pointer}
 .desk .lab{font-size:10px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--muted)}

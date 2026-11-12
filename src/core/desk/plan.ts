@@ -2,8 +2,16 @@
 // trailing stop, plan text and the Obsidian note. No DOM, no React, no network.
 
 export interface Levels { entry: number; stop: number; t1: number; t2: number }
-export interface DeskSettings { capital: string; riskPct: string; trailPct: string }
-export const DEFAULT_SETTINGS: DeskSettings = { capital: "500000", riskPct: "1", trailPct: "8" };
+export interface DeskSettings { capital: string; riskPct: string; trailPct: string; trails: Record<string, string> }
+export const DEFAULT_SETTINGS: DeskSettings = { capital: "500000", riskPct: "1", trailPct: "8", trails: {} };
+
+/** Trail % each pick starts with: 8% for the swing, 3% for the intraday trade. Anything the user types is saved per pick in settings.trails. */
+export const DEFAULT_TRAIL_BY_ID: Record<string, string> = { swing: "8", intra: "3" };
+export const defaultTrailPct = (id: string) => DEFAULT_TRAIL_BY_ID[id] ?? DEFAULT_SETTINGS.trailPct;
+export const trailFor = (s: Pick<DeskSettings, "trails"> | null | undefined, id: string) => {
+  const v = s?.trails?.[id];
+  return v !== undefined && isFinite(parseFloat(String(v))) ? String(v) : defaultTrailPct(id);
+};
 
 const fmtN = (n: number, d = 0) => Number(n).toLocaleString("en-IN", { minimumFractionDigits: d, maximumFractionDigits: d });
 
@@ -77,8 +85,10 @@ ${size ? `- Size at ₹${fmtN(size.cap)} and ${size.rp}% risk: ${size.qty} share
 
 /** Shared settings, one shape for localStorage (dashboard) and chrome.storage (extension). */
 export function mergeSettings(saved: Partial<DeskSettings> | null | undefined): DeskSettings {
-  const s = { ...DEFAULT_SETTINGS };
-  (Object.keys(s) as (keyof DeskSettings)[]).forEach((k) => { const v = saved?.[k]; if (v !== undefined && v !== null && isFinite(parseFloat(String(v)))) s[k] = String(v); });
+  const s: DeskSettings = { ...DEFAULT_SETTINGS, trails: {} };
+  (["capital", "riskPct", "trailPct"] as const).forEach((k) => { const v = saved?.[k]; if (v !== undefined && v !== null && isFinite(parseFloat(String(v)))) s[k] = String(v); });
+  const tr = saved?.trails;
+  if (tr && typeof tr === "object") Object.entries(tr).forEach(([id, v]) => { if (isFinite(parseFloat(String(v)))) s.trails[id] = String(v); });
   return s;
 }
 

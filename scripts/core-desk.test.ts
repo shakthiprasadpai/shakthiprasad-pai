@@ -32,8 +32,15 @@ for (const line of ["type: minervini-sepa-setup", "ticker: LAURUSLABS", "pivot_p
 assert.ok(planText(laurus, L, z, tr).includes("Trailing stop 8% below ₹2,454.00 = ₹2,257.68"));
 
 // settings: junk falls back to defaults
-assert.deepEqual(mergeSettings({ capital: "x", riskPct: "2" } as any), { capital: "500000", riskPct: "2", trailPct: "8" });
-assert.deepEqual(mergeSettings(null), { capital: "500000", riskPct: "1", trailPct: "8" });
+assert.deepEqual(mergeSettings({ capital: "x", riskPct: "2" } as any), { capital: "500000", riskPct: "2", trailPct: "8", trails: {} });
+assert.deepEqual(mergeSettings(null), { capital: "500000", riskPct: "1", trailPct: "8", trails: {} });
+// trail % per pick: swing 8, intraday 3, typed values win, junk is ignored
+import { trailFor, defaultTrailPct } from "../src/core/desk";
+assert.equal(defaultTrailPct("swing"), "8"); assert.equal(defaultTrailPct("intra"), "3"); assert.equal(defaultTrailPct("other"), "8");
+assert.equal(trailFor(null, "intra"), "3"); assert.equal(trailFor({ trails: { intra: "5" } }, "intra"), "5"); assert.equal(trailFor({ trails: { intra: "abc" } }, "intra"), "3");
+assert.deepEqual(mergeSettings({ trails: { intra: "4", swing: "x" } } as any).trails, { intra: "4" });
+// 3% trail on SAILIFE from its highest close 1836.8 -> 1781.70
+assert.equal(+trailStop(sail.closes, sail.close, trailFor(null, "intra"), "")!.stop.toFixed(2), 1781.7);
 
 // indicators agree with the numbers shown on the desk
 const rsi = rsiSeries({ closes: laurus.closes, pre: laurus.pre }, 14), ema = emaSeries({ closes: laurus.closes, pre: laurus.pre }, 20);

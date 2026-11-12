@@ -1,6 +1,6 @@
 /* Floating on-page widget. Runs only on the sites listed in manifest.json, draws inside a shadow root so the
    page's CSS cannot touch it, reads the same saved settings as the popup, and makes no network requests. */
-import { buildSnapshot, parseLevels, sizePosition, trailStop, planText } from "../../src/core/desk";
+import { buildSnapshot, parseLevels, sizePosition, trailStop, planText, trailFor } from "../../src/core/desk";
 
 (function () {
   "use strict";
@@ -47,7 +47,7 @@ import { buildSnapshot, parseLevels, sizePosition, trailStop, planText } from ".
     return { L: L, risk: L.entry - L.stop, ok: !!z, qty: z ? z.qty : 0, cap: z ? z.cap : 0, rp: z ? z.rp : 0, z: z };
   }
   function trail(t) {
-    var fixed = plan(t).L.stop, hi = (st.trailHigh || {})[t.id], p = st.trailPct != null ? st.trailPct : "8";
+    var fixed = plan(t).L.stop, hi = (st.trailHigh || {})[t.id], p = trailFor(st, t.id);
     return trailStop(t.closes, t.close, p, hi, fixed) || trailStop(t.closes, t.close, "8", hi, fixed);
   }
 

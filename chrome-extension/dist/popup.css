@@ -62,3 +62,6 @@ li .dim{color:var(--dim)}
 [hidden]{display:none!important}
 .settings .chk{grid-column:1/-1;flex-direction:row;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:11px}
 .settings .chk input{width:auto}
+.presets{display:flex;gap:4px;margin-top:2px}
+.presets .pre{background:#0c0c14;border:1px solid #2a2a35;color:#9a9aa8;padding:3px 9px;font:inherit;font-size:10px;font-weight:700;cursor:pointer}
+.presets .pre[aria-pressed="true"]{border-color:#f5a524;color:#f5a524}

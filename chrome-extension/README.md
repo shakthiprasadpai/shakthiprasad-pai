@@ -2,7 +2,7 @@
 
 Two surfaces, one data file:
 
-- **Toolbar popup**: click the icon. Two picks (LAURUSLABS swing, SAILIFE intraday) with chart, levels, position size, 8% trailing stop, RSI 14, 20 EMA, candle patterns, alerts, Copy plan and Copy Obsidian note.
+- **Toolbar popup**: click the icon. Two picks (LAURUSLABS swing, SAILIFE intraday) with chart, levels, position size, trailing stop (8% swing, 3% intraday), RSI 14, 20 EMA, candle patterns, alerts, Copy plan and Copy Obsidian note.
 - **Floating widget** on Chartink, TradingView, 5paisa, Screener and NSE: a small pill that expands to the same plan. Drag it by the header, collapse with –, hide with ×. Turn it off in the popup's Settings.
 
 ## Build and install (developer mode)

@@ -1,9 +1,9 @@
-import { buildSnapshot, parseLevels, sizePosition, trailStop, planText, obsidianNote } from "../../src/core/desk";
+import { buildSnapshot, parseLevels, sizePosition, trailStop, planText, obsidianNote, trailFor } from "../../src/core/desk";
 
 (function () {
   "use strict";
   var D = buildSnapshot();
-  var DEFAULTS = { showWidget: true, capital: "500000", riskPct: "1", trailPct: "8", appUrl: "", levels: {}, trailHigh: {}, tab: 0 };
+  var DEFAULTS = { showWidget: true, capital: "500000", riskPct: "1", trailPct: "8", trails: {}, appUrl: "", levels: {}, trailHigh: {}, tab: 0 };
   var st = JSON.parse(JSON.stringify(DEFAULTS));
 
   /* ---------- storage: chrome.storage when installed, localStorage when opened as a plain page ---------- */
@@ -72,7 +72,7 @@ import { buildSnapshot, parseLevels, sizePosition, trailStop, planText, obsidian
   }
   function trail(t) {
     var fixed = plan(t).L.stop;
-    return trailStop(t.closes, t.close, st.trailPct, st.trailHigh[t.id], fixed) || trailStop(t.closes, t.close, "8", st.trailHigh[t.id], fixed);
+    return trailStop(t.closes, t.close, trailFor(st, t.id), st.trailHigh[t.id], fixed) || trailStop(t.closes, t.close, "8", st.trailHigh[t.id], fixed);
   }
 
   /* ---------- sparkline ---------- */
@@ -157,7 +157,23 @@ import { buildSnapshot, parseLevels, sizePosition, trailStop, planText, obsidian
     // trailing stop
     var hiInp = h("input", { type: "number", step: "any", inputmode: "decimal", placeholder: "highest close", "aria-label": "Highest price since entry", value: st.trailHigh[t.id] || "" });
     hiInp.addEventListener("input", function () { st.trailHigh[t.id] = hiInp.value; saveState(); update(); });
-    view.appendChild(h("section", { "class": "card" }, [h("h3", { text: "Trailing stop" }), h("label", { "class": "lv", style: "display:flex;flex-direction:column;gap:4px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#9a9aa8" }, ["Highest price since you entered", hiInp]), trailBox]));
+    // Trail % is kept per pick: the swing starts at 8%, the intraday trade at 3%.
+    var pctInp = h("input", { type: "number", step: "0.5", min: "1", max: "49", inputmode: "decimal", "aria-label": "Trailing stop percent", value: trailFor(st, t.id) });
+    var presetBtns = ["3", "5", "8"].map(function (v) {
+      return h("button", { type: "button", "class": "pre", text: v + "%", onclick: function () { pctInp.value = v; setPct(v); } });
+    });
+    function setPct(v) {
+      st.trails[t.id] = v; saveState(); update();
+      presetBtns.forEach(function (b) { b.setAttribute("aria-pressed", String(b.textContent === v + "%")); });
+    }
+    pctInp.addEventListener("input", function () { setPct(pctInp.value); });
+    presetBtns.forEach(function (b) { b.setAttribute("aria-pressed", String(b.textContent === trailFor(st, t.id) + "%")); });
+    var lab = "display:flex;flex-direction:column;gap:4px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#9a9aa8";
+    view.appendChild(h("section", { "class": "card" }, [h("h3", { text: "Trailing stop" }),
+      h("div", { "class": "lv", style: "grid-template-columns:1fr 1fr" }, [
+        h("label", { style: lab }, ["Trail %", pctInp, h("span", { "class": "presets" }, presetBtns)]),
+        h("label", { style: lab }, ["Highest price since entry", hiInp])]),
+      trailBox]));
 
     // candles + alerts
     var cList = t.candles.length ? h("ul", {}, t.candles.slice().reverse().map(function (c) {
@@ -213,7 +229,7 @@ import { buildSnapshot, parseLevels, sizePosition, trailStop, planText, obsidian
 
   /* ---------- settings ---------- */
   function bindSettings() {
-    var map = { capital: "capital", riskPct: "riskPct", trailPct: "trailPct", appUrl: "appUrl" };
+    var map = { capital: "capital", riskPct: "riskPct", appUrl: "appUrl" };
     Object.keys(map).forEach(function (id) {
       var el = $(id); el.value = st[id];
       el.addEventListener("input", function () { st[id] = el.value; saveState(); if (id === "appUrl") link(); else render(); });
@@ -237,8 +253,9 @@ import { buildSnapshot, parseLevels, sizePosition, trailStop, planText, obsidian
 
   loadState().then(function (saved) {
     if (saved && saved.risk !== undefined && saved.riskPct === undefined) saved.riskPct = saved.risk; // settings saved by the first version
-    st = Object.assign({}, DEFAULTS, saved);
+    st = JSON.parse(JSON.stringify(Object.assign({}, DEFAULTS, saved))); // copy, so edits never touch DEFAULTS
     ["capital", "riskPct", "trailPct"].forEach(function (k) { st[k] = String(st[k]); });
+    st.trails = st.trails || {};
     st.levels = st.levels || {}; st.trailHigh = st.trailHigh || {};
     sel = Math.min(Math.max(parseInt(st.tab, 10) || 0, 0), D.trades.length - 1);
     $("asof").textContent = D.meta.label + " · snapshot";
