@@ -35,6 +35,7 @@ interface AuthContextType {
 
 const LOCAL_SESSION_KEY = 'minervini_auth_session';
 const REGISTERED_ACCOUNTS_KEY = 'minervini_registered_accounts';
+export const SIGNED_OUT_KEY = 'minervini_signed_out';
 
 const DEFAULT_DEMO_ACCOUNTS: Record<string, { pass: string; name: string; role: string }> = {
   'trader@minervini.com': { pass: 'minervini123', name: 'Mark Minervini', role: 'SEPA Master Trader' },
@@ -383,6 +384,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           loginAt: new Date().toLocaleTimeString(),
         };
 
+    try { sessionStorage.removeItem(SIGNED_OUT_KEY); } catch { /* storage blocked */ }
     setUser(demoUser);
     localStorage.setItem(LOCAL_SESSION_KEY, JSON.stringify(demoUser));
   };
@@ -396,6 +398,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.warn('Firebase logout warning:', err);
     } finally {
       localStorage.removeItem(LOCAL_SESSION_KEY);
+      // Signing out on purpose keeps the login screen up until the tab is closed.
+      try { sessionStorage.setItem(SIGNED_OUT_KEY, '1'); } catch { /* storage blocked */ }
       setUser(null);
     }
   };

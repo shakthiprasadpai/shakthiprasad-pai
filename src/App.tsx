@@ -34,7 +34,7 @@ import { MinerviniTradeSetup } from './types';
 import { formatCurrency, formatVolume, getCurrencySymbol, calculateBreakoutProbability } from './utils/sepaCalculator';
 import { getChartLinkUrl } from './utils/chartLinkHelper';
 import { TrendingUp, TrendingDown, Skull, ShieldAlert, ShieldCheck, Target, Droplets, ArrowUpRight, Flame, BarChart3, Calculator, Sparkles, Gem, Bot, Bell, Keyboard, Command, Search, Zap, History, Brain, Bookmark, ExternalLink, Activity, BellRing } from 'lucide-react';
-import { useAuth } from './context/AuthContext';
+import { useAuth, SIGNED_OUT_KEY } from './context/AuthContext';
 import { LoginScreen } from './components/LoginScreen';
 import { lazyView } from './utils/lazyView';
 
@@ -66,7 +66,14 @@ const SecurityShieldPanel = lazyView(() => import('./components/SecurityShieldPa
 const TradeDeskView = lazyView(() => import('./components/TradeDeskView'));
 
 export default function App() {
-  const { user, loading } = useAuth();
+  const { user, loading, loginDemo } = useAuth();
+  // Open straight to the dashboard as the demo trader. The login screen only shows after an explicit sign-out.
+  useEffect(() => {
+    if (loading || user) return;
+    let out = false;
+    try { out = sessionStorage.getItem(SIGNED_OUT_KEY) === '1'; } catch { /* storage blocked */ }
+    if (!out) loginDemo('PRO');
+  }, [loading, user]);
   const [stocksList, setStocksList] = useState<MinerviniTradeSetup[]>(MOCK_STOCKS);
   const [selectedStock, setSelectedStock] = useState<MinerviniTradeSetup>(MOCK_STOCKS[0]);
   const [activeTab, setActiveTab] = useState<AppNavTab>('hermes_agent');
