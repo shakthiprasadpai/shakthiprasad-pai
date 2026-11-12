@@ -1,4 +1,4 @@
-import { parseLevels, sizePosition, obsidianNote, levelsOk, dayChangePct } from "../core/desk";
+import { parseLevels, sizePosition, obsidianNote, levelsOk, dayChangePct, scanPatterns, seriesFromTrade, summarizePatterns, FRESH } from "../core/desk";
 import { Component, useState, useMemo, useEffect } from "react";
 import { fmt, median, avg, pocketPivots, vcpScan, emaSeries, rsiSeries, stageInfo, patternAlerts, candlePatterns } from "../utils/deskIndicators";
 export { pocketPivots, vcpScan, emaSeries, rsiSeries, stageInfo, patternAlerts, candlePatterns };
@@ -41,7 +41,7 @@ const csvCell = (v) => { const s = String(v ?? ""); return /[",\n]/.test(s) ? `"
 export const toCSV = (rows) => rows.map((r) => r.map(csvCell).join(",")).join("\n");
 
 const ALL_TABS = [
-  ["screener", "Screener"], ["pocket", "Pocket pivot"], ["candles", "Candle patterns"], ["vcp", "VCP scanner"], ["stage", "Stage scan"], ["portfolio", "Portfolio"],
+  ["screener", "Screener"], ["pocket", "Pocket pivot"], ["candles", "Candle patterns"], ["patterns", "Chart patterns"], ["vcp", "VCP scanner"], ["stage", "Stage scan"], ["portfolio", "Portfolio"],
   ["earnings", "Earnings"], ["sector", "Sector health"], ["journal", "Journal entry"], ["alerts", "Alert patterns"], ["export", "Export"],
 ];
 // Where each tool lives in the full app (used only when the desk is hosted inside it).
@@ -149,6 +149,21 @@ function DeskToolsInner({ trades: tradesIn, levels: levelsIn, capital, riskPct, 
             {pp.length ? <ul className="dt-list">{pp.slice(-4).reverse().map((x) => <li key={x.i}><span>{x.ago === 0 ? "Latest session" : x.ago + " sessions ago"}</span><span>₹{fmt(x.close, 2)}</span><span>{x.vol.toFixed(1)}M vs {x.maxDown.toFixed(1)}M down-day max</span></li>)}</ul> : <p className="dt-note">No up day beat the heaviest down-day volume of the prior 10 sessions while closing above its 10-day average.</p>}
           </div>);
       })}<p className="dt-note">Rule used: up day, volume above the highest down-day volume of the prior 10 sessions, close above the 10-day average. Volumes are millions of shares.</p></div>
+    ),
+    patterns: () => (
+      <div className="dt-cards">{trades.map((t) => {
+        const series = seriesFromTrade(t), rs = scanPatterns(series), sum = summarizePatterns(rs), sample = t.id !== "swing" && t.id !== "intra";
+        const dot = (r: any) => (r.state === "confirmed" ? (r.bias === "bearish" ? "bad" : "ok") : r.state === "forming" ? "warn" : "");
+        return (
+          <div className="dt-card" key={t.id}>
+            <div className="dt-h"><b>{t.sym}</b><span className="dt-pill">{sum.confirmed.length} confirmed · {sum.forming.length} forming · {series.c.length} bars{sample ? " · sample data" : ""}</span></div>
+            {sample && <p className="dt-note">This stock's bars are generated sample data, so these results describe the sample, not the real chart.</p>}
+            <ul className="dt-list">{rs.map((r) => (
+              <li key={r.family}><span className={`dt-dot ${dot(r)}`} aria-hidden="true" />
+                <span><b>{r.family}</b>{" "}<span className="dt-dim">{r.state === "confirmed" ? `confirmed, ${r.bias}` : r.state === "forming" ? `forming, ${r.bias}` : r.state === "insufficient" ? "too few bars" : "not formed"}</span>
+                  <div className="dt-dim">{r.state === "none" || r.state === "insufficient" ? r.detail : r.detail.startsWith(r.name) ? r.detail : `${r.name}: ${r.detail}`}</div></span></li>))}</ul>
+          </div>);
+      })}<p className="dt-note">Rule-based detection on daily bars from swing highs and lows. "Confirmed" means a close broke the trigger line in the last {FRESH} bars; "forming" means the shape is in place but not triggered. Two chartists can draw the same chart differently, so open the chart before trading a pattern. Older bars carry closes only, which blurs pivots slightly, and about 60 bars is short for a cup and handle or rounding bottom.</p></div>
     ),
     candles: () => (
       <div className="dt-cards">{trades.map((t) => {
